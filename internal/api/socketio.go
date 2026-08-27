@@ -151,12 +151,13 @@ type sioSession struct {
 	created time.Time
 	out     chan sioFrame
 
-	mu        sync.Mutex
-	lastSeen  time.Time
-	lastPong  time.Time
-	transport string
-	upgraded  bool
-	packets   uint64
+	mu           sync.Mutex
+	lastSeen     time.Time
+	lastPong     time.Time
+	transport    string
+	upgraded     bool
+	packets      uint64
+	clientPinged bool
 }
 
 func (s *sioSession) touch() {
@@ -197,6 +198,21 @@ func (s *sioSession) sincePong() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return time.Since(s.lastPong)
+}
+
+// noteClientPing records that the client drives the heartbeat itself, which is
+// v3 behaviour. BestHTTP's socket.io client does that even though it asks for
+// EIO=4, so once one of its pings is seen the server must stop sending its own.
+func (s *sioSession) noteClientPing() {
+	s.mu.Lock()
+	s.clientPinged = true
+	s.mu.Unlock()
+}
+
+func (s *sioSession) clientOwnsHeartbeat() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.clientPinged
 }
 
 // packetCount reports how many packets arrived on this session. Zero on a
@@ -310,6 +326,30 @@ func connectReply(session *sioSession, namespace string) string {
 	return reply + string(payload)
 }
 
+// autoConnectRootNamespace announces the root namespace immediately, without
+// waiting to be asked.
+//
+// This is what unblocks 23.1.3. The client is BestHTTP.SocketIO, and the build
+// contains no SocketIO3 namespace: HandshakeData carries only Sid, Upgrades,
+// PingInterval and PingTimeout, so it is the socket.io v2 client regardless of
+// the EIO=4 it puts in the query. A v2 server connects the default namespace on
+// its own and the client waits for that packet to open its Socket; it never
+// sends "40" first. Waiting for one on this side deadlocked the channel: the
+// client stayed silent, then closed cleanly with code 1000 "Bye!" after its own
+// timeout, which is the boot parked at 77 %.
+//
+// The bare form is used because that is what a v2-era client parses. A client
+// that does ask for a namespace still gets the versioned answer from
+// connectReply.
+func (s *Server) autoConnectRootNamespace(session *sioSession) string {
+	s.log.Event("socket.auto_connect", map[string]any{
+		"sid":       session.sid,
+		"eio":       int(session.version),
+		"namespace": "/",
+	})
+	return string(eioMessage) + string(sioConnect)
+}
+
 // handleSocketIO is the single entry point for the channel: the handshake, the
 // polling transport and the WebSocket upgrade all arrive on this path.
 func (s *Server) handleSocketIO(w http.ResponseWriter, r *http.Request) {
@@ -395,6 +435,9 @@ func (s *Server) socketHandshake(w http.ResponseWriter, r *http.Request, eio str
 		"raw_path":   r.URL.Path,
 		"transport":  "polling",
 	})
+	// Queued rather than written here, so the next poll carries it exactly as a
+	// v2 server would deliver it.
+	session.send(sioFrame{text: s.autoConnectRootNamespace(session)})
 	s.writePolling(w, session.version, []sioFrame{{text: string(eioOpen) + string(open)}})
 }
 
@@ -506,6 +549,8 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 		open, err := json.Marshal(openPayload(session, []string{}))
 		if err == nil {
 			conn.WriteText(string(eioOpen) + string(open))
+			// Written directly, so it cannot be reordered behind the queue.
+			conn.WriteText(s.autoConnectRootNamespace(session))
 		}
 	}
 
@@ -585,6 +630,9 @@ func (s *Server) socketPingLoop(session *sioSession, conn *wsConn, done <-chan s
 		case <-done:
 			return
 		case <-ticker.C:
+			if session.clientOwnsHeartbeat() {
+				return
+			}
 			if session.sincePong() > sioPingInterval+sioPingTimeoutV4 {
 				s.log.Event("socket.pong_timeout", map[string]any{
 					"sid":      session.sid,
@@ -619,6 +667,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 	case eioPing:
 		// "2probe" during an upgrade must be answered with "3probe"; a bare "2"
 		// is the v3 keepalive. Echoing the body covers both.
+		session.noteClientPing()
 		conn.WriteText(string(eioPong) + packet[1:])
 		return
 	case eioPong:
@@ -643,6 +692,7 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 	body := packet[1:]
 	switch packet[0] {
 	case eioPing:
+		session.noteClientPing()
 		session.send(sioFrame{text: string(eioPong) + body})
 	case eioPong:
 		session.notePong()

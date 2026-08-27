@@ -50,12 +50,22 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
 - [x] Correct the protocol assumption. The v3-only reading was wrong: in
       `global-metadata.dat` the templates are `{0}?EIO={1}&transport=...`, so
       `EIO` is a substituted parameter rather than a literal, and the WebSocket
-      template carries no `sid`. The client actually requests
+      template carries no `sid`. The client requests
       `/socket.io/?EIO=4&transport=websocket&client_ver=v2&c=1`: straight to
-      WebSocket, no polling, protocol **v4**. Because v4 reverses the heartbeat
-      (the server pings, the client answers), a v3 server left the client
-      waiting in silence - it sent no packet at all and hung up after ~6.5 s,
-      which is the boot stalling at 77 %.
+      WebSocket, no polling. Both versions are served now, keyed off `EIO`.
+- [x] Find the actual cause of the 77 % stall: a handshake deadlock, not the
+      heartbeat. `dump2313.cs` shows the client is `BestHTTP.SocketIO`, with no
+      `SocketIO3` namespace anywhere in the build, and its `HandshakeData`
+      carries only Sid/Upgrades/PingInterval/PingTimeout - the socket.io **v2**
+      client, whatever its query says. A v2 server connects the default
+      namespace on its own and the client waits for that packet to open its
+      `Socket`; it never sends `40` first. This server waited to be asked, so
+      both sides waited: `packets=1`, not one `socket.rx` line, then a clean
+      `close_code=1000 close_reason=Bye!` at 6.6 s, repeating on a fresh sid.
+      The root namespace is now announced immediately after the open packet.
+      The reversed v4 heartbeat was a real bug but not this one - the client
+      leaves long before the 25 s ping timer fires, so the ping loop now yields
+      to the client as soon as it sees a ping of its own.
 - [x] Instrumentation for the next boot: `socket.rx` traces every inbound
       packet verbatim on both transports, `socket.ws_closed` carries the close
       code, close reason and packet count, and `socket.ws_open` records the raw

@@ -66,8 +66,17 @@ func TestSocketHandshakeAndNamespaceConnectOverPolling(t *testing.T) {
 
 	session := "/socket.io/?EIO=3&transport=polling&sid=" + url.QueryEscape(open.SID)
 
-	// "40" is an engine.io message carrying a socket.io namespace connect. It
-	// must be answered or the client waits for its connect callback forever.
+	// The root namespace is announced without being asked, because a v2-era
+	// client waits for that packet instead of sending its own connect.
+	greeting, err := decodePollingPayload(socketRequest(t, s, http.MethodGet, session, "").Body.String())
+	if err != nil {
+		t.Fatalf("decode auto connect: %v", err)
+	}
+	if len(greeting) != 1 || greeting[0] != "40" {
+		t.Fatalf("auto connect packets = %q, want [40]", greeting)
+	}
+
+	// A client that asks for the namespace anyway must still be answered.
 	if post := socketRequest(t, s, http.MethodPost, session, "2:40"); post.Code != http.StatusOK {
 		t.Fatalf("post status = %d, body = %s", post.Code, post.Body)
 	}
@@ -115,6 +124,9 @@ func TestSocketWebSocketUpgradeAnswersProbeAndConnect(t *testing.T) {
 	defer server.Close()
 
 	sid := decodeHandshake(t, s)
+	// Drain the auto connect the handshake queued, so the frames read after the
+	// upgrade belong to the upgrade and the order below is deterministic.
+	socketRequest(t, s, http.MethodGet, "/socket.io/?EIO=3&transport=polling&sid="+url.QueryEscape(sid), "")
 	address := strings.TrimPrefix(server.URL, "http://")
 
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
@@ -332,6 +344,12 @@ func TestSocketV4DirectWebSocketConnectCarriesSid(t *testing.T) {
 	}
 	if handshake.MaxPayload != wsMaxMessage {
 		t.Fatalf("maxPayload = %d, want %d", handshake.MaxPayload, wsMaxMessage)
+	}
+
+	// The auto connect arrives unprompted, right behind the open packet. This
+	// is the packet whose absence left the client waiting in silence.
+	if greeting := readServerFrame(t, reader); greeting != "40" {
+		t.Fatalf("auto connect frame = %q, want 40", greeting)
 	}
 
 	writeClientFrame(t, conn, wsOpText, []byte("40"))
