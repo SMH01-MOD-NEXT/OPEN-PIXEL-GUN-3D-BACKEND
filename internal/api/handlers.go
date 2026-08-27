@@ -162,9 +162,10 @@ func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Event("photon.appid_issued", map[string]any{
-		"player_id": account.PlayerID,
-		"mode":      mode,
-		"region":    s.cfg.PhotonRegion,
+		"player_id":     account.PlayerID,
+		"mode":          mode,
+		"region":        s.cfg.PhotonRegion,
+		"from_realtime": mode == "pun" && s.cfg.PhotonPUNFromRealtime,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"mode":     mode,

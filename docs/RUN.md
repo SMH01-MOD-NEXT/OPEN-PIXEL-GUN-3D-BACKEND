@@ -59,7 +59,7 @@ The variables that matter on day one:
 | `OPG3D_TRACE_BODIES` | `true` | Log request and response bodies. Leave on while porting. |
 | `OPG3D_DISCOVERY_PORT` | `47318` | UDP port that answers the client's `OPG3D-DISCOVER-V1` probe. |
 | `OPG3D_APPID_KEY` | — | Seals Photon AppIDs. Must equal the APK's `OPG3D_APPID_KEY`. |
-| `OPG3D_PHOTON_APPID_PUN` / `_REALTIME` / `_CHAT` / `_VOICE` | — | Photon Cloud AppIDs. Only the ones you set are served. |
+| `OPG3D_PHOTON_APPID_PUN` / `_REALTIME` / `_CHAT` / `_VOICE` | — | Photon Cloud AppIDs. Only the ones you set are served. PUN is a client library, not a Photon product: if `_PUN` is empty and `_REALTIME` is set, `mode=pun` is answered with the Realtime AppID (logged as `from_realtime=true`), because a PUN client connects to a Realtime application. Otherwise the client waits out its AppID timeout and the loading bar stalls around 70 %. |
 | `OPG3D_PHOTON_REGION` | `eu` | Region handed to the client with the AppID. |
 | `OPG3D_ADMIN_TOKEN` | empty | Empty keeps `/api/v1/admin/*` closed. |
 | `OPG3D_MAINTENANCE` | `false` | Answers `ping` with maintenance so the client can say so. |

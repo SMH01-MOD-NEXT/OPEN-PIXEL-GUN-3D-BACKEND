@@ -42,6 +42,10 @@ type Config struct {
 	PhotonAppIDs map[string]string
 	PhotonRegion string
 
+	// PhotonPUNFromRealtime records that "pun" is answered with the Realtime
+	// AppID because no dedicated PUN AppID was configured.
+	PhotonPUNFromRealtime bool
+
 	// AppIDKey is the AES-256 key used to seal AppIDs. Empty disables the
 	// endpoint instead of falling back to clear text.
 	AppIDKey []byte
@@ -82,6 +86,15 @@ func Load() (*Config, error) {
 		if value := env(key, ""); value != "" {
 			cfg.PhotonAppIDs[mode] = value
 		}
+	}
+
+	// PUN is a client library, not a Photon product: a PUN client connects with
+	// the AppID of a Realtime application. Serving the Realtime AppID for "pun"
+	// keeps the client from blocking on its AppID wait when only one Photon
+	// application exists, which is the normal case for a private server.
+	if cfg.PhotonAppIDs["pun"] == "" && cfg.PhotonAppIDs["realtime"] != "" {
+		cfg.PhotonAppIDs["pun"] = cfg.PhotonAppIDs["realtime"]
+		cfg.PhotonPUNFromRealtime = true
 	}
 
 	if material := env("OPG3D_APPID_KEY", ""); material != "" {
