@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/config"
@@ -63,6 +64,17 @@ func do(t *testing.T, s *Server, method, target string, body any, headers map[st
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	return rec
+}
+
+// doForm posts a urlencoded body the way the retired PHP endpoints were called.
+func doForm(t *testing.T, s *Server, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, req)
 	return rec

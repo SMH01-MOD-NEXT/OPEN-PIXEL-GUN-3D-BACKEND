@@ -55,6 +55,7 @@ The variables that matter on day one:
 | `OPG3D_ADDR` | `:8080` | Listen address. Keep the port in sync with what the client is told. |
 | `OPG3D_DATA_DIR` | `data` | `state.json` with accounts and bans. Back this up; it is the players. |
 | `OPG3D_LOG_DIR` | `logs` | One `backend-YYYY-MM-DD.log` per day. |
+| `OPG3D_CONTENT_DIR` | `content` | Static remote config served under `/pixelgun3d-config/`. See `content/README.md`. |
 | `OPG3D_TRACE_BODIES` | `true` | Log request and response bodies. Leave on while porting. |
 | `OPG3D_DISCOVERY_PORT` | `47318` | UDP port that answers the client's `OPG3D-DISCOVER-V1` probe. |
 | `OPG3D_APPID_KEY` | — | Seals Photon AppIDs. Must equal the APK's `OPG3D_APPID_KEY`. |
@@ -192,6 +193,10 @@ Every line is `key=value`, one event per line:
 | `account.ban_enforced` | A ban actually stopped someone. |
 | `photon.appid_issued` | A sealed credential went out. |
 | `client.problem` | The game (or the native library) reported a failure. |
+| `client.event` | A loading milestone from `add_event.php`: `progress=FirstRun|Loading1|loading10|loading30|ReturnOldID|...`. The most precise map of how far a boot got. |
+| `client.stat` | A gameplay/diagnostic statistics batch. |
+| `content.served` | Remote config answered from a file in the content directory. |
+| `content.fallback_served` | Remote config answered with an empty document because no file exists yet. **This is the content to-do list.** |
 | `discovery.reply` | A phone found the server by broadcast. |
 
 The fastest way to grow the server is to play, then grep:

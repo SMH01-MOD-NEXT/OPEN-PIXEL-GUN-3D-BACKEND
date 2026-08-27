@@ -69,6 +69,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/auth_v2", s.handleLegacyAuth)
 	s.mux.HandleFunc("/time", s.handleTime)
 	s.mux.HandleFunc("/problem", s.handleProblem)
+	s.mux.HandleFunc("POST /events/add_event.php", s.handleLegacyEvent)
+	s.mux.HandleFunc("POST /event_stat_add_pl.php", s.handleLegacyStat)
+	s.mux.HandleFunc("POST /log_stat_event.php", s.handleLegacyStat)
+	s.mux.HandleFunc("GET "+contentPrefix, s.handleRemoteConfig)
 	s.mux.HandleFunc("/", s.handleUnknown)
 }
 

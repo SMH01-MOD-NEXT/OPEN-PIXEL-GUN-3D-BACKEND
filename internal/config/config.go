@@ -31,6 +31,7 @@ type Config struct {
 	Addr          string
 	DataDir       string
 	LogDir        string
+	ContentDir    string
 	TraceBodies   bool
 	MaxBodyLog    int
 	DiscoveryPort int
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 		Addr:          env("OPG3D_ADDR", ":8080"),
 		DataDir:       env("OPG3D_DATA_DIR", "data"),
 		LogDir:        env("OPG3D_LOG_DIR", "logs"),
+		ContentDir:    env("OPG3D_CONTENT_DIR", "content"),
 		TraceBodies:   envBool("OPG3D_TRACE_BODIES", true),
 		MaxBodyLog:    envInt("OPG3D_MAX_BODY_LOG", 8192),
 		DiscoveryPort: envInt("OPG3D_DISCOVERY_PORT", 47318),
