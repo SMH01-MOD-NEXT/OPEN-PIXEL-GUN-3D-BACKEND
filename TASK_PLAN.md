@@ -39,8 +39,19 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
 
 - [ ] Capture one full boot-to-battle session of the client pointed at this
       server; collect every `http.unhandled` line.
-- [ ] Implement remote configuration delivery (the `pixelgun3d-config/*` family)
-      from server-side JSON documents.
+- [x] Live config channel transport: `internal/api/websocket.go` (minimal
+      RFC 6455 server, standard library only) and `internal/api/socketio.go`
+      (engine.io v3: polling handshake, long-poll GET/POST, WebSocket upgrade,
+      `2probe`→`3probe`, ping/pong, namespace connect, session registry with
+      idle reaping). `recorder` gained `Hijack()`, without which the upgrade
+      cannot happen. Every step is logged, including `socket.event` with the
+      verbatim payload.
+- [/] Remote configuration delivery (the `pixelgun3d-config/*` family). The
+      transport is done; the payload is deliberately not pushed yet. The next
+      step is to read `socket.event` from a real client boot to learn which
+      documents it subscribes to and under which keys, rather than guessing at
+      MessagePack contents.
+- [ ] Serve the config documents over the channel from server-side JSON.
 - [ ] Player profile / progression persistence server-side (replaces the
       client-side `Storager` trust model).
 - [ ] Clans, mailbox, leaderboards, friends/invites.

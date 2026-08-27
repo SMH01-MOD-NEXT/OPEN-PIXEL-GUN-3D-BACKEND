@@ -15,8 +15,10 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -38,11 +40,14 @@ type Server struct {
 	log *logs.Logger
 	st  *store.Store
 	mux *http.ServeMux
+	// sio holds the live socket.io sessions of the config channel, which
+	// outlive the individual requests that carry them.
+	sio *sioHub
 }
 
 // New builds the router.
 func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
-	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub()}
 	s.routes()
 	return s
 }
@@ -73,6 +78,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /event_stat_add_pl.php", s.handleLegacyStat)
 	s.mux.HandleFunc("POST /log_stat_event.php", s.handleLegacyStat)
 	s.mux.HandleFunc("GET "+contentPrefix, s.handleRemoteConfig)
+	s.mux.HandleFunc(sioPath, s.handleSocketIO)
 	s.mux.HandleFunc("/", s.handleUnknown)
 }
 
@@ -88,6 +94,20 @@ func (r *recorder) WriteHeader(status int) {
 		r.status = status
 	}
 	r.ResponseWriter.WriteHeader(status)
+}
+
+// Hijack forwards the takeover the WebSocket upgrade of the config channel
+// needs. Without it the trace wrapper would hide net/http's own Hijacker and
+// no socket could ever be upgraded.
+func (r *recorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("the underlying response writer cannot be hijacked")
+	}
+	if r.status == 0 {
+		r.status = http.StatusSwitchingProtocols
+	}
+	return hijacker.Hijack()
 }
 
 func (r *recorder) Write(p []byte) (int, error) {
