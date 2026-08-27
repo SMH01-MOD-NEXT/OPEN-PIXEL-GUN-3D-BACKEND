@@ -1,0 +1,368 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Package store owns every piece of persistent server state: accounts,
+// sessions and bans.
+//
+// The backing file is written through a temporary file plus rename(), so a
+// crash or a pulled power cord cannot leave half a state file behind. The
+// public API returns copies, never interior pointers, so a caller cannot race
+// with the lock or mutate state behind it.
+//
+// The storage engine is deliberately behind this package's API. Phase 1 uses a
+// single JSON document, which is correct and dependency-free for a private
+// server with hundreds of accounts; moving to SQLite or Postgres later is a
+// change to this file only.
+package store
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Ban kinds.
+const (
+	BanPlayer = "player"
+	BanDevice = "device"
+	BanIP     = "ip"
+)
+
+var (
+	// ErrNotFound is returned when no account matches.
+	ErrNotFound = errors.New("store: account not found")
+	// ErrBadBanKind is returned for an unknown ban kind.
+	ErrBadBanKind = errors.New("store: unknown ban kind")
+	// ErrIDExhausted is returned when a free account id could not be minted.
+	ErrIDExhausted = errors.New("store: could not mint a free account id")
+)
+
+// Account is one registered player.
+type Account struct {
+	PlayerID   string    `json:"player_id"`
+	DeviceID   string    `json:"device_id"`
+	Nick       string    `json:"nick"`
+	Session    string    `json:"session"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	LastIP     string    `json:"last_ip"`
+}
+
+// Ban blocks a player id, a device id or an IP address.
+type Ban struct {
+	Kind      string     `json:"kind"`
+	Subject   string     `json:"subject"`
+	Reason    string     `json:"reason"`
+	Until     *time.Time `json:"until,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// Active reports whether the ban still applies at the given instant. A nil
+// Until means permanent.
+func (b Ban) Active(now time.Time) bool {
+	return b.Until == nil || b.Until.After(now)
+}
+
+type state struct {
+	Accounts map[string]*Account `json:"accounts"`
+	Bans     []Ban               `json:"bans"`
+}
+
+// Store is the concurrency-safe state holder.
+type Store struct {
+	mu    sync.RWMutex
+	path  string
+	state state
+}
+
+// Open loads (or creates) the state file in dir.
+func Open(dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("store: mkdir %s: %w", dir, err)
+	}
+	s := &Store{
+		path:  filepath.Join(dir, "state.json"),
+		state: state{Accounts: map[string]*Account{}},
+	}
+	raw, err := os.ReadFile(s.path)
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(raw, &s.state); err != nil {
+			return nil, fmt.Errorf("store: parse %s: %w", s.path, err)
+		}
+		if s.state.Accounts == nil {
+			s.state.Accounts = map[string]*Account{}
+		}
+	case errors.Is(err, os.ErrNotExist):
+		// First run.
+	default:
+		return nil, fmt.Errorf("store: read %s: %w", s.path, err)
+	}
+	return s, nil
+}
+
+// RegisterOrLogin returns the account bound to deviceID, creating it on first
+// contact. The session token is rotated on every call, so a leaked token stops
+// working as soon as the real client logs in again. The bool reports creation.
+func (s *Store) RegisterOrLogin(deviceID, nick, ip string) (Account, bool, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return Account{}, false, errors.New("store: empty device id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	session, err := mintSession()
+	if err != nil {
+		return Account{}, false, err
+	}
+
+	for _, account := range s.state.Accounts {
+		if account.DeviceID != deviceID {
+			continue
+		}
+		account.Session = session
+		account.LastSeenAt = now
+		account.LastIP = ip
+		if nick = strings.TrimSpace(nick); nick != "" {
+			account.Nick = nick
+		}
+		if err := s.persistLocked(); err != nil {
+			return Account{}, false, err
+		}
+		return *account, false, nil
+	}
+
+	playerID, err := s.mintFreePlayerIDLocked()
+	if err != nil {
+		return Account{}, false, err
+	}
+	if nick = strings.TrimSpace(nick); nick == "" {
+		nick = "Player" + playerID[len(playerID)-4:]
+	}
+	account := &Account{
+		PlayerID:   playerID,
+		DeviceID:   deviceID,
+		Nick:       nick,
+		Session:    session,
+		CreatedAt:  now,
+		LastSeenAt: now,
+		LastIP:     ip,
+	}
+	s.state.Accounts[playerID] = account
+	if err := s.persistLocked(); err != nil {
+		delete(s.state.Accounts, playerID)
+		return Account{}, false, err
+	}
+	return *account, true, nil
+}
+
+// Authenticate validates a player id / session pair and refreshes last-seen.
+func (s *Store) Authenticate(playerID, session, ip string) (Account, bool) {
+	if playerID == "" || session == "" {
+		return Account{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	account, ok := s.state.Accounts[playerID]
+	if !ok || account.Session != session {
+		return Account{}, false
+	}
+	account.LastSeenAt = time.Now().UTC()
+	if ip != "" {
+		account.LastIP = ip
+	}
+	// A failed persist must not invalidate a valid session; the in-memory
+	// answer stays authoritative and the error surfaces on the next write.
+	_ = s.persistLocked()
+	return *account, true
+}
+
+// Account returns one account by id.
+func (s *Store) Account(playerID string) (Account, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	account, ok := s.state.Accounts[playerID]
+	if !ok {
+		return Account{}, ErrNotFound
+	}
+	return *account, nil
+}
+
+// Accounts returns every account, ordered by creation time.
+func (s *Store) Accounts() []Account {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Account, 0, len(s.state.Accounts))
+	for _, account := range s.state.Accounts {
+		out = append(out, *account)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
+}
+
+// SetNick renames an account.
+func (s *Store) SetNick(playerID, nick string) error {
+	nick = strings.TrimSpace(nick)
+	if nick == "" {
+		return errors.New("store: empty nick")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	account, ok := s.state.Accounts[playerID]
+	if !ok {
+		return ErrNotFound
+	}
+	account.Nick = nick
+	return s.persistLocked()
+}
+
+// AddBan records a ban. An empty subject is rejected so a typo cannot ban
+// everyone at once.
+func (s *Store) AddBan(ban Ban) error {
+	switch ban.Kind {
+	case BanPlayer, BanDevice, BanIP:
+	default:
+		return ErrBadBanKind
+	}
+	ban.Subject = strings.TrimSpace(ban.Subject)
+	if ban.Subject == "" {
+		return errors.New("store: empty ban subject")
+	}
+	if ban.CreatedAt.IsZero() {
+		ban.CreatedAt = time.Now().UTC()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Bans = append(s.state.Bans, ban)
+	return s.persistLocked()
+}
+
+// RemoveBans drops every ban matching kind and subject, returning the count.
+func (s *Store) RemoveBans(kind, subject string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := make([]Ban, 0, len(s.state.Bans))
+	removed := 0
+	for _, ban := range s.state.Bans {
+		if ban.Kind == kind && ban.Subject == subject {
+			removed++
+			continue
+		}
+		kept = append(kept, ban)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	s.state.Bans = kept
+	return removed, s.persistLocked()
+}
+
+// Bans returns every recorded ban.
+func (s *Store) Bans() []Ban {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Ban, len(s.state.Bans))
+	copy(out, s.state.Bans)
+	return out
+}
+
+// MatchBan returns the first active ban hitting any of the supplied
+// identifiers. Empty identifiers never match.
+func (s *Store) MatchBan(playerID, deviceID, ip string) (Ban, bool) {
+	now := time.Now().UTC()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, ban := range s.state.Bans {
+		if !ban.Active(now) {
+			continue
+		}
+		var candidate string
+		switch ban.Kind {
+		case BanPlayer:
+			candidate = playerID
+		case BanDevice:
+			candidate = deviceID
+		case BanIP:
+			candidate = ip
+		}
+		if candidate != "" && candidate == ban.Subject {
+			return ban, true
+		}
+	}
+	return Ban{}, false
+}
+
+func (s *Store) persistLocked() error {
+	raw, err := json.MarshalIndent(&s.state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("store: encode: %w", err)
+	}
+	dir := filepath.Dir(s.path)
+	tmp, err := os.CreateTemp(dir, "state-*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("store: temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return fmt.Errorf("store: write temp: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("store: sync temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("store: close temp: %w", err)
+	}
+	if err := os.Rename(tmpName, s.path); err != nil {
+		return fmt.Errorf("store: rename: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) mintFreePlayerIDLocked() (string, error) {
+	for attempt := 0; attempt < 16; attempt++ {
+		id, err := mintPlayerID()
+		if err != nil {
+			return "", err
+		}
+		if _, taken := s.state.Accounts[id]; !taken {
+			return id, nil
+		}
+	}
+	return "", ErrIDExhausted
+}
+
+// mintPlayerID returns a nine-digit id, matching the shape the 23.1.3 client
+// parsers expect from the retired account service.
+func mintPlayerID() (string, error) {
+	span := big.NewInt(900000000)
+	n, err := rand.Int(rand.Reader, span)
+	if err != nil {
+		return "", fmt.Errorf("store: mint id: %w", err)
+	}
+	return fmt.Sprintf("%09d", n.Int64()+100000000), nil
+}
+
+func mintSession() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", fmt.Errorf("store: mint session: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
+}

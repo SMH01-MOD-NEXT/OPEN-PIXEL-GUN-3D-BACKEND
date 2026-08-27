@@ -1,0 +1,17 @@
+# Build output
+/bin/
+/opg3d-backend
+
+# Runtime state and logs are never committed: they contain player data.
+/data/
+/logs/
+
+# Local secrets (Photon AppIDs, admin token, AppID encryption key).
+.env
+*.env.local
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
