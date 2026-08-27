@@ -98,6 +98,9 @@ All configuration is environment-based; no credential is ever committed.
 
 ## Run
 
+Step-by-step build, configuration, service and log-reading instructions live in
+[`docs/RUN.md`](docs/RUN.md). The short version:
+
 ```sh
 go test ./...
 go build -o bin/opg3d-backend ./cmd/opg3d-backend
