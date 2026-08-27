@@ -41,16 +41,33 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       server; collect every `http.unhandled` line.
 - [x] Live config channel transport: `internal/api/websocket.go` (minimal
       RFC 6455 server, standard library only) and `internal/api/socketio.go`
-      (engine.io v3: polling handshake, long-poll GET/POST, WebSocket upgrade,
-      `2probe`→`3probe`, ping/pong, namespace connect, session registry with
-      idle reaping). `recorder` gained `Hijack()`, without which the upgrade
-      cannot happen. Every step is logged, including `socket.event` with the
-      verbatim payload.
+      (engine.io v3 **and** v4, chosen per session from the `EIO` parameter:
+      polling handshake in both framings, long-poll GET/POST, WebSocket
+      upgrade, `2probe`→`3probe`, heartbeat in whichever direction the
+      version requires, namespace connect, session registry with idle
+      reaping). `recorder` gained `Hijack()`, without which the upgrade cannot
+      happen.
+- [x] Correct the protocol assumption. The v3-only reading was wrong: in
+      `global-metadata.dat` the templates are `{0}?EIO={1}&transport=...`, so
+      `EIO` is a substituted parameter rather than a literal, and the WebSocket
+      template carries no `sid`. The client actually requests
+      `/socket.io/?EIO=4&transport=websocket&client_ver=v2&c=1`: straight to
+      WebSocket, no polling, protocol **v4**. Because v4 reverses the heartbeat
+      (the server pings, the client answers), a v3 server left the client
+      waiting in silence - it sent no packet at all and hung up after ~6.5 s,
+      which is the boot stalling at 77 %.
+- [x] Instrumentation for the next boot: `socket.rx` traces every inbound
+      packet verbatim on both transports, `socket.ws_closed` carries the close
+      code, close reason and packet count, and `socket.ws_open` records the raw
+      query.
 - [/] Remote configuration delivery (the `pixelgun3d-config/*` family). The
       transport is done; the payload is deliberately not pushed yet. The next
-      step is to read `socket.event` from a real client boot to learn which
-      documents it subscribes to and under which keys, rather than guessing at
-      MessagePack contents.
+      step is to read `socket.rx` / `socket.event` from a real client boot to
+      learn which documents it subscribes to and under which keys, rather than
+      guessing at MessagePack contents. The client-side consumer is
+      `BalanceController.<obfuscated>(String, Byte[], <type>, ConfigId)`, so a
+      document arrives as a name plus a MessagePack byte array identified by a
+      `ConfigId`.
 - [ ] Serve the config documents over the channel from server-side JSON.
 - [ ] Player profile / progression persistence server-side (replaces the
       client-side `Storager` trust model).

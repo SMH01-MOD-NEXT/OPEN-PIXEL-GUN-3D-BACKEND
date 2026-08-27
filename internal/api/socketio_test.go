@@ -248,3 +248,129 @@ func TestDescribeSocketEvent(t *testing.T) {
 		t.Fatalf("unparsed event = %q", name)
 	}
 }
+
+// The client sends EIO=4, so the v4 handshake has to carry the fields a v4
+// client reads and use v4 framing instead of v3 length prefixes.
+func TestSocketHandshakeServesV4(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	rec := socketRequest(t, s, http.MethodGet, "/socket.io/?EIO=4&transport=polling&t=1-0", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handshake status = %d, body = %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if body == "" || body[0] != eioOpen {
+		t.Fatalf("v4 handshake %q must start with an unprefixed open packet", body)
+	}
+
+	var open struct {
+		SID         string `json:"sid"`
+		PingTimeout int64  `json:"pingTimeout"`
+		MaxPayload  int64  `json:"maxPayload"`
+	}
+	if err := json.Unmarshal([]byte(body[1:]), &open); err != nil {
+		t.Fatalf("decode v4 open %q: %v", body, err)
+	}
+	if open.SID == "" {
+		t.Fatal("v4 handshake returned no sid")
+	}
+	if open.PingTimeout != sioPingTimeoutV4.Milliseconds() {
+		t.Fatalf("pingTimeout = %d, want the v4 default %d", open.PingTimeout, sioPingTimeoutV4.Milliseconds())
+	}
+	if open.MaxPayload != wsMaxMessage {
+		t.Fatalf("maxPayload = %d, want %d", open.MaxPayload, wsMaxMessage)
+	}
+}
+
+// 23.1.3 opens the channel straight over WebSocket with EIO=4 and no sid, then
+// waits. The open packet therefore has to arrive unprompted, and the namespace
+// connect has to come back carrying a sid, which is what a v4 client waits for
+// before it considers itself connected.
+func TestSocketV4DirectWebSocketConnectCarriesSid(t *testing.T) {
+	s, _ := newTestServer(t)
+	server := httptest.NewServer(s)
+	defer server.Close()
+
+	address := strings.TrimPrefix(server.URL, "http://")
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	// The exact query the game builds, cache buster and all.
+	request := "GET /socket.io/?EIO=4&transport=websocket&client_ver=v2&c=1 HTTP/1.1\r\n" +
+		"Host: " + address + "\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+		"Sec-WebSocket-Version: 13\r\n\r\n"
+	if _, err := conn.Write([]byte(request)); err != nil {
+		t.Fatalf("write upgrade request: %v", err)
+	}
+
+	reader := bufio.NewReader(conn)
+	response, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		t.Fatalf("read upgrade response: %v", err)
+	}
+	if response.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("status = %d, want 101", response.StatusCode)
+	}
+
+	open := readServerFrame(t, reader)
+	if open == "" || open[0] != eioOpen {
+		t.Fatalf("first frame = %q, want the open packet", open)
+	}
+	var handshake struct {
+		SID        string `json:"sid"`
+		MaxPayload int64  `json:"maxPayload"`
+	}
+	if err := json.Unmarshal([]byte(open[1:]), &handshake); err != nil {
+		t.Fatalf("decode open %q: %v", open, err)
+	}
+	if handshake.MaxPayload != wsMaxMessage {
+		t.Fatalf("maxPayload = %d, want %d", handshake.MaxPayload, wsMaxMessage)
+	}
+
+	writeClientFrame(t, conn, wsOpText, []byte("40"))
+	reply := readServerFrame(t, reader)
+	if !strings.HasPrefix(reply, "40{") {
+		t.Fatalf("connect reply = %q, want 40 with a sid payload", reply)
+	}
+	var connected struct {
+		SID string `json:"sid"`
+	}
+	if err := json.Unmarshal([]byte(reply[2:]), &connected); err != nil {
+		t.Fatalf("decode connect reply %q: %v", reply, err)
+	}
+	if connected.SID != handshake.SID {
+		t.Fatalf("connect sid = %q, want the handshake sid %q", connected.SID, handshake.SID)
+	}
+}
+
+func TestParseEioVersionAndV4Framing(t *testing.T) {
+	if got := parseEioVersion("3"); got != eioV3 {
+		t.Fatalf("EIO=3 -> %d, want 3", got)
+	}
+	// The version the 23.1.3 client actually asks for.
+	if got := parseEioVersion("4"); got != eioV4 {
+		t.Fatalf("EIO=4 -> %d, want 4", got)
+	}
+	if got := parseEioVersion(""); got != eioV4 {
+		t.Fatalf("missing EIO -> %d, want 4", got)
+	}
+
+	packets, err := decodePolling(eioV4, "40\x1e2")
+	if err != nil {
+		t.Fatalf("decode v4 payload: %v", err)
+	}
+	if len(packets) != 2 || packets[0] != "40" || packets[1] != "2" {
+		t.Fatalf("v4 packets = %q, want [40 2]", packets)
+	}
+	// v3 framing keeps working, because the version is per session.
+	if packets, err := decodePolling(eioV3, "2:40"); err != nil || len(packets) != 1 || packets[0] != "40" {
+		t.Fatalf("v3 packets = %q (%v)", packets, err)
+	}
+}

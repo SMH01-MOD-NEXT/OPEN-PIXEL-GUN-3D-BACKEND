@@ -57,6 +57,13 @@ type wsConn struct {
 
 	writeMu sync.Mutex
 	closed  bool
+
+	// The peer's close code and reason. A client that gives up on a protocol
+	// mismatch usually says why here and nowhere else, so throwing this away
+	// costs the only explanation available.
+	closeCode   int
+	closeReason string
+	closeGiven  bool
 }
 
 // wsUpgrade completes the opening handshake and takes the connection over from
@@ -114,6 +121,26 @@ func headerHasToken(value, token string) bool {
 	return false
 }
 
+// noteClose records the code and reason from a close frame. RFC 6455 permits a
+// close with no body at all, so an absent code is normal rather than an error.
+func (c *wsConn) noteClose(frame []byte) {
+	if len(frame) < 2 {
+		return
+	}
+	c.writeMu.Lock()
+	c.closeCode = int(binary.BigEndian.Uint16(frame[:2]))
+	c.closeReason = string(frame[2:])
+	c.closeGiven = true
+	c.writeMu.Unlock()
+}
+
+// CloseInfo reports the close code and reason the peer sent, if it sent one.
+func (c *wsConn) CloseInfo() (code int, reason string, ok bool) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.closeCode, c.closeReason, c.closeGiven
+}
+
 // ReadMessage returns the next data message, reassembling continuation frames
 // and answering ping frames on the way. Control traffic is never returned to
 // the caller.
@@ -143,6 +170,7 @@ func (c *wsConn) ReadMessage(idleTimeout time.Duration) (opcode byte, payload []
 		case wsOpPong:
 			continue
 		case wsOpClose:
+			c.noteClose(frame)
 			c.writeFrame(wsOpClose, frame)
 			return 0, nil, errWSClosed
 		case wsOpText, wsOpBinary:
