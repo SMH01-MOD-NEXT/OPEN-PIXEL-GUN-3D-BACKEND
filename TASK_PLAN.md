@@ -1055,3 +1055,113 @@ inside attachment 0, the way the client's own emits do, is the open question.
 Unchanged and independent: what `prefixed=true` denotes, the `state=40` stall
 (set `OPG3D_APPID_KEY` with `OPG3D_PHOTON_APPID_PUN` or `_REALTIME`), and a slot
 config containing 23.1.3.
+
+## 9. auth_v2 is answered: the 78% stall is gone
+
+### The open question, answered in both directions
+
+Yes: a reply must hide the event name inside attachment 0, exactly as the
+client hides it outbound. And the plaintext must be JSON-quoted -- `"auth_v2"`,
+9 bytes padded to 16 -- where the client sends it bare, 7 bytes padded to 16.
+The directions are asymmetric, and that follows from code:
+
+- Outbound, the server knows attachment 0 *is* the name and reads it as such.
+- Inbound, the client substitutes the plaintext into its payload text
+  literally, so the plaintext has to be a valid JSON fragment on its own.
+
+### The four constraints
+
+From `WebSocketTransport.OnBinary` (0x3ED8B80). Breaking any one of them makes
+the client drop the packet without a word:
+
+| Constraint | Evidence |
+| --- | --- |
+| Exactly two attachments | The indices are computed as n-2 and n-1, so one attachment asks the list for element -1 and a third stays in the payload as an unsubstituted placeholder |
+| One leading byte per attachment, which the client discards | `AddAttachmentFromServer(data, copyFull: false)` at 0x3ECCC6C copies from offset 1; the byte is the engine.io v3 marker |
+| Each plaintext must be a valid JSON fragment | The lambda at 0x3ECD170 is `Payload = Payload.Replace(json, plaintext)` and adds nothing around it |
+| The name lives in attachment 0 | The inbound dispatcher at 0x35C396C takes the name from `Packet.EventName` and forwards only `args[0]`, so the payload must resolve to `["auth_v2", {...}]` |
+
+### Correlation
+
+`WebSocketManager` (0x35C3D08) completes a pending request by
+`Convert.ToInt32(head[req_id])`, where the key is the string literal at slot
+0x67C33C0 -- the same literal the outbound builder uses. A reply without
+`req_id` is decrypted, parsed, dispatched and then matched against nothing,
+which is exactly what an infinite wait looks like from the client side.
+
+The second dictionary a subscriber receives is not sent by the server at all:
+0x35C3E54 resolves it from a client-local cache keyed by
+`Format(req_id, Handshake.Sid)` and removes it.
+
+### On the wire
+
+```
+text     : '4' '5' "2-" "/sio," [{"_placeholder":true,"num":0},{"_placeholder":true,"num":1}]
+binary #1: 0x04 || Encrypt('"auth_v2"')
+binary #2: 0x04 || Encrypt('{"req_id":1, ...}')
+```
+
+Both attachments are sealed with the codec derived from the session's sid.
+
+### Result
+
+Autonomous run on 2026-08-28: build, commit, start the backend, launch the game
+over adb, collect logs.
+
+```
+20:21:58  socket.event_decoded event=auth_v2 key=derived-from-sid req_id=1
+20:21:58  socket.auth_answered req_id=1 attachments=2 mode=cfb128
+20:21:58  client emits subscribe(friends_list) with req_id=7
+20:22:31  bar=0.730 -> 0.740 -> 0.750, LoadMainMenu tail completed,
+          the main-menu scene load is requested
+20:22:31  update_player_online version=23.1.3, mmc_get_room, get_binded_ids
+20:24:06  process alive, the socket never closed
+```
+
+The bar is past 78%. The client left `WaitSocketAuthReponse`, requested the
+main-menu scene and moved on to its ordinary request stream. No
+`socket.auth_undelivered`, no decryption failure, no authorization error.
+
+The reply body is deliberately minimal and well-typed:
+
+```json
+{"req_id":1, "result":"ok", "error":0, "uniq_id":"350713954",
+ "sid":"0a23f3504d958ebde65ef31c", "time":1787937718}
+```
+
+A shotgun of guessed aliases would be worse than a missing field, because
+`Convert.ToInt32` on a string throws inside the client's handler and aborts
+processing. The client's own identity is echoed rather than replaced: its
+`uniq_id` is not the `player_id` from the HTTP registration, so minting a
+different one here would only make the session disagree with itself.
+
+### Landed
+
+| Commit | What it does |
+| --- | --- |
+| `0ac15b1` | `encodeEncryptedEvent` writes the shape above and the live decode path answers `auth_v2` with it. `encodeBinaryEvent` stays as the reference encoder for the stock protocol. `OPG3D_SIO_REPLY` (default true) restores trace-only behaviour without a rebuild. Tests replay the client's inbound path over a reply this server produced -- strip the marker, decrypt, substitute literally -- and assert the client would hold `["auth_v2", {req_id}]`. |
+
+### Closed
+
+`prefixed=true` in `socket.attachment` is explained: it is the engine.io v3
+binary marker, and `AddAttachmentFromServer(copyFull: false)` is why attachment
+0 is still exactly 16 bytes with the prefix outside that count. A reply has to
+carry the same byte or the client loses a byte of ciphertext.
+
+### Next
+
+Answer what the client now asks for. All of it is already in the log as
+`socket.event_unanswered`:
+
+| Event | Arguments |
+| --- | --- |
+| `subscribe` | `friends_list`, `lobby_likes_v2`, `mm_status` |
+| `get_last_command` | - |
+| `player_prefs`, `progress_status` | - |
+| `mmc_get_room` | - |
+| `update_player_online` | `game_mode=100006`, `version=23.1.3`, `map=-1`, `tier`, `rank` |
+| `get_binded_ids` | `with_info=1` |
+
+Unchanged and independent: the `state=40` Photon step (set `OPG3D_APPID_KEY`
+with `OPG3D_PHOTON_APPID_PUN` or `_REALTIME`) and a slot config containing
+23.1.3.
