@@ -50,6 +50,7 @@ const (
 	sioOnlineEvent       = "update_player_online"
 	sioBindedIDsEvent    = "get_binded_ids"
 	sioCheckVersionEvent = "full_check_version"
+	sioRegisterPushEvent = "register_push"
 )
 
 // setIdentity records who authorised this session.
@@ -97,8 +98,20 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerBindedIDs
 	case sioCheckVersionEvent:
 		return (*Server).answerCheckVersion
+	case sioRegisterPushEvent:
+		return (*Server).answerRegisterPush
 	default:
-		return nil
+		// Anything else gets the minimal acknowledgement rather than silence.
+		//
+		// Every request this client makes carries a req_id and parks a
+		// TaskCompletionSource on it, and a request that is never completed is
+		// what held the loading bar at 78% for so long. The client emits events
+		// conditionally, so the set is not knowable up front - register_push and
+		// full_check_version both turned up only after earlier steps started
+		// working. An empty ok is the smallest answer that can release the wait,
+		// and it is logged separately so it is visible which events are still
+		// running on the fallback rather than a real handler.
+		return (*Server).answerGenericAck
 	}
 }
 
@@ -318,6 +331,92 @@ func (s *Server) answerCheckVersion(session *sioSession, head sioHead, reqID int
 	if version := head.text("app_version"); version != "" {
 		body["app_version"] = version
 	}
+	return body
+}
+
+// answerRegisterPush records what the client reports about itself.
+//
+// The event is nominally a push-token registration, but it carries the client's
+// own view of the account - level, coins, gems, language, whether the player has
+// paid - and is the first point at which this server learns any of it. That
+// makes it the client half of profile synchronisation.
+//
+// The values are merged rather than assigned. This is the client reporting its
+// state, not an operator setting it, and the client sends only the keys it
+// currently cares about, so a full assignment would zero whatever it left out.
+//
+// SECURITY: the payload's own player_id is checked against the id this socket
+// actually authenticated as. The client supplies that field itself, so taking
+// it at face value would let any authenticated socket rewrite another player's
+// profile.
+func (s *Server) answerRegisterPush(session *sioSession, head sioHead, reqID int) map[string]any {
+	_, _, playerID := session.identity()
+	if playerID == "" {
+		return sioDenied(reqID)
+	}
+	if claimed := head.text("player_id"); claimed != "" && claimed != playerID {
+		s.log.Event("socket.profile_rejected", map[string]any{
+			"sid":               session.sid,
+			"session_player_id": playerID,
+			"claimed_player_id": claimed,
+			"note":              "a socket pushed a profile for an id it did not authenticate as",
+		})
+		return sioDenied(reqID)
+	}
+
+	progress := map[string]any{}
+	for _, key := range []string{"level", "coins", "gems"} {
+		if value, ok := head.number(key); ok {
+			progress[key] = value
+		}
+	}
+	prefs := map[string]string{}
+	for _, key := range []string{"language", "app_version", "os_version", "device_token", "utc_shift", "allow_invites", "is_paying"} {
+		if value := head.text(key); value != "" {
+			prefs[key] = value
+		}
+	}
+
+	if len(progress) > 0 {
+		if _, err := s.st.MergeProfileProgress(playerID, progress); err != nil {
+			s.log.Event("socket.profile_unsaved", map[string]any{
+				"player_id": playerID, "part": "progress", "err": err.Error(),
+			})
+		}
+	}
+	if len(prefs) > 0 {
+		if _, err := s.st.MergeProfilePrefs(playerID, prefs); err != nil {
+			s.log.Event("socket.profile_unsaved", map[string]any{
+				"player_id": playerID, "part": "prefs", "err": err.Error(),
+			})
+		}
+	}
+	s.log.Event("socket.profile_pushed", map[string]any{
+		"sid":       session.sid,
+		"player_id": playerID,
+		"progress":  len(progress),
+		"prefs":     len(prefs),
+	})
+	return sioOK(reqID)
+}
+
+// answerGenericAck is the fallback for an event that has no handler of its own.
+// It is logged under its own kind so it stays visible which events are running
+// on the fallback instead of a real answer.
+func (s *Server) answerGenericAck(session *sioSession, head sioHead, reqID int) map[string]any {
+	s.log.Event("socket.event_generic_ack", map[string]any{
+		"sid":    session.sid,
+		"req_id": reqID,
+		"note":   "acknowledged by the fallback; no dedicated handler exists for this event yet",
+	})
+	return sioOK(reqID)
+}
+
+// sioDenied is the refusal the client's own error enum expects.
+func sioDenied(reqID int) map[string]any {
+	body := sioOK(reqID)
+	body["result"] = "not_authorized"
+	body["error"] = sioErrNotAuthorized
 	return body
 }
 
