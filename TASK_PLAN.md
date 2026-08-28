@@ -540,3 +540,106 @@ what the new `prefixed=true` flag on `socket.attachment` denotes (attachment 0
 is still exactly 16 bytes, so any prefix sits outside that count), and keep the
 response path ready to encrypt with the same codec, since the client's inbound
 `get_Extras` -> decrypt pair will reject plain JSON.
+
+## Session 2026-08-28, part 4: the pin holds, the trace was on the wrong class
+
+The third capture arrived with the client's full logcat for the first time, so
+this round settles two questions and reopens one.
+
+### The sid pin works, end to end
+
+`socket.ws_open` reported `sid=0123456789abcdef01234567`, and the same value
+appears in `socket.auto_connect`, `socket.rx`, `socket.connect` and both
+`socket.attachment` lines. The client accepted it and went on to emit `auth_v2`,
+so `fa13a6e` does what it claims. The pinned value is a compile-time constant,
+so it also survives a backend restart.
+
+### The A/B is still one sample short
+
+| | run 1 | run 2 | run 3 (pinned) |
+| --- | --- | --- | --- |
+| session token | `a6b26db4...a842bf18` | same | same |
+| socket.io sid | `c16ba8e1a6f4befa13247399` | `f0212cf3d2b03d7e4a72e98d` | `0123456789abcdef01234567` |
+| attachment 0 | `eb42a6d9b1eb4bc29c79ee154af6b656` | `0d4fb8c24e4dbd0ffdffcb24d37707bf` | `74a1de5b1e2465e4529d219ac23400fe` |
+
+Attachment 0 is a third distinct value, but this log contains only one socket.io
+session, and all three runs used a different sid - two random, one pinned. So
+"the key is a function of the sid" and "the key comes from client-local state"
+predict the same three-way divergence, and one pinned-sid sample cannot separate
+them. The comparison has to be pinned sid against pinned sid: two launches, same
+fixed value.
+
+### The codec trace was hooked on the wrong class
+
+All four WebSocketManager hooks installed at exactly their intended addresses.
+With base 0x77F0541000:
+
+| logcat address | RVA | constant | fired |
+| --- | --- | --- | --- |
+| 0x77f3b041e8 | 0x35C31E8 | `kEmit` | yes |
+| 0x77f3b05028 | 0x35C4028 | `kCodecShared` | no |
+| 0x77f3b05170 | 0x35C4170 | `kCodecUnique` | no |
+| 0x77f3b0496c | 0x35C396C | `kInbound` | no |
+
+Across the whole session only the emit hook printed:
+
+```
+23.1.3-sio[emit] event='auth_v2' args=0x788d9102a0 blob_bytes=-1 blob_hex=<not-an-array>
+23.1.3-sio[emit] event='auth_v2' accepted=1
+```
+
+There is no `[codec-shared]`, `[codec-sio]` or `[inbound]` line anywhere. That
+silence is evidence rather than a dropped hook: the trace numbers its lines,
+logcat carried #000001 through #000262 with no gap, and the 600-line budget had
+spent two. The hypothesis written into the trace header - that the last pair of
+WebSocketManager methods is the codec - is therefore false. Those methods are
+not on the emit path.
+
+This agrees with the earlier `get_Extras` disassembly: the cipher is the
+standalone `Rilisoft` type cached in `SocketManager._extras` (0xA0), and the
+three members that matter are
+
+| member | RVA | argc | what it yields |
+| --- | --- | --- | --- |
+| `.ctor(byte[])` | 0x3B680F4 | 1 | the 32-byte password in cleartext |
+| encrypt `(byte[], bool = False)` | 0x3B6883C | 2 | open/sealed pairs for every blob |
+| decrypt `(byte[])` | 0x3B6835C | 1 | what the client expects in reply |
+
+### How far the client now gets
+
+`InitializeSwitcher` ran to state 45 with one skipped step, `LoadMainMenu`
+finished, and `AuthSceneController.Awake` entered and returned. After that the
+log contains nothing but `skipped retired ConnectionLostChecker.Update` for
+forty seconds. The 78% stall is therefore a confirmed idle wait for the
+`auth_v2` reply rather than a crash, and this time the socket was never closed
+(no `socket.ws_closed` at all).
+
+### Landed
+
+Client repo, commit `8f3458e`, trace only and so permitted by the read-only
+rule: the codec trace now hooks the cipher itself, resolved by metadata rather
+than by address - the constructor for the password, encrypt for open/sealed
+pairs, decrypt for the inbound direction. Every hook calls through to the
+original and returns its result unchanged, and the existing 600-line budget
+still caps the output. Once the original constructor has run, the algorithm's
+`KeyValue`/`IVValue` are read by name too; both reads fail closed, so an
+unexpected layout only costs two log lines. Argument counts separate all three
+targets from each other and from the same-named ArraySegment overloads on the
+sibling type. The `codec trace armed` line now carries seven flags. Compiled
+with NDK r29 and checked twice: standalone, and on the real translation unit
+with the project's own flags from `compile_commands.json`.
+
+### Next
+
+Rebuild the client and take a single launch. The password prints directly, which
+short-circuits the whole key hunt: with it plus any captured open/sealed pair
+the salt collapses to the 292 already-enumerated candidates, and if the derived
+key/IV lines appear the salt stops mattering at all. Grep for
+`23.1.3-sio[cipher]`.
+
+The pinned-sid A/B stays available as an independent check but is no longer on
+the critical path. The remaining items are unchanged: what `prefixed=true`
+denotes on `socket.attachment` (attachment 0 is still exactly 16 bytes, so any
+prefix sits outside that count), encrypting the reply with the same codec,
+answering `auth_v2` so the client leaves `WaitSocketAuthReponse`, and serving a
+slot config that contains 23.1.3.
