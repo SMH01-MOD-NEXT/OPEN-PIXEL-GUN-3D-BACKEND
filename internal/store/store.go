@@ -16,6 +16,7 @@ package store
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -77,21 +78,41 @@ type state struct {
 	Bans     []Ban               `json:"bans"`
 }
 
+// Options tunes how a store behaves.
+type Options struct {
+	// StableSessions derives the session token from the device id instead of
+	// minting random bytes, so the same device is handed the same token on
+	// every login.
+	//
+	// SECURITY-SENSITIVE DIAGNOSTIC, off by default. A deterministic session
+	// token is a guessable credential and must never be enabled on a server
+	// anyone else can reach. It exists to isolate one variable in the /sio
+	// payload codec investigation; see docs/RUN.md.
+	StableSessions bool
+}
+
 // Store is the concurrency-safe state holder.
 type Store struct {
 	mu    sync.RWMutex
 	path  string
 	state state
+	opts  Options
 }
 
-// Open loads (or creates) the state file in dir.
+// Open loads (or creates) the state file in dir with default options.
 func Open(dir string) (*Store, error) {
+	return OpenWithOptions(dir, Options{})
+}
+
+// OpenWithOptions loads (or creates) the state file in dir.
+func OpenWithOptions(dir string, opts Options) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("store: mkdir %s: %w", dir, err)
 	}
 	s := &Store{
 		path:  filepath.Join(dir, "state.json"),
 		state: state{Accounts: map[string]*Account{}},
+		opts:  opts,
 	}
 	raw, err := os.ReadFile(s.path)
 	switch {
@@ -113,6 +134,9 @@ func Open(dir string) (*Store, error) {
 // RegisterOrLogin returns the account bound to deviceID, creating it on first
 // contact. The session token is rotated on every call, so a leaked token stops
 // working as soon as the real client logs in again. The bool reports creation.
+//
+// Options.StableSessions suspends that rotation for diagnostics; see
+// newSession.
 func (s *Store) RegisterOrLogin(deviceID, nick, ip string) (Account, bool, error) {
 	deviceID = strings.TrimSpace(deviceID)
 	if deviceID == "" {
@@ -123,7 +147,7 @@ func (s *Store) RegisterOrLogin(deviceID, nick, ip string) (Account, bool, error
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
-	session, err := mintSession()
+	session, err := s.newSession(deviceID)
 	if err != nil {
 		return Account{}, false, err
 	}
@@ -357,6 +381,32 @@ func mintPlayerID() (string, error) {
 		return "", fmt.Errorf("store: mint id: %w", err)
 	}
 	return fmt.Sprintf("%09d", n.Int64()+100000000), nil
+}
+
+// newSession returns the token to hand back for this login: 32 random bytes
+// normally, or a deterministic function of the device id when the stable
+// session diagnostic is on.
+//
+// SECURITY-SENSITIVE. The stable branch produces a guessable credential and is
+// only reachable through Options.StableSessions, which defaults to off and is
+// documented as lab-only.
+func (s *Store) newSession(deviceID string) (string, error) {
+	if s.opts.StableSessions {
+		return stableSession(deviceID), nil
+	}
+	return mintSession()
+}
+
+// stableSessionDomain keeps the diagnostic token from colliding with any other
+// hash of a device id.
+const stableSessionDomain = "opg3d-stable-session\x00"
+
+// stableSession derives a session token from the device id. The result has the
+// same shape as a minted one, 32 bytes hex encoded, so nothing downstream can
+// tell the difference and the diagnostic changes exactly one variable.
+func stableSession(deviceID string) string {
+	sum := sha256.Sum256([]byte(stableSessionDomain + deviceID))
+	return hex.EncodeToString(sum[:])
 }
 
 func mintSession() (string, error) {

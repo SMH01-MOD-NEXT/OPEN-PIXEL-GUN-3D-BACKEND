@@ -38,6 +38,17 @@ type Config struct {
 	AdminToken    string
 	Maintenance   bool
 
+	// StableSessions derives each account's session token from its device id
+	// instead of minting random bytes.
+	//
+	// SECURITY-SENSITIVE DIAGNOSTIC, off by default. A deterministic session
+	// token is a guessable credential, so this belongs on a lab machine only.
+	// It exists to answer one question about the /sio payload codec: the
+	// client's encryption is deterministic, yet the same auth_v2 event is
+	// different in every run, so some key input varies per session. Holding
+	// the session token still tells us whether that input is the token.
+	StableSessions bool
+
 	// PhotonAppIDs is keyed by mode: "pun", "realtime", "chat", "voice".
 	PhotonAppIDs map[string]string
 	PhotonRegion string
@@ -56,18 +67,19 @@ type Config struct {
 // Load resolves configuration from the environment.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerName:    env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
-		Addr:          env("OPG3D_ADDR", ":8080"),
-		DataDir:       env("OPG3D_DATA_DIR", "data"),
-		LogDir:        env("OPG3D_LOG_DIR", "logs"),
-		ContentDir:    env("OPG3D_CONTENT_DIR", "content"),
-		TraceBodies:   envBool("OPG3D_TRACE_BODIES", true),
-		MaxBodyLog:    envInt("OPG3D_MAX_BODY_LOG", 8192),
-		DiscoveryPort: envInt("OPG3D_DISCOVERY_PORT", 47318),
-		AdminToken:    env("OPG3D_ADMIN_TOKEN", ""),
-		Maintenance:   envBool("OPG3D_MAINTENANCE", false),
-		PhotonAppIDs:  map[string]string{},
-		PhotonRegion:  env("OPG3D_PHOTON_REGION", "eu"),
+		ServerName:     env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
+		Addr:           env("OPG3D_ADDR", ":8080"),
+		DataDir:        env("OPG3D_DATA_DIR", "data"),
+		LogDir:         env("OPG3D_LOG_DIR", "logs"),
+		ContentDir:     env("OPG3D_CONTENT_DIR", "content"),
+		TraceBodies:    envBool("OPG3D_TRACE_BODIES", true),
+		MaxBodyLog:     envInt("OPG3D_MAX_BODY_LOG", 8192),
+		DiscoveryPort:  envInt("OPG3D_DISCOVERY_PORT", 47318),
+		AdminToken:     env("OPG3D_ADMIN_TOKEN", ""),
+		Maintenance:    envBool("OPG3D_MAINTENANCE", false),
+		StableSessions: envBool("OPG3D_STABLE_SESSIONS", false),
+		PhotonAppIDs:   map[string]string{},
+		PhotonRegion:   env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{
 			Version:   env("OPG3D_UPDATE_VERSION", ""),
 			APKURL:    env("OPG3D_UPDATE_APK_URL", ""),

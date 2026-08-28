@@ -46,22 +46,28 @@ func run() error {
 	}
 	defer logger.Close()
 
-	st, err := store.Open(cfg.DataDir)
+	st, err := store.OpenWithOptions(cfg.DataDir, store.Options{
+		StableSessions: cfg.StableSessions,
+	})
 	if err != nil {
 		return err
 	}
 
 	logger.Event("boot", map[string]any{
-		"version":        version,
-		"addr":           cfg.Addr,
-		"data_dir":       cfg.DataDir,
-		"log_dir":        cfg.LogDir,
-		"trace_bodies":   cfg.TraceBodies,
-		"discovery_port": cfg.DiscoveryPort,
-		"accounts":       len(st.Accounts()),
-		"appid_sealing":  cfg.SealsAppIDs(),
-		"admin_enabled":  cfg.AdminToken != "",
+		"version":         version,
+		"addr":            cfg.Addr,
+		"data_dir":        cfg.DataDir,
+		"log_dir":         cfg.LogDir,
+		"trace_bodies":    cfg.TraceBodies,
+		"discovery_port":  cfg.DiscoveryPort,
+		"accounts":        len(st.Accounts()),
+		"appid_sealing":   cfg.SealsAppIDs(),
+		"admin_enabled":   cfg.AdminToken != "",
+		"stable_sessions": cfg.StableSessions,
 	})
+	if cfg.StableSessions {
+		logger.Printf("warn: OPG3D_STABLE_SESSIONS is on: session tokens are derived from the device id and are not secret. Diagnostic use only.")
+	}
 	if !cfg.SealsAppIDs() {
 		logger.Printf("warn: Photon AppID delivery is disabled; set OPG3D_APPID_KEY and OPG3D_PHOTON_APPID_PUN or _REALTIME")
 	}

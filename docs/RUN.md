@@ -63,7 +63,39 @@ The variables that matter on day one:
 | `OPG3D_PHOTON_REGION` | `eu` | Region handed to the client with the AppID. |
 | `OPG3D_ADMIN_TOKEN` | empty | Empty keeps `/api/v1/admin/*` closed. |
 | `OPG3D_MAINTENANCE` | `false` | Answers `ping` with maintenance so the client can say so. |
+| `OPG3D_STABLE_SESSIONS` | `false` | **Diagnostic, security-sensitive.** Derives the session token from the device id instead of minting random bytes. Lab machines only; see below. |
 | `OPG3D_UPDATE_VERSION` / `_APK_URL` / `_SHA256` / `_NOTES_URL` / `_MANDATORY` | empty | The update feed the game reads instead of the dead store link. |
+
+### Session stability diagnostic
+
+`OPG3D_STABLE_SESSIONS=true` replaces the random session token with
+`SHA-256(device id)`. It is off by default and should stay off on anything
+reachable from outside a lab: a predictable session token is a predictable
+credential.
+
+It exists to settle one question. The client encrypts every `/sio` event with a
+key it derives once per socket, and that encryption is deterministic: it builds
+a fresh encryptor per call and never generates an IV, so the same plaintext
+must always give the same ciphertext. Yet the `auth_v2` event comes out
+different in every capture. Something in the key material therefore changes
+from session to session, and the session token is the obvious suspect, being
+exactly the 32 bytes the codec password needs.
+
+Hold the token still and look at the first attachment:
+
+```bash
+OPG3D_STABLE_SESSIONS=true ./bin/opg3d-backend
+# launch the game, let it reach the loading bar, force-stop it, launch it again
+grep 'socket.attachment num=0' logs/backend-$(date +%F).log
+```
+
+Read the two `body=hex:` values:
+
+- **Identical** across the two runs: the key is a function of the session
+  token, which the server issues, so the server can derive the key itself and
+  answer `auth_v2`.
+- **Still different**: the varying input is something the server does not
+  control, and the key has to be recovered from the client instead.
 
 ## 3. Run
 
