@@ -106,6 +106,14 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       event was still missing. The XHR transport's base64 `b` framing works in
       both directions too, so a pushed document can no longer be silently
       discarded before the upgrade.
+
+      Read `socket.ws_closed ... err=EOF` as operator action, not as a protocol
+      failure. The captured `alive_s=65` close is the game being shut down by
+      hand: heartbeats (`socket.rx packet=2` / `packet=3`) were still flowing
+      seconds earlier, and the client applies no timeout of its own to `/sio` --
+      after its first binary emit it waits indefinitely. An unanswered event
+      therefore never disconnects anyone, which is why the channel can be left
+      open while the codec is worked out.
 - [ ] Recover the attachment codec. This is now the single blocker for the rest
       of the channel. Parse the registration path for the constants instead of
       guessing them; keep the key in `.env` (`OPG3D_SIO_KEY`), put the codec in
@@ -138,6 +146,23 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       client resolves attachments by index itself. The bytes therefore arrive
       already sealed from outside the socket layer.
 
+      The seal sits one level below that wrapper, and the class is now pinned
+      rather than inferred. Two classes in `Rilisoft.WebSocket` carry the same
+      obfuscated member names, and arithmetic separates them: the address
+      accessors the client logged at `0x77EABF6C50` and `0x77EABF6C48`, minus
+      the logged `libil2cpp.so` base `0x77E7635000`, are `0x35C1C50` and
+      `0x35C1C48` -- the accessors of `WebSocketManager`, TypeDefIndex 9374
+      (`dump2313.cs:381634`). The other cluster is `MatchmakingSocketManager`.
+      Inside the live class the codec is the pair `丌丗七与丘丄丌丞万`
+      (RVA 0x35C4028) and `丞丛业上丗专丏丄三` (RVA 0x35C4170), both
+      `(Dictionary<string,object>, Dictionary<object,object>, List<byte[]>)`:
+      open dictionaries on one side, the wire's attachment vector on the other.
+      The second name occurs exactly once in the whole dump.
+
+      One consequence reorders the plan: the send API still carries the event
+      name as a plaintext `string`, so the RPC names are recoverable by tracing
+      alone, without breaking the codec first.
+
       The key material has an honest source, so nothing needs to be guessed.
       `PGCompany.丈丛业不东丅丐丝世` (`dump2313.cs:448770`) hands out byte
       arrays: one path runs `Convert.FromBase64String` over an embedded
@@ -151,24 +176,43 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       `RNGCryptoServiceProvider`, `dump2313.cs:452433`) seal the *local disk
       cache*; that framing cannot fit inside a 16-byte attachment.
 
-      Extraction is blocked on material this machine does not currently hold,
-      and the constants will not be guessed. There is no APK and no `META-INF`
-      anywhere under `Studio canaryProjects` (only `husi/release.keystore`,
-      which belongs to an unrelated project), the client project's
-      `build.gradle` declares no `signingConfigs`, `adb devices` lists nothing
-      attached, and `analys2313/` holds only `dump2313.cs`,
-      `global-metadata.dat` and `libil2cpp.so` - there is no Il2CppDumper
-      string-literal dump, so the literal handed to `Convert.FromBase64String`
-      cannot be named from the dump alone. A metadata sweep for base64-shaped
-      constants returned only a 2048-bit RSA modulus with exponent `AQAB`,
-      sitting among Mono's `<RSAKeyValue>` XML literals: a public verification
-      key, not a symmetric one. Unblocking needs exactly one of three things -
-      the installed APK, so its certificate can be hashed offline; a connected
-      device, so `adb shell pm path` plus `adb pull` can fetch that APK; or a
-      logging-only trace in the client that prints the derived key material,
-      which is the single client-side change the task brief permits.
-- [ ] Only then: name the events the client sends, and answer them. The names
-      cannot be assumed. `get_progress_slots`, `get_progress_hashes_v2`,
+      That signature path turned out to be anti-tamper rather than the wire
+      codec, and the offline search for a static key is now closed as
+      exhausted. A metadata sweep for base64-shaped constants returned only a
+      2048-bit RSA modulus with exponent `AQAB`, sitting among Mono's
+      `<RSAKeyValue>` XML literals: a public verification key, not a symmetric
+      one. `analys2313/` ships no Il2CppDumper string-literal side files, so the
+      literal handed to `Convert.FromBase64String` cannot be named from the dump
+      alone, and the four app-owned GUID-shaped constants were all rejected by
+      the decrypt oracle.
+
+      The decisive evidence is structural. Attachment 0 was `374bc0db...` in
+      session `329b4708...` and `9135b38a...` in session `bdf88121...`, 16 bytes
+      each, for what is by position the same first event. A static key under ECB,
+      or a static key under a fixed IV, would have produced identical blocks. So
+      the codec is keyed or IV'd per connection -- and 16 bytes total leaves no
+      room for an IV shipped beside the ciphertext, which would need at least 32.
+      Zero-IV oracle sweeps are settled negative and should not be repeated.
+
+      Device access is no longer the blocker. The device is attached with root;
+      the installed `base.apk` is self-signed because the trace library was
+      injected into it, and the untouched original sits on the device at
+      `/data/local/tmp/orig_sign.apk`, certificate SHA-1
+      `7b68ad8a71e44c888f27184bd7690ef92738a5ae` against the `6ecc4203...` of
+      the resigned package. Any signature-derived constant must be computed from
+      the original, never from what is installed.
+
+      The remaining route is the logging-only client trace, and it has landed:
+      `opg3d/src/main/cpp/sio_codec_trace_2313.h` (client repo, branch
+      `23.1.3-thin-client`, commit `f556192`) hooks the emit wrapper, both codec
+      overloads and the inbound dispatcher, printing the open event name, the
+      `byte[]` blob and every attachment before and after the original call.
+      That produces a known plaintext -- the event name -- against the exact
+      16-byte block already captured on the wire, which is the pair needed to
+      identify key and mode.
+- [ ] Name the events the client sends, and answer them. This no longer waits
+      on the codec: the trace above reads the names in the open. They still
+      cannot be assumed -- `get_progress_slots`, `get_progress_hashes_v2`,
       `get_binded_ids`, `get_reg_ver` and `full_check_version` appear nowhere —
       not in the capture, not in `dump2313.cs`, not in the client repo's docs —
       and `CommandsWithFullSlots` is not an RPC at all: it is
