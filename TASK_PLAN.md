@@ -775,3 +775,98 @@ outside that count), locating the per-connection field near byte 108 of the
 payload, encrypting the reply with the same codec, answering `auth_v2` so the
 client leaves `WaitSocketAuthReponse (6)` and the `bar=0.750` stall clears, and
 serving a slot config that contains 23.1.3.
+
+## Session 2026-08-28, part 6
+
+### The codec is open
+
+The instance filter from `fa96a8a` did what it was built for. One launch printed
+four constructor triples and a single encrypt pair instead of six hundred lines
+of unrelated cipher traffic, and the socket codec published its own material at
+caller RVA `0x3ECF360`, inside `get_Extras`:
+
+    password  32 B  a6aa0aee01fc80f44dc4252079475465e2b07448974597a25a2473a342b3588b
+    key       32 B  d670c4e97d6aafcdc9940cfb1f411df8c08b8fc480e50b239fe852a1f6ddd6d2
+    iv        16 B  c72cc19a7fb79ef6e6d7a6f3944514bd
+
+### The chaining mode had to be measured, not read
+
+The client never writes `FeedbackSize`, so CFB-8, CFB-128 and CBC were all
+admissible and the code cannot say which one runs. With the key in hand the
+question is decided offline against the captured ciphertexts:
+
+| Mode | attachment 0 | attachment 1 |
+| --- | --- | --- |
+| `cfb8` | PKCS#7 error | PKCS#7 error |
+| `cfb128` | `auth_v2` | 603 bytes of JSON |
+| `cbc` | PKCS#7 error | PKCS#7 error |
+
+Full-block CFB opens both attachments, and re-encrypting the recovered
+plaintext reproduces both ciphertexts byte for byte. The padding arithmetic
+agrees: 7 to 16 bytes, 603 to 608. `sio.DefaultMode` is now `ModeCFB128` and
+`TestCapturedVectorPinsFullBlockCFB` keeps the whole vector in the repository,
+so the measurement cannot be lost with the log.
+
+### What auth_v2 actually says
+
+    {"uniq_id":"350713954", "hash":"afd8f926-...", "device":"918ad658...",
+     "token":"2690ea3d... (128 bytes)", "return":"151017...", "platform":"1",
+     "device_model":"Nothing A059P", "type_device":2, "abuse_method":1,
+     "block_param":1, "req_id":1, "sid":"0123456789abcdef01234567"}
+
+That also closes the older question about attachment 1 diverging near byte 108.
+The prediction was `SocketManager.<RequestCounter>` or a timestamp. It is
+neither: the differing field is `token`, 128 bytes starting at plaintext offset
+125, which lands inside AES block 7. The client generates it per connection.
+
+### The salt is static, so the password is what follows the sid
+
+All four constructors in the process go through one class, and that class reads
+its salt from a static FieldRVA blob. Key and IV are therefore functions of the
+password alone, which makes the password the sid-dependent value - not the salt,
+which the previous revision of this plan still allowed for. The two 40-byte
+passwords belong to the PlayerPrefs and config-cache ciphers and are unrelated
+to the socket.
+
+### The derivation is still hidden, and that is a real negative result
+
+547 candidate salts were tried: every 8-byte window, plus `md5`, `md5[:8]`,
+`md5[8:]`, `sha1`, `sha1[:8]`, `sha256`, `sha256[:8]` and the full digest of 19
+seeds drawn from the sid and from every `auth_v2` field. None reproduces the key
+or the IV from the known password. The password itself is not `sha256`, `md5`,
+`sha1`, `md5(a)||md5(b)` or `sha256(a||b)` of any of those seeds either. Only a
+second capture under a different sid can settle it.
+
+### Backend changes
+
+`75351d7` pins the captured vector as a test and records the measured mode.
+
+`0616db6` wires the codec into the live channel. `OPG3D_SIO_KEY`, `OPG3D_SIO_IV`
+and `OPG3D_SIO_MODE` carry a captured key, which is only meaningful together
+with `OPG3D_STABLE_SESSIONS`, because the same sid has to be issued again for
+the captured key to be the one the client uses. Key and IV must arrive together
+and are length-checked at load time: a half configured codec would look in the
+log exactly like a key that did not fit the session. On a completed binary event
+every attachment is decrypted next to the verbatim trace and logged as
+`socket.event_decoded`. A decryption failure is an expected outcome rather than
+a server error, so it is recorded as `socket.attachment_undecodable` and the
+session is never dropped over it.
+
+    OPG3D_STABLE_SESSIONS=true \
+    OPG3D_SIO_KEY=d670c4e9...d6d2 \
+    OPG3D_SIO_IV=c72cc19a...14bd \
+    ./bin/opg3d-backend
+
+### Next
+
+The paired capture: one launch with `OPG3D_STABLE_SESSIONS=true` and one
+without, so the sid differs. Diff the two `.ctor password bytes=32` values
+against the two sids - byte offsets first, then `passwordA ^ passwordB` against
+`sidA ^ sidB`. If that says nothing, disassemble the runtime write into array A
+(`0x6842000+0x528`) or array B (`0x680c000+0xee0`) with `tools/find_callers.py`.
+
+Then the reply. `auth_v2` has to be answered with the same codec, which still
+needs the inbound handler read out of `dump2313.cs` (`0x3ED8DC4`, `0x3ED8E58`)
+to learn the reply event name and its shape. Unchanged: what `prefixed=true`
+denotes, the new `state=40` stall (configure `OPG3D_APPID_KEY` with a Photon
+AppID, or add 40 to the skip list), and a slot config containing 23.1.3.
