@@ -870,3 +870,110 @@ needs the inbound handler read out of `dump2313.cs` (`0x3ED8DC4`, `0x3ED8E58`)
 to learn the reply event name and its shape. Unchanged: what `prefixed=true`
 denotes, the new `state=40` stall (configure `OPG3D_APPID_KEY` with a Photon
 AppID, or add 40 to the skip list), and a slot config containing 23.1.3.
+
+## 7. The salt, and where the sid actually enters
+
+### The paired capture
+
+Both launches arrived: one with `OPG3D_STABLE_SESSIONS=true` (sid pinned to
+`0123456789abcdef01234567`) and one plain (sid `b42e23b1aba53a14658a62ec`).
+Only the backend side was captured, though - `/tmp/opg3d-cipher.log` still held
+the earlier run - so there is no `.ctor password bytes=32` line for the random
+sid, and the password comparison the previous part asked for could not be run.
+
+What the capture did settle:
+
+- The pinned sid produced `74a1de5b1e2465e4529d219ac23400fe` for attachment 0
+  for the fifth time, across four separate boots. Identical output across boots
+  rules out any client-side nonce, clock or RNG: the password is a
+  deterministic function of the sid and of nothing else.
+- The random sid produced `0251d6070768aae5bf29dd32b7f8a974`. Attachment 0 is a
+  single AES block, so `pkcs7("auth_v2") XOR ciphertext` is `AES-ENC(Key, IV)`
+  for that unknown password. That is a known-plaintext oracle: a guess at the
+  derivation can now be tested with one AES call instead of another capture
+  from the device. It is pinned as `randomSidKeystream`.
+
+### The salt
+
+`get_Extras` passes the constructor a password and nothing else, so the salt
+had to be static data owned by the cipher class. With `Iterations == 1` the
+first PBKDF2 block is exactly `HMAC-SHA1(password, salt || uint32be(1))`, and
+`Key` is the leading 32 bytes of that stream, so a single HMAC decides an
+8-byte candidate. Sliding an 8-byte window over both shipped files and testing
+each window against one captured `(password, Key)` pair is therefore linear:
+
+    salt      4c82a11824641596
+    location  global-metadata.dat offset 0x00BF92B8
+    searched  113 595 785 windows in libil2cpp.so, 20 702 065 in the metadata
+    hits      exactly 1
+
+It is not a lucky fit on one sample. The same 8 bytes reproduce both `Key` and
+`IV` for all four cipher instances the traced process constructed, each from a
+different password - the socket codec, two PlayerPrefs codecs with 40-byte
+passwords, and the config-cache codec. A single false match has probability
+2^-160; four independent passwords agreeing settles it.
+
+The scheme documented in `codec.go` is now confirmed end to end except for one
+step: how the sid becomes the password.
+
+### What get_Extras actually does
+
+Disassembled in full (`0x3ECF1F4`-`0x3ECF3C8`). Stripped of the six
+`class_init` calls and the cached-field early return, the entire body is:
+
+    arrayB = staticFields[0] of class slot 0x680c000+0xee0
+    arrayA = staticFields[0] of class slot 0x6842000+0x528
+    new    = array_new(byte[], 32)
+    for i = 0 .. 31:
+        new[i] = arrayA[i] ^ arrayB[i]
+    this->_extras = codec.ctor(new, null)
+
+The loop counter starts at `0x20` and every element access is `[base, x10]`
+with `x12 = x10 - 0x20` used for the bounds checks. That is just the IL2CPP
+array data offset folded into the index; the real index runs 0 to 31.
+
+The important part is what is absent: there is no sid, no string, no hash and
+no argument anywhere in the function. It XORs whatever the two static arrays
+hold at the moment it runs. Since the password provably varies with the sid and
+is stable across boots for a fixed sid, one of those two static arrays must be
+overwritten with sid-derived bytes by other code, running after the handshake
+and before the first emit.
+
+### Ruled out
+
+- 55 encodings of the `passwordB = passwordA XOR (g(sidA) XOR g(sidB))` model:
+  ASCII, uppercase and hex-decoded sid at every offset, cyclic, reversed, and
+  MD5/SHA-1/SHA-256 of each, all checked against the oracle. No hits. So `g` is
+  not a plain substring or digest of the sid string.
+- Hunting the implied static bases as literal byte runs in `libil2cpp.so` and
+  `global-metadata.dat`. Present in neither file, which is consistent with the
+  array being built at runtime rather than shipped.
+
+### Landed
+
+`Salt`, `NewFromPassword` and `ScanSalt` in `internal/sio`, so the constant
+stays reproducible from the shipped file instead of being magic. Tests pin the
+salt against all four captured instances, the later pinned-sid boot (it opens
+with the pinned key and diverges from the first capture only from offset 157,
+so the first 32 token characters are per-device and the remaining 96 are
+per-connection), and the random-sid oracle.
+
+### Next
+
+Find the writer of the sid-dependent static array. Note that
+`tools/find_callers.py` cannot do this: it decodes `BL`/`B` immediates and so
+finds callers of a function, whereas what is needed is every `adrp`/`ldr` pair
+referencing the data slots `0x680c000+0xee0` and `0x6842000+0x528`. That is a
+different scan and has to be written.
+
+The cheap alternative is one more launch with the tracer armed and the sid left
+random, so that `23.1.3-sio[cipher] .ctor password bytes=32` is captured for a
+second sid. Two `(sid, password)` samples plus the oracle would very likely
+settle the derivation with no further disassembly.
+
+Then the reply. `auth_v2` still has to be answered with the same codec, which
+needs the inbound handler read out of `dump2313.cs` (`0x3ED8DC4`, `0x3ED8E58`)
+for the reply event name and its shape. For the pinned sid nothing blocks that
+any more: the key, the IV and now the salt are all known. Unchanged: what
+`prefixed=true` denotes, the `state=40` stall, and a slot config containing
+23.1.3.
