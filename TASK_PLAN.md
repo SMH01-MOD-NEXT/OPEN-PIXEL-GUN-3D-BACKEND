@@ -283,3 +283,112 @@ blocked on the codec as well, and needs no further static analysis first.
 - [ ] CI: `go vet`, `go test`, cross-compiled release binaries.
 - [ ] Decide whether live events need a WebSocket channel; add it only if a
       real use case appears.
+
+## Session 2026-08-28 - the 78% stall is an unanswered `auth_v2` on `/sio`
+
+Run facts (front sid 67858a36960f1e274f042b61):
+
+- The bar stops at `bar=0.750` (UI 78%) right after `AuthSceneController.Awake
+  RETURN`. `InitializeSwitcher` finishes (state 45, one step skipped by the
+  client stall guard), the main-menu scene load is requested, and the client
+  then waits in `AuthorizationStates.WaitSocketAuthReponse (6)`.
+- The client emits a socket.io binary event on `/sio`
+  (`452-/sio,[{_placeholder,num:0},{_placeholder,num:1}]`): args[0] is a sealed
+  16-byte blob, args[1] a sealed 608-byte blob. The backend buffers both
+  attachments and never answers. Only engine.io ping/pong follows. The
+  `connection reset by peer` is the user backgrounding the game, not a bug.
+
+### Outbound payload codec - fully recovered from A64 (read-only analysis)
+
+- Codec class `Rilisoft.丏东丑丄东丈丟且东` (TypeDefIndex 8304):
+  `.ctor(byte[] password)` 0x3B680F4, decrypt `丂东且丅丏丑三专丛` 0x3B6835C,
+  encrypt `业不丐丅丒丝丙专万` 0x3B6883C.
+- Derivation exactly as compiled:
+  - `salt = new byte[8]`, filled by `RuntimeHelpers.InitializeArray` from a
+    metadata field default value (usage slot 0x6756008 -> FieldInfo, fieldRef 115).
+  - `Rfc2898DeriveBytes(password, salt, iterations = 1).GetBytes(48)`.
+  - `key = derived[0..32]` (`Array.Copy` 0,0,32), `iv = derived[32..48]`.
+  - `Rijndael.Create()`, `KeySize = 256`, `BlockSize = 128`,
+    `Mode = 4 (CipherMode.CFB)`, `Padding = 2 (PaddingMode.PKCS7)` - read from
+    the SymmetricAlgorithm vtable slot order (BlockSize 0x1a8, IV 0x1e8,
+    Key 0x208, KeySize 0x248, Mode 0x268, Padding 0x288). Mono's Rijndael keeps
+    `FeedbackSize = 128`, so this is full-block CFB. The earlier "CBC" note in
+    this plan was an assumption and is wrong.
+- The password is not a literal: `BestHTTP.SocketIO.SocketManager.get_Extras`
+  (0x3ECF1F4) builds 32 bytes by XOR-ing the first static `byte[]` field of two
+  classes (`class + 0xb8`, then `[0]`), news the codec and caches it in the
+  SocketManager field at +0xa0.
+- Ctor call sites: 0x0249FDF8 (`PGCompany.东下丘上丗丞丅丆丌`), 0x03B692AC
+  (`Rilisoft.丑丙丛专丘下不丙上..ctor`), 0x03ECF35C (`get_Extras`).
+
+### Inbound direction needs no codec - the actionable finding
+
+`WebSocketManager.丂丁与丛丕丑丅丁业(Socket, Packet, object[])` 0x35C396C:
+
+- `if (packet.AttachmentCount >= 1) Packet.ReconstructAttachmentAsIndex(packet, 0)`,
+  then `args = Packet.Decode(encoder)`. BestHTTP takes the event name from JSON
+  element 0 as a plain string (`Packet.EventName`, field +0x38).
+- Gate: `authController.<bool>() || EventNames.IsAllowed(packet.EventName)`;
+  otherwise it logs "Incoming event is skipped because client is not authorized"
+  (string literals 3586 / 3587 / 11658).
+- Handling: `args[0] as Dictionary<string, object>` -> `三丟丄下丂丏丅丏不`
+  (0x35C3E54) -> `Dictionary<object, object>`, then
+  `丌丗七与丘丄丌丞万(header, payload, List<byte[]>)` 0x35C4028 and
+  `丞丛业上丗专丏丄三(...)` 0x35C4170 with `packet.Attachments` (+0x40).
+
+Server -> client is therefore plain socket.io JSON: `42/sio,["<event>", { ... }]`
+plus optional binary attachments. The backend does not need the outbound codec
+to answer; it needs the right event name and the right JSON body.
+
+### Correlation
+
+`丝七丛丅丅一丒不专(event, Dictionary<object,object>, timeout, callback, byte[])`
+returns `ValueTuple<int, Task<丙下七丄业丁丆丅丐>>` and `WebSocketManager` keeps
+`Dictionary<int, TaskCompletionSource<...>>`, so every request carries an integer
+id that the reply must echo. That id sits inside sealed attachment 1, so a
+correct reply still requires decoding attachment 1.
+
+### Tooling (host side, /tmp, outside both repos)
+
+- `/tmp/md2.py` reads IL2CPP metadata v29 (`sanity fab11baf`, `version 29`):
+  `slots` resolves a code metadata-usage slot (slot -> pointer -> encoded index,
+  `kind = enc >> 29`, `index = enc & 0x1FFFFFFF`; 1 TypeInfo, 2 Il2CppType,
+  3 MethodDef, 4 FieldInfo, 5 StringLiteral, 6 MethodRef), `grep` searches all
+  43998 string literals, `auto` walks a disassembled range.
+- Verified header offsets: stringLiteral 256/351984, stringLiteralData
+  352240/1475060, fieldDefaultValues 12149532/283020,
+  fieldAndParameterDefaultValueData 12432552/251240, fields 14523620/1362288,
+  typeDefinitions 17115492 (23762 types x 88 bytes), fieldRefs 19216012/7472.
+- `analys2313/` has no `script.json`, so usages and literals must be resolved
+  this way.
+
+### Closed hypotheses (do not repeat)
+
+- [x] attachment 0 is not `auth_v2` under any key derived from sid, device_id,
+      player_id or 18 static string seeds - 85824 combinations (AES ECB/CBC/CFB/
+      OFB/CTR over 11 IV candidates, RC4, repeating-key XOR), zero hits.
+- [x] the hooked pair `丌丗七与丘丄丌丞万` / `丞丛业上丗专丏丄三` is not the crypto - they
+      are the inbound dispatchers, so the frontend `sio_codec_trace_2313.h`
+      traces the wrong methods.
+- [x] attachment 0 is not a digest or MAC of attachment 1.
+- [x] the codec is not CBC and the password is not a string literal.
+
+### Next steps
+
+- [ ] Resolve the three blobs with `/tmp/md2.py`: the 8-byte salt (fieldRef 115)
+      and the two 32-byte static arrays XOR-ed in `get_Extras`; brute-forcing all
+      8-byte and 32-byte `fieldDefaultValues` blobs is a cheap fallback because
+      PBKDF2 runs a single iteration.
+- [ ] Verify offline against the four captured attachment-0 blobs; expect
+      `auth_v2` + 9 x 0x09 under AES-256-CFB-128/PKCS7.
+- [ ] Open contradiction to settle: with a static password the 16-byte blob
+      would repeat across sessions and it does not (9135b38a..., 04b165b4...,
+      629093f2..., bca2fc32...), so one XOR half is written at runtime - find its
+      writer.
+- [ ] Then decode attachment 1, read the request id and fields, and answer on
+      `/sio` with a plain JSON event next to `encodeBinaryEvent` in
+      `internal/api/socketio_binary.go`.
+- [ ] Frontend, proposal only and needs an explicit go-ahead: retrace
+      `Rilisoft.丏东丑丄东丈丟且东..ctor` 0x3B680F4 (dump the password), 0x3B6883C and
+      0x3B6835C (plaintext/ciphertext pairs), `SocketManager.get_Extras`
+      0x3ECF1F4 (the two XOR halves).
