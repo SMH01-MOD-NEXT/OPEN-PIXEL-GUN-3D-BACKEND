@@ -158,6 +158,12 @@ type sioSession struct {
 	upgraded     bool
 	packets      uint64
 	clientPinged bool
+
+	// pending is the binary event whose text header has arrived and whose
+	// attachments are still being collected. A socket.io binary event is split
+	// across one text packet and one frame per attachment, so the halves have
+	// to be held together here; see socketio_binary.go.
+	pending *sioBinaryAssembly
 }
 
 func (s *sioSession) touch() {
@@ -601,19 +607,24 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 				fields["close_code"] = code
 				fields["close_reason"] = reason
 			}
+			// A half-delivered binary event is a diagnosis in itself: the client
+			// announced something and left before sending all of it.
+			if abandoned := session.takeAssembly(); abandoned != nil {
+				fields["pending_expected"] = abandoned.expected
+				fields["pending_received"] = len(abandoned.attachments)
+			}
 			s.log.Event("socket.ws_closed", fields)
 			return
 		}
 		session.touch()
 
 		if opcode == wsOpBinary {
-			// Binary attachments carry the MessagePack documents this channel
-			// exists for, in both directions.
-			s.log.Event("socket.binary", map[string]any{
-				"sid":   session.sid,
-				"bytes": len(payload),
-				"body":  s.log.Body(payload),
-			})
+			// Binary attachments carry the documents this channel exists for, in
+			// both directions. Each one belongs to the binary event that declared
+			// it, so it is buffered and bound to that event rather than logged
+			// and dropped, which is what left every capture reporting
+			// event=<unparsed>.
+			s.acceptAttachment(session, payload, "websocket")
 			continue
 		}
 		s.handleEnginePacketWS(session, conn, string(payload))
@@ -689,6 +700,24 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 	if packet == "" {
 		return
 	}
+	// The XHR transport has no binary frame, so engine.io base64-encodes an
+	// attachment and marks it with a leading "b". It belongs to the pending
+	// binary event exactly as a WebSocket frame would, and "b" is not an
+	// engine.io packet type, so it has to be taken before the switch below.
+	if packet[0] == 'b' {
+		data, err := decodePollingAttachment(packet)
+		if err != nil {
+			s.log.Event("socket.attachment_bad", map[string]any{
+				"sid":       session.sid,
+				"transport": transport,
+				"err":       err.Error(),
+				"payload":   s.log.Body([]byte(packet)),
+			})
+			return
+		}
+		s.acceptAttachment(session, data, transport)
+		return
+	}
 	body := packet[1:]
 	switch packet[0] {
 	case eioPing:
@@ -745,22 +774,26 @@ func (s *Server) handleSocketMessage(session *sioSession, body, transport string
 		session.send(sioFrame{text: connectReply(session, namespace)})
 	case sioDisconnect:
 		s.log.Event("socket.disconnect", map[string]any{"sid": session.sid, "namespace": rest})
-	case sioEvent, sioBinaryEvent:
-		// This is the interesting one: the client names the config documents it
-		// wants here. The payload is recorded verbatim so the push side can be
-		// written against it.
+	case sioEvent:
+		// The client names the config documents it wants here. The payload is
+		// recorded verbatim so the push side can be written against it.
 		name, ackID, namespace := describeSocketEvent(rest)
 		s.log.Event("socket.event", map[string]any{
 			"sid":       session.sid,
 			"transport": transport,
-			"binary":    kind == sioBinaryEvent,
+			"binary":    false,
 			"namespace": namespace,
 			"ack":       ackID,
 			"event":     name,
 			"payload":   s.log.Body([]byte(rest)),
 			"note":      "no answer is pushed yet; the config payload is the next step",
 		})
-	case sioAck, sioBinaryAck:
+	case sioBinaryEvent, sioBinaryAck:
+		// Only the header has arrived. The arguments - and in this client the
+		// event name itself - are in the binary frames that follow, so the
+		// packet is held until they do instead of being reported unparsed.
+		s.beginBinaryEvent(session, kind, rest, transport)
+	case sioAck:
 		s.log.Event("socket.ack", map[string]any{"sid": session.sid, "payload": s.log.Body([]byte(rest))})
 	case sioError:
 		s.log.Event("socket.client_error", map[string]any{"sid": session.sid, "payload": s.log.Body([]byte(rest))})
@@ -820,21 +853,22 @@ func isAllDigits(text string) bool {
 func (s *Server) writePolling(w http.ResponseWriter, version eioVersion, frames []sioFrame) {
 	var builder strings.Builder
 	for _, frame := range frames {
+		text := frame.text
 		if frame.binary {
-			// Binary over XHR polling needs base64 framing, which this client
-			// only uses before the upgrade. Nothing binary is pushed yet, so
-			// reaching this point would be a bug worth seeing.
-			s.log.Event("socket.binary_polling_skipped", map[string]any{"bytes": len(frame.data)})
-			continue
+			// The XHR transport has no binary frame: engine.io base64-encodes the
+			// attachment and marks it with a leading "b". The previous revision
+			// dropped these, which would have silently truncated any pushed
+			// document on a client that had not upgraded yet.
+			text = encodePollingAttachment(frame.data)
 		}
 		if version >= eioV4 {
 			if builder.Len() > 0 {
 				builder.WriteByte(eioSeparator)
 			}
-			builder.WriteString(frame.text)
+			builder.WriteString(text)
 			continue
 		}
-		builder.WriteString(fmt.Sprintf("%d:%s", utf8.RuneCountInString(frame.text), frame.text))
+		builder.WriteString(fmt.Sprintf("%d:%s", utf8.RuneCountInString(text), text))
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
