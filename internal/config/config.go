@@ -39,14 +39,18 @@ type Config struct {
 	Maintenance   bool
 
 	// StableSessions derives each account's session token from its device id
-	// instead of minting random bytes.
+	// instead of minting random bytes, and pins the socket.io session id to a
+	// fixed value.
 	//
 	// SECURITY-SENSITIVE DIAGNOSTIC, off by default. A deterministic session
-	// token is a guessable credential, so this belongs on a lab machine only.
-	// It exists to answer one question about the /sio payload codec: the
-	// client's encryption is deterministic, yet the same auth_v2 event is
-	// different in every run, so some key input varies per session. Holding
-	// the session token still tells us whether that input is the token.
+	// token and a predictable socket id are both guessable credentials, so this
+	// belongs on a lab machine only. It exists to answer one question about the
+	// /sio payload codec: the client's encryption is deterministic, yet the same
+	// auth_v2 event is different in every run, so some key input varies per
+	// session. The first attempt pinned only the token and left the socket id
+	// random, which could not separate the two candidates. Pinning both freezes
+	// every per-session value this server originates, so a ciphertext that still
+	// changes proves the varying input is client-local.
 	StableSessions bool
 
 	// PhotonAppIDs is keyed by mode: "pun", "realtime", "chat", "voice".

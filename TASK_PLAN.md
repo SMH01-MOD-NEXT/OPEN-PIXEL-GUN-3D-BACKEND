@@ -453,3 +453,90 @@ server issues and the server can derive it. If it keeps changing, the varying
 input is client-side and the remaining static route is to disassemble the
 assignment site of the runtime-filled half (static field behind TypeInfo slot
 `0x6842528`) rather than to search for it.
+
+## Session 2026-08-28, part 3: the token is cleared, the socket id was not held
+
+### The run
+
+`OPG3D_STABLE_SESSIONS=true`, two launches of the same device against one
+backend process, force-stopped in between. Everything ahead of `/sio` is
+identical in both: `player_id=165330406`, `nick=Player0406`, `created=false`,
+and the same three legacy content files.
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| session token | `a6b26db4..a842bf18` | identical |
+| socket.io sid | `c16ba8e1a6f4befa13247399` | `f0212cf3d2b03d7e4a72e98d` |
+| attachment 0 | `eb42a6d9b1eb4bc29c79ee154af6b656` | `0d4fb8c24e4dbd0ffdffcb24d37707bf` |
+| attachment 1 | 608 bytes | 608 bytes, unrelated |
+
+Attachment 0 is `Encrypt(UTF8("auth_v2"))`: a fixed 16-byte plaintext through a
+deterministic codec. It changed in all 16 bytes while the session token was held
+still, so the codec key is **not** a function of the session token. The
+hypothesis is now closed by observation as well as by the earlier sweep.
+
+### Why the run was not decisive
+
+`OPG3D_STABLE_SESSIONS` only reached `store.Store`, which mints session tokens.
+The socket.io id was still `secrets.RandomToken(12)` inside `sioHub.create`, so
+it rotated between the two launches. Two candidate inputs moved together, and a
+ciphertext that differs eliminates neither one alone. The earlier reading, that
+the key has to be lifted out of the client, was premature: it holds for the
+token only, not for the socket id.
+
+### get_Extras disassembled: no session input on the password path
+
+`SocketManager` has no `set_Extras`. The field at `0xA0` is built lazily inside
+the getter at RVA `0x3ECF1F4` and then cached, so the codec is constructed once
+per manager, at the first emit.
+
+```
+3ecf260: ldr  x0, [x19, #0xa0]!  ; x0 = this->_extras
+3ecf264: cbnz x0, 0x3ecf3a8      ; already built -> return the cache
+3ecf2ac: mov  w1, #0x20
+3ecf2b0: bl   0x1291f20          ; array_new(byte[], 32) -> password
+3ecf318: ldrb w11, [x11, x10]    ; B[i]
+3ecf31c: ldrb w12, [x13, x10]    ; A[i]
+3ecf328: eor  w11, w12, w11      ; A[i] ^ B[i]
+3ecf330: strb w11, [x20, x10]    ; password[i] = ...
+3ecf338: b.lt 0x3ecf2d4          ; 32 iterations
+3ecf348: bl   0x1291fc8          ; object_new(codec)
+3ecf35c: bl   0x3b680f4          ; codec .ctor(password)
+3ecf368: str  x21, [x19]         ; this->_extras = codec
+```
+
+The two source arrays are the first static field of the classes whose TypeInfo
+slots are `0x680c000+0xee0` (B) and `0x6842000+0x528` (A); both are class-init'd
+in the prologue. Nothing else feeds the password: no sid, no token, no handshake
+field, no RNG call. Since the ciphertext still moves, at least one of those two
+arrays has its **contents mutated at runtime**, somewhere outside this getter
+and before the first emit. That is also why the FieldRVA sweep could never hit:
+it only ever tried build-time defaults.
+
+### Landed
+
+- `internal/api`: `OPG3D_STABLE_SESSIONS` now pins the socket.io session id to
+  `fixedSid` as well as deriving the session token, so a single run freezes
+  every per-session value this server originates. Off by default, still warned
+  about at boot, still lab-only. Covered by `internal/api/stable_sid_test.go`
+  in both directions (pinned repeats and reuses the live entry; default stays
+  random, unique, and never equal to the pinned value).
+
+### Next
+
+Re-run the same two-launch capture with the rebuilt binary. Both the token and
+the socket id are now held still, so the result is decisive either way:
+
+- attachment 0 **repeats** -> the key is a function of the socket id, the server
+  can compute it, and `auth_v2` is readable without touching the client.
+- attachment 0 **still differs** -> no value this server sends determines the
+  key. The input is client-local (per-process randomness or state), the key has
+  to be lifted from a live client once and pinned into backend config, and the
+  static route is to disassemble the write into array A or B rather than to
+  search for its value.
+
+While that capture is being taken, the independent items are unchanged: confirm
+what the new `prefixed=true` flag on `socket.attachment` denotes (attachment 0
+is still exactly 16 bytes, so any prefix sits outside that count), and keep the
+response path ready to encrypt with the same codec, since the client's inbound
+`get_Extras` -> decrypt pair will reject plain JSON.

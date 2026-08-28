@@ -244,16 +244,37 @@ func (s *sioSession) send(frame sioFrame) bool {
 type sioHub struct {
 	mu       sync.Mutex
 	sessions map[string]*sioSession
+
+	// stableSid replaces the random session id with one fixed value.
+	//
+	// SECURITY-SENSITIVE DIAGNOSTIC, off by default. The /sio payload codec
+	// encrypts deterministically, so the same auth_v2 event should yield the
+	// same ciphertext on every run, yet it does not. An earlier run pinned only
+	// the account session token and left this id random, so it could not tell
+	// "the key follows the session token" apart from "the key follows the socket
+	// id": both candidates still moved. Pinning both freezes every per-session
+	// value this server originates at once, which makes the observation decisive
+	// in either direction.
+	stableSid bool
 }
 
-func newSioHub() *sioHub {
-	return &sioHub{sessions: make(map[string]*sioSession)}
+// fixedSid is the session id issued while sioHub.stableSid is set. It has the
+// same shape as secrets.RandomToken(12) output so the client cannot tell it
+// apart from a real id, while staying obviously synthetic when read in a log.
+const fixedSid = "0123456789abcdef01234567"
+
+func newSioHub(stableSid bool) *sioHub {
+	return &sioHub{sessions: make(map[string]*sioSession), stableSid: stableSid}
 }
 
 func (h *sioHub) create(version eioVersion) (*sioSession, error) {
-	sid, err := secrets.RandomToken(12)
-	if err != nil {
-		return nil, err
+	sid := fixedSid
+	if !h.stableSid {
+		token, err := secrets.RandomToken(12)
+		if err != nil {
+			return nil, err
+		}
+		sid = token
 	}
 	now := time.Now()
 	session := &sioSession{
@@ -266,6 +287,9 @@ func (h *sioHub) create(version eioVersion) (*sioSession, error) {
 		transport: "polling",
 	}
 	h.mu.Lock()
+	// A pinned id repeats across runs, so the previous run's dead session is
+	// still filed under it. Replace the entry instead of leaking it; that
+	// websocket is already closed and reap would only collect it much later.
 	h.sessions[sid] = session
 	h.mu.Unlock()
 	return session, nil
