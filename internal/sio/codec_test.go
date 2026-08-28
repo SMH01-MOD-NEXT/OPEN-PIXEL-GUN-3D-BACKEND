@@ -508,3 +508,87 @@ func TestRandomSidGivesAKnownPlaintextOracle(t *testing.T) {
 		t.Fatal("the pinned and random sids produced the same keystream")
 	}
 }
+
+// Captured from a live 23.1.3 handshake on 2026-08-28 with the server drawing a
+// random socket.io sid (OPG3D_STABLE_SESSIONS off). This time the client's
+// cipher constructor was traced, so the password, key and IV are the real
+// values the client used for a sid we did not choose.
+const (
+	randomSidTraced            = "7ba611c7d478bc451f8f865c"
+	randomSidTracedPassword    = "a1a002eb04f88af448c928237e465e6fe3be7e449b4694a95a2473a342b3588b"
+	randomSidTracedKey         = "892fec93a0cc91983bd6f1d22d32353071d35f3b7b305ea90411beb688d1bbac"
+	randomSidTracedIV          = "3045e6cb22299d31ea351b6c46dfcf3b"
+	randomSidTracedEventCipher = "288a4775cbfc3b2bf36b4f2c596ddd17"
+)
+
+// sidPasswordVectors pairs every traced sid with the password the client built
+// for it. Two sids on different values are enough to pin the rule: the static
+// base recovered from one has to reproduce the other with nothing left over.
+var sidPasswordVectors = []struct {
+	name     string
+	sid      string
+	password string
+	key      string
+	iv       string
+	event    string
+}{
+	{"pinned", "0123456789abcdef01234567", capturedPassword, capturedKey, capturedIV, capturedEventCiphertext},
+	{"random", randomSidTraced, randomSidTracedPassword, randomSidTracedKey, randomSidTracedIV, randomSidTracedEventCipher},
+}
+
+// TestPasswordForSidMatchesCapturedInstances is the proof that the
+// sid-to-password rule is right: for both traced sids PasswordForSid reproduces
+// the exact password the client's own constructor logged.
+func TestPasswordForSidMatchesCapturedInstances(t *testing.T) {
+	for _, v := range sidPasswordVectors {
+		got, err := PasswordForSid(v.sid)
+		if err != nil {
+			t.Fatalf("%s: PasswordForSid(%q): %v", v.name, v.sid, err)
+		}
+		if hex.EncodeToString(got) != v.password {
+			t.Fatalf("%s: PasswordForSid(%q)\n got %s\nwant %s", v.name, v.sid, hex.EncodeToString(got), v.password)
+		}
+	}
+}
+
+// TestNewForSidReproducesCapturedKeyIVAndAttachment carries the derivation all
+// the way to the wire: sid -> password -> key/IV -> the auth_v2 event-name
+// attachment the server received, for both traced sids.
+func TestNewForSidReproducesCapturedKeyIVAndAttachment(t *testing.T) {
+	for _, v := range sidPasswordVectors {
+		key, iv := DeriveKeyIV(mustDecodeHex(t, v.password), Salt())
+		if got := hex.EncodeToString(key); got != v.key {
+			t.Errorf("%s: key\n got %s\nwant %s", v.name, got, v.key)
+		}
+		if got := hex.EncodeToString(iv); got != v.iv {
+			t.Errorf("%s: iv\n got %s\nwant %s", v.name, got, v.iv)
+		}
+
+		codec, err := NewForSid(v.sid, DefaultMode)
+		if err != nil {
+			t.Fatalf("%s: NewForSid(%q): %v", v.name, v.sid, err)
+		}
+		if got := hex.EncodeToString(codec.Encrypt([]byte(capturedEvent))); got != v.event {
+			t.Fatalf("%s: Encrypt(%q) = %s, want %s", v.name, capturedEvent, got, v.event)
+		}
+		name, err := codec.Decrypt(mustDecodeHex(t, v.event))
+		if err != nil {
+			t.Fatalf("%s: Decrypt(event): %v", v.name, err)
+		}
+		if string(name) != capturedEvent {
+			t.Fatalf("%s: decrypted event = %q, want %q", v.name, name, capturedEvent)
+		}
+	}
+}
+
+// TestPasswordForSidRejectsBadSessionIDs guards the input contract: the sid is
+// always hex on this channel, so a non-hex byte or an over-long id is a
+// programming error worth failing rather than masking.
+func TestPasswordForSidRejectsBadSessionIDs(t *testing.T) {
+	if _, err := PasswordForSid("0123456789abcdef0123456z"); err == nil {
+		t.Fatal("PasswordForSid accepted a non-hex session id")
+	}
+	if _, err := PasswordForSid("0123456789abcdef0123456789abcdef0"); err == nil {
+		t.Fatal("PasswordForSid accepted a session id longer than the password")
+	}
+}

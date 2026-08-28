@@ -52,10 +52,20 @@
 //	password  per connection. It is the only remaining input, so the password
 //	          is what carries the socket.io session id into the key schedule.
 //
-// How the session id reaches the password is still open. 547 candidate salts
-// built from the sid and from every field of the auth_v2 payload reproduce
-// neither the key nor the IV from the captured password, and the password is
-// not a plain digest of any of those fields either.
+// How the session id reaches the password is now recovered. A[i] is the array
+// get_Extras overwrites at run time and B[i] is a static base (passwordBase
+// below); the client fills A with a per-connection mask taken from the
+// socket.io session id, one byte per sid character:
+//
+//	A[i]        = 0x30 + nibble(sid[i])   for i < len(sid)   (the sid is 24 hex chars)
+//	A[i]        = 0                        for the remaining bytes
+//	password[i] = passwordBase[i] ^ A[i]
+//
+// so the password is passwordBase with its first 24 bytes XORed against the sid
+// mask and its last 8 left untouched. Two traced launches on different sids fix
+// it beyond doubt: deriving passwordBase from one sid reproduces the other
+// sid's password byte for byte, and both then reproduce their captured key, IV
+// and auth_v2 attachment. See PasswordForSid and NewForSid.
 package sio
 
 import (
@@ -389,6 +399,71 @@ func Salt() []byte {
 // This mirrors the client, which only ever supplies a password.
 func NewFromPassword(password []byte, mode Mode) (*Codec, error) {
 	return New(password, Salt(), mode)
+}
+
+// passwordBase is the static half of the /sio password: the array get_Extras
+// XORs against the per-connection sid mask (see the package comment). It is B
+// in the A ^ B decomposition.
+//
+// SECURITY-SENSITIVE, and recovered rather than guessed. It was read off two
+// traced launches whose socket.io session ids differed: deriving these bytes
+// from the pinned-sid password and re-applying them to the random-sid password
+// reproduces it exactly, and every derived key, IV and auth_v2 attachment then
+// matches the capture. See PasswordForSid and the sid vectors in the tests.
+var passwordBase = [PasswordLen]byte{
+	0x96, 0x9b, 0x38, 0xdd, 0x35, 0xc9, 0xb6, 0xc3,
+	0x75, 0xfd, 0x1f, 0x1b, 0x45, 0x7a, 0x6a, 0x5a,
+	0xd2, 0x81, 0x46, 0x7b, 0xa3, 0x70, 0xa1, 0x95,
+	0x5a, 0x24, 0x73, 0xa3, 0x42, 0xb3, 0x58, 0x8b,
+}
+
+// sidMaskByte maps one hex character of the session id to the byte the client
+// writes into the mask array: the character's nibble value biased by 0x30. For
+// a digit that is the character itself; for a-f it lands at 0x3a..0x3f, the
+// off-by-bias the client's own conversion produces and the reason the mask is
+// not simply the sid's ASCII.
+func sidMaskByte(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return 0x30 + (c - '0'), true
+	case c >= 'a' && c <= 'f':
+		return 0x30 + (c - 'a') + 0x0a, true
+	case c >= 'A' && c <= 'F':
+		return 0x30 + (c - 'A') + 0x0a, true
+	}
+	return 0, false
+}
+
+// PasswordForSid computes the /sio codec password for a socket.io session id.
+//
+// The password is passwordBase with a per-connection mask XORed over its
+// leading bytes, one mask byte per sid character. This is what lets the server
+// reproduce the key the client derives for a session instead of only fitting a
+// single captured sid.
+func PasswordForSid(sid string) ([]byte, error) {
+	if len(sid) > PasswordLen {
+		return nil, fmt.Errorf("sio: session id is %d bytes, longer than the %d-byte password", len(sid), PasswordLen)
+	}
+	out := make([]byte, PasswordLen)
+	copy(out, passwordBase[:])
+	for i := 0; i < len(sid); i++ {
+		mask, ok := sidMaskByte(sid[i])
+		if !ok {
+			return nil, fmt.Errorf("sio: session id byte %d = %q is not a hex character", i, sid[i])
+		}
+		out[i] ^= mask
+	}
+	return out, nil
+}
+
+// NewForSid derives the codec for a session straight from its sid, using the
+// recovered salt and the client's real chaining mode.
+func NewForSid(sid string, mode Mode) (*Codec, error) {
+	password, err := PasswordForSid(sid)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromPassword(password, mode)
 }
 
 // ScanSalt returns every offset in blob whose SaltLen-byte window derives
