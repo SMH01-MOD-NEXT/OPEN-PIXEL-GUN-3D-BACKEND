@@ -150,6 +150,23 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       Rijndael container (32-byte key, 16-byte block, 20-byte MAC,
       `RNGCryptoServiceProvider`, `dump2313.cs:452433`) seal the *local disk
       cache*; that framing cannot fit inside a 16-byte attachment.
+
+      Extraction is blocked on material this machine does not currently hold,
+      and the constants will not be guessed. There is no APK and no `META-INF`
+      anywhere under `Studio canaryProjects` (only `husi/release.keystore`,
+      which belongs to an unrelated project), the client project's
+      `build.gradle` declares no `signingConfigs`, `adb devices` lists nothing
+      attached, and `analys2313/` holds only `dump2313.cs`,
+      `global-metadata.dat` and `libil2cpp.so` - there is no Il2CppDumper
+      string-literal dump, so the literal handed to `Convert.FromBase64String`
+      cannot be named from the dump alone. A metadata sweep for base64-shaped
+      constants returned only a 2048-bit RSA modulus with exponent `AQAB`,
+      sitting among Mono's `<RSAKeyValue>` XML literals: a public verification
+      key, not a symmetric one. Unblocking needs exactly one of three things -
+      the installed APK, so its certificate can be hashed offline; a connected
+      device, so `adb shell pm path` plus `adb pull` can fetch that APK; or a
+      logging-only trace in the client that prints the derived key material,
+      which is the single client-side change the task brief permits.
 - [ ] Only then: name the events the client sends, and answer them. The names
       cannot be assumed. `get_progress_slots`, `get_progress_hashes_v2`,
       `get_binded_ids`, `get_reg_ver` and `full_check_version` appear nowhere —
