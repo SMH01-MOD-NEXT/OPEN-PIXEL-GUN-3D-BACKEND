@@ -349,3 +349,162 @@ func TestCapturedVectorPinsFullBlockCFB(t *testing.T) {
 		}
 	}
 }
+
+// capturedInstances is every cipher instance the traced process constructed.
+// One class, one static salt, four different passwords - which is exactly what
+// makes the recovered salt trustworthy rather than a lucky fit.
+var capturedInstances = []struct {
+	name     string
+	password string
+	key      string
+	iv       string
+}{
+	{"socket 0x3ecf360", capturedPassword, capturedKey, capturedIV},
+	{
+		"prefs 0x3b692b0 first",
+		"555e08036168acb98ea3587abf8955b439e2f2e1015263f1ac363c681d89256d1c7883845d1ea19b",
+		"b8e2e7f9713a002cafecabfe8fd4b12c48aeba7ad3a7f4512d452d2fac325535",
+		"c4ede5f77994cf582ac0de714e447306",
+	},
+	{
+		"prefs 0x3b692b0 second",
+		"34b33f7de4bb2a11514d33fcf4510ebfc3475d60015263f1ac363c681d89256d1c7883845d1ea19b",
+		"f9c4745c57ec8960b1b434cebc8355d4f2691958b563ac02bda95eebac8171aa",
+		"d1d1491af6b7452bd3c722e3ec20a15e",
+	},
+	{
+		"cfgcache 0x249fdfc",
+		"509dc63504d50b79b261d4d3be1a47be9c21b05cad741464aac2c4b3b61e79e5",
+		"8e1f4dc8a6f08ed381c96164d135250be5a3db1333e3dd9b79f5fe7828e9249a",
+		"cb229ec92fe1a4f441a22176da471009",
+	},
+}
+
+// TestRecoveredSaltDerivesEveryCapturedInstance is the evidence for the salt.
+// Four unrelated passwords, one salt, and both Key and IV land exactly.
+func TestRecoveredSaltDerivesEveryCapturedInstance(t *testing.T) {
+	for _, inst := range capturedInstances {
+		key, iv := DeriveKeyIV(mustDecodeHex(t, inst.password), Salt())
+		if got := hex.EncodeToString(key); got != inst.key {
+			t.Errorf("%s: key\n got %s\nwant %s", inst.name, got, inst.key)
+		}
+		if got := hex.EncodeToString(iv); got != inst.iv {
+			t.Errorf("%s: iv\n got %s\nwant %s", inst.name, got, inst.iv)
+		}
+	}
+}
+
+func TestScanSaltRecoversTheSaltFromABlob(t *testing.T) {
+	const at = 1237
+	blob := make([]byte, 8192)
+	for i := range blob {
+		blob[i] = byte(i * 7)
+	}
+	copy(blob[at:], Salt())
+
+	hits := ScanSalt(blob, mustDecodeHex(t, capturedPassword), mustDecodeHex(t, capturedKey))
+	if len(hits) != 1 || hits[0] != at {
+		t.Fatalf("ScanSalt found %v, want exactly [%d]", hits, at)
+	}
+
+	// A password the salt does not belong to must not match anywhere.
+	if stray := ScanSalt(blob, []byte("not the password"), mustDecodeHex(t, capturedKey)); len(stray) != 0 {
+		t.Fatalf("ScanSalt matched the wrong password at %v", stray)
+	}
+}
+
+// pinnedRerunArgsCiphertext is attachment 1 from a later boot that reused the
+// pinned sid. Same sid, same password, so the pinned Key and IV must still open
+// it - which is what turns "the sid decides the password" into a measurement.
+const pinnedRerunArgsCiphertext = "6ef6df5d282308843fb612b1f80839c046751ab76e16e82f596b37130e4d088ab2ab5c4bd8ce71fa513f326c9e41df864e8c0cb7d9037529821cd18157cd36d12e009a26ec0e3a4ccbbe1892ed63ffe0c303d80fb4f455b95b1ab58075c09cb7887e01958b28908919517c04f244ed63cbfb299e7f9edf52a36bbdf8b4c3be37c59a1aaae878fc2834c4a394e1b54cd80a0c1adb8dcf69c83100156ec79aecb024d1311a90764f36960f23934dad944099e705f1dc7cbe27f9b2d92bc7401f8865e41915b735701bc9590508c1777c8f0845820b69d9606beef92ac6d5d6bc5994767a400694d9893cd7ec1e475cd961146755d99e17b7ea15928cc46c6829d913b0f06467f9ba1172da0f624afc72df41b5c115ef0d93622312d3375cffc5585663b54d9903fb09fa8906c6cad029b9808b4fd75d562bfa94b72935d4a7223e87f02a65e9d1b81e09d323c0515a7b70b79c9694b424464e25c7e8ea44c187a48ccbd5dd19e6920969d5c97419c90654aa5898803c7fcdee60019f4e936ee78330bcfee4e50528dae9e99cc2f73b3d98011b85b5c1e6883242b3b34ba5d4f8cd15a5e9c53d971503402e9563aef21f79118bfe379bc417747ae64fa51547f9dfcd70cd2604a35f05f1978227c816bd627c6306c869372e0d9c664b737435572ad5f4d79213f1c495b35af0384e2ee14527adf3ab404eff6ccd54afa879f9005acde1e4f784bfa993b676e7849cf0ac4e3b9259c5be531175fa59163d001347ba50487d37445e31d38233fca10915a478f65305ff303b965c36030d80cfa980cfdfa342b76aebf45ee878006dab3ae45044d1d8b3ec8c54eff3fd2c014ce4cb7d"
+
+func TestPinnedSidRerunReusesTheSamePassword(t *testing.T) {
+	c, err := NewFromKeyIV(mustDecodeHex(t, capturedKey), mustDecodeHex(t, capturedIV), DefaultMode)
+	if err != nil {
+		t.Fatalf("NewFromKeyIV: %v", err)
+	}
+	plain, err := c.Decrypt(mustDecodeHex(t, pinnedRerunArgsCiphertext))
+	if err != nil {
+		t.Fatalf("a later boot on the pinned sid did not open with the pinned key: %v", err)
+	}
+	if len(plain) != len(capturedArgs) {
+		t.Fatalf("plaintext is %d bytes, want %d", len(plain), len(capturedArgs))
+	}
+
+	// Everything ahead of the token is device state, so it must match byte for
+	// byte across boots. tokenAt is where the 128-byte token value starts.
+	const tokenAt = 125
+	if string(plain[:tokenAt]) != capturedArgs[:tokenAt] {
+		t.Fatalf("device fields moved between boots:\n got %q\nwant %q", plain[:tokenAt], capturedArgs[:tokenAt])
+	}
+
+	// Only the per-connection half of the token moves. Offset 157 is character
+	// 32 of the token, so the first 32 characters are per-device and the rest
+	// are per-connection.
+	const wantFirstDiff = 157
+	diff := -1
+	for i := range plain {
+		if plain[i] != capturedArgs[i] {
+			diff = i
+			break
+		}
+	}
+	if diff != wantFirstDiff {
+		t.Fatalf("first differing byte at %d, want %d", diff, wantFirstDiff)
+	}
+
+	tail := `"sid":"0123456789abcdef01234567"}`
+	if got := string(plain[len(plain)-len(tail):]); got != tail {
+		t.Fatalf("payload does not end with the pinned sid: %q", got)
+	}
+}
+
+// A boot that let the server draw a random sid produced a password, Key and IV
+// we have never seen. Its event-name attachment is still a single AES block, so
+// ciphertext = pkcs7(name) XOR AES-ENC(Key, IV): the block below is that
+// encryption of the IV. It is a known-plaintext oracle, so any future guess at
+// the sid-to-password rule can be tested with one AES call and no new capture
+// from the device.
+const (
+	randomSid                = "b42e23b1aba53a14658a62ec"
+	randomSidEventCiphertext = "0251d6070768aae5bf29dd32b7f8a974"
+	randomSidKeystream       = "6324a26f581e98ecb620d43bbef1a07d"
+)
+
+func xorBlocks(a, b []byte) []byte {
+	out := make([]byte, len(a))
+	for i := range a {
+		out[i] = a[i] ^ b[i]
+	}
+	return out
+}
+
+func TestRandomSidGivesAKnownPlaintextOracle(t *testing.T) {
+	padded := pkcs7Pad([]byte(capturedEvent), BlockLen)
+
+	// First prove the single-block model on the vector whose key we do know: a
+	// fixed keystream has to explain every plaintext that fits one block.
+	known := xorBlocks(padded, mustDecodeHex(t, capturedEventCiphertext))
+	c, err := NewFromKeyIV(mustDecodeHex(t, capturedKey), mustDecodeHex(t, capturedIV), DefaultMode)
+	if err != nil {
+		t.Fatalf("NewFromKeyIV: %v", err)
+	}
+	for _, probe := range []string{"", "a", "hello", "0123456789abcde"} {
+		want := xorBlocks(pkcs7Pad([]byte(probe), BlockLen), known)
+		if got := c.Encrypt([]byte(probe)); hex.EncodeToString(got) != hex.EncodeToString(want) {
+			t.Fatalf("single-block keystream model failed for %q", probe)
+		}
+	}
+
+	// The same algebra on the random-sid capture yields AES-ENC(Key, IV) for a
+	// password that has never been observed.
+	if got := xorBlocks(padded, mustDecodeHex(t, randomSidEventCiphertext)); hex.EncodeToString(got) != randomSidKeystream {
+		t.Fatalf("oracle block for sid %s is %x, want %s", randomSid, got, randomSidKeystream)
+	}
+
+	// If the two sids shared a keystream the sid would not matter at all, and
+	// the whole derivation hunt would be pointless.
+	if hex.EncodeToString(known) == randomSidKeystream {
+		t.Fatal("the pinned and random sids produced the same keystream")
+	}
+}

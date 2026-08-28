@@ -347,3 +347,79 @@ func ValidPKCS7(buf []byte) bool {
 	_, err := pkcs7Unpad(buf, BlockLen)
 	return err == nil
 }
+
+// salt is the PBKDF2 salt the client's cipher constructor passes to
+// Rfc2898DeriveBytes. It is a build-time constant shared by every instance of
+// the class, not a per-user or per-connection value.
+//
+// SECURITY-SENSITIVE, and recovered rather than guessed. get_Extras hands the
+// constructor a password and nothing else, so the salt had to be static data
+// owned by the cipher class. It was found by sliding an 8-byte window over the
+// client's shipped metadata and testing each window against one captured
+// (password, Key) pair; see ScanSalt for why a candidate costs a single HMAC.
+//
+//	analys2313/global-metadata.dat, offset 0x00BF92B8
+//
+// The hit is not an artefact of a single sample. These 8 bytes reproduce both
+// Key and IV for all four cipher instances the traced process constructed,
+// each from a different password:
+//
+//	socket   .ctor pc=0x3ecf360  password a6aa0aee...588b (32 B)
+//	prefs    .ctor pc=0x3b692b0  password 555e0803...a19b (40 B)
+//	prefs    .ctor pc=0x3b692b0  password 34b33f7d...a19b (40 B)
+//	cfgcache .ctor pc=0x249fdfc  password 509dc635...79e5 (32 B)
+//
+// One false match has probability 2^-160; four independent passwords agreeing
+// settles it. TestRecoveredSaltDerivesEveryCapturedInstance pins this.
+var salt = [SaltLen]byte{0x4c, 0x82, 0xa1, 0x18, 0x24, 0x64, 0x15, 0x96}
+
+// SaltMetadataOffset is where salt was found in the client's
+// global-metadata.dat, so the constant can be re-derived from the shipped file
+// instead of being trusted.
+const SaltMetadataOffset = 0x00BF92B8
+
+// Salt returns a copy of the recovered PBKDF2 salt.
+func Salt() []byte {
+	out := make([]byte, SaltLen)
+	copy(out, salt[:])
+	return out
+}
+
+// NewFromPassword derives Key and IV from password using the recovered salt.
+// This mirrors the client, which only ever supplies a password.
+func NewFromPassword(password []byte, mode Mode) (*Codec, error) {
+	return New(password, Salt(), mode)
+}
+
+// ScanSalt returns every offset in blob whose SaltLen-byte window derives
+// wantKey from password.
+//
+// This is the routine that recovered salt, kept so the constant stays
+// reproducible from the shipped metadata. It exploits Iterations == 1: the
+// first PBKDF2 output block is then exactly HMAC-SHA1(password, window ||
+// uint32be(1)), and Key is the leading KeyLen bytes of that stream, so
+// comparing the first sha1.Size bytes of wantKey decides a window in one HMAC.
+// A false positive per window has probability 2^-160.
+//
+// wantKey must hold at least sha1.Size bytes; only that prefix is used.
+func ScanSalt(blob, password, wantKey []byte) []int {
+	if len(blob) < SaltLen || len(wantKey) < sha1.Size {
+		return nil
+	}
+	want := wantKey[:sha1.Size]
+	mac := hmac.New(sha1.New, password)
+	msg := make([]byte, SaltLen+4)
+	binary.BigEndian.PutUint32(msg[SaltLen:], 1)
+	sum := make([]byte, 0, sha1.Size)
+	var hits []int
+	for off := 0; off+SaltLen <= len(blob); off++ {
+		copy(msg, blob[off:off+SaltLen])
+		mac.Reset()
+		mac.Write(msg)
+		sum = mac.Sum(sum[:0])
+		if hmac.Equal(sum, want) {
+			hits = append(hits, off)
+		}
+	}
+	return hits
+}
