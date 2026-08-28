@@ -643,3 +643,135 @@ denotes on `socket.attachment` (attachment 0 is still exactly 16 bytes, so any
 prefix sits outside that count), encrypting the reply with the same codec,
 answering `auth_v2` so the client leaves `WaitSocketAuthReponse`, and serving a
 slot config that contains 23.1.3.
+
+## Session 2026-08-28, part 5: the A/B closes - the key material follows the sid
+
+### The pinned-sid A/B is decisive, and it reverses part 3's reading
+
+`backend-2026-08-28.log` now holds ten `socket.ws_open` lines over eight boots.
+Grouping every `socket.attachment` line by the sid that produced it:
+
+| log line | time (UTC) | sid | attachment 0 |
+|---|---|---|---|
+| 209 | 11:18:45 | `c16ba8e1a6f4befa13247399` (random) | `eb42a6d9b1eb4bc29c79ee154af6b656` |
+| 246 | 11:19:40 | `f0212cf3d2b03d7e4a72e98d` (random) | `0d4fb8c24e4dbd0ffdffcb24d37707bf` |
+| 289 | 11:47:54 | `0123456789abcdef01234567` (pinned) | `74a1de5b1e2465e4529d219ac23400fe` |
+| 328 | 11:50:04 | `0123456789abcdef01234567` (pinned) | `74a1de5b1e2465e4529d219ac23400fe` |
+| 372 | 12:37:35 | `0123456789abcdef01234567` (pinned) | `74a1de5b1e2465e4529d219ac23400fe` |
+| 415 | 12:39:12 | `0123456789abcdef01234567` (pinned) | `74a1de5b1e2465e4529d219ac23400fe` |
+
+Four connections that shared the pinned sid - spanning three separate server
+restarts - produced a byte-identical attachment 0, and the two distinct random
+sids produced two distinct values. Attachment 0 is the sealed form of the
+constant 7-byte event name `auth_v2`, so its only inputs are the key and the IV.
+The key material is therefore a deterministic function of the sid.
+
+Part 3 eliminated the session token correctly - it stayed constant while
+attachment 0 moved - but it did not identify what the movement tracked. The
+variable was the sid, which `secrets.RandomToken(12)` regenerated on every
+connection. That is exactly what the pin removed.
+
+Attachment 1 corroborates and adds one fact. The two pinned-sid samples share a
+long identical prefix and then diverge:
+
+```
+line 290  ...e435a5765e8d7e83f52bb605 | 61 47 d9 da 86 e8 95 18 ...
+line 329  ...e435a5765e8d7e83f52bb605 | 64 f2 e9 85 4d 64 f5 e0 ...
+```
+
+About 110 bytes - roughly seven AES blocks - are identical before the split.
+Under CBC or CFB an identical ciphertext prefix requires an identical key *and*
+an identical IV, so neither carries per-connection randomness on top of the sid.
+The divergence comes from the plaintext instead, at the payload's own
+per-connection field around byte 108 - the incremental request id at
+`SocketManager.<RequestCounter>` (offset 0x40), or a timestamp.
+
+### Why the offline sweep never could have worked
+
+`get_Extras` (RVA 0x3ECF1F4) XORs two static 32-byte arrays into the password
+with no session value on that path, and that reading still holds for the
+password itself. The sid has to enter elsewhere: as the PBKDF2 salt the
+constructor picks up on its own, or through one of those two arrays being
+written at runtime rather than being the constant it appears to be. Either way
+the salt was never inside the 292-candidate static set, so the 561,516 +
+7,866,356 + 7,866,356 checks were searching a space that does not contain the
+answer. `SaltLen = 8` and `PasswordLen = 32` in `internal/sio/codec.go` both
+need re-examining once the real values are in hand.
+
+### The trace is on the right class; the class is shared
+
+The rebuild armed all seven hooks with no warnings:
+
+```
+23.1.3-sio: codec trace armed (emit=1 codec-shared=1 codec-sio=1 inbound=1
+cipher-ctor=1 cipher-open=1 cipher-seal=1); logging only, no packet is altered
+```
+
+and the cipher hooks then worked exactly as designed - passwords, derived keys,
+derived IVs and both sides of every transform. None of it belonged to socket.io.
+That cipher type is not the socket codec's private property: the app also uses
+it for PlayerPrefs key obfuscation and for its on-disk config cache. In one boot
+the 600-line budget was gone in 2.15 seconds, spent on
+
+- 279 encrypts of PlayerPrefs keys, caller RVA 0x3B6C4D4 (`LoadoutsSlot`,
+  `shop_slot`, `MapVotesKey`, `Attribution.ConversionData`, and so on);
+- 312 decrypts of the local config cache, caller RVA 0x24A4318, plaintexts
+  shaped `h_<16 hex>_c_<json>` (BalanceWeapons, BalanceEconomic, BalancePets,
+  lootboxes, news, profanity list; one of them 215,132 bytes), plus
+  `decrypt open bytes=6 text='23.1.3'`;
+- three constructors, none of them from the `0x3ECFxxx` range - two with a
+  40-byte password from caller RVA 0x3B692B0 and one with a 32-byte password
+  from RVA 0x249FDFC.
+
+The first cipher line landed at 15:39:07.277 and the last at 15:39:09.429. This
+run's `ws_open` is at 12:39:12 UTC, which is 15:39:12 local - 2.6 seconds after
+the budget was already spent. `[emit]` printed zero lines for the same reason.
+This is not a hook fault: contiguous line numbering and the armed line rule that
+out.
+
+One detail from those constructors is worth keeping. The two 40-byte passwords
+differ only in their first 20 bytes and share an identical 20-byte tail
+`015263f1ac363c681d89256d1c7883845d1ea19b`. The socket codec's own password
+should be 32 bytes, matching the XOR of the two arrays.
+
+### Client fix (commit fa96a8a)
+
+Identify the codec rather than widen the budget. `SocketManager.get_Extras`
+(`BestHTTP.SocketIO`, argc 0, and the only `get_Extras` that class declares) is
+the accessor both the emit and the inbound path call to reach the codec, so its
+return value is the socket.io instance. The new hook publishes that pointer, and
+encrypt and decrypt log only when `this` matches. The pointer starts out null,
+so every pre-handshake caller is filtered out without having to be recognised,
+and the PlayerPrefs and config-cache flood disappears on its own. The
+constructor stays ungated: a handful of lines per boot, the one place the
+password is visible, and the fallback that still records the socket password if
+the accessor hook fails to install. `kMaxLines` goes to 2000 as headroom for
+that fallback, not as a substitute for the filter - at roughly 280 lines/s a
+bigger budget only reaches the point where logd starts dropping messages. The
+armed line now carries eight flags, and a dedicated `LOGE` fires if `get_Extras`
+cannot be hooked. Checked twice again: standalone, and on the real translation
+unit with the project's own flags.
+
+### Next
+
+One launch, then grep `23.1.3-sio[cipher]`. The expected transcript is short: a
+`socket codec identified` line carrying the derived key and IV, a
+`.ctor password bytes=32` near socket-connect time with its own derived key/IV,
+then `encrypt open bytes=7 flag=0 text='auth_v2'` whose `encrypt sealed` must
+equal `74a1de5b1e2465e4529d219ac23400fe` under the pinned sid, followed by the
+608-byte payload pair. If encrypt and decrypt stay silent while the constructor
+prints, the accessor hook did not install and the `LOGE` says so.
+
+With key and IV in hand the derivation question resolves immediately: compare a
+pinned-sid capture against a random-sid one and see whether the password, the
+key or only the IV moves. That pins down whether the salt is the raw sid, its
+ASCII form or a transform of it. Then `internal/sio/codec.go` can open both
+attachments, sweeping `ModeCFB8`, `ModeCFB128` and `ModeCBC`, since the client
+never writes `FeedbackSize`.
+
+The remaining items are unchanged: what `prefixed=true` denotes on
+`socket.attachment` (attachment 0 is still exactly 16 bytes, so any prefix sits
+outside that count), locating the per-connection field near byte 108 of the
+payload, encrypting the reply with the same codec, answering `auth_v2` so the
+client leaves `WaitSocketAuthReponse (6)` and the `bar=0.750` stall clears, and
+serving a slot config that contains 23.1.3.
