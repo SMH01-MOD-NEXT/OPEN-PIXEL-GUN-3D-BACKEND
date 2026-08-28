@@ -371,6 +371,10 @@ func (s *Server) acceptAttachment(session *sioSession, raw []byte, transport str
 // logBinaryEvent records a reassembled binary event and every attachment that
 // completed it. The attachment bodies are the payload this whole stage exists
 // to capture, so they are traced verbatim through the logger's hex fallback.
+//
+// When a payload codec is pinned the attachments are decrypted as well, which
+// is what turns "<binary:16 bytes ...>" in the trace above into a real event
+// name and its arguments.
 func (s *Server) logBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 	name, resolved, nameInAttachment := a.resolveEvent()
 
@@ -401,6 +405,56 @@ func (s *Server) logBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 			"body":              s.log.Body(att.data),
 		})
 	}
+
+	s.decodeBinaryEvent(session, a)
+}
+
+// decodeBinaryEvent decrypts a completed binary event with the pinned payload
+// codec and logs what it says.
+//
+// Attachment 0 carries the event name and the remaining ones carry the JSON
+// arguments, which is the layout the traced client uses for every emit.
+//
+// A failure here is an expected outcome rather than an error in the server: the
+// client derives its key per connection, so a pinned key only fits the session
+// it was captured from. It is recorded and the verbatim trace above still
+// stands on its own, so nothing is lost when the key does not match.
+func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
+	if s.sio == nil || s.sio.codec == nil || len(a.attachments) == 0 {
+		return
+	}
+
+	decoded := make([][]byte, 0, len(a.attachments))
+	for i, att := range a.attachments {
+		plain, err := s.sio.codec.Decrypt(att.data)
+		if err != nil {
+			s.log.Event("socket.attachment_undecodable", map[string]any{
+				"sid":   session.sid,
+				"num":   i,
+				"bytes": len(att.data),
+				"mode":  s.sio.codec.Mode().String(),
+				"err":   err.Error(),
+				"note":  "the pinned key does not fit this session; the client re-derives it per connection",
+			})
+			return
+		}
+		decoded = append(decoded, plain)
+	}
+
+	fields := map[string]any{
+		"sid":         session.sid,
+		"transport":   a.transport,
+		"kind":        a.kindName(),
+		"namespace":   a.namespace,
+		"ack":         a.ack,
+		"attachments": len(decoded),
+		"mode":        s.sio.codec.Mode().String(),
+		"event":       s.log.Body(decoded[0]),
+	}
+	for i, plain := range decoded[1:] {
+		fields[fmt.Sprintf("arg%d", i+1)] = s.log.Body(plain)
+	}
+	s.log.Event("socket.event_decoded", fields)
 }
 
 // encodeBinaryEvent builds the frames of an outgoing socket.io BINARY_EVENT:

@@ -8,12 +8,14 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/secrets"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
 )
 
 // Update describes the client build the server currently hands out.
@@ -52,6 +54,19 @@ type Config struct {
 	// every per-session value this server originates, so a ciphertext that still
 	// changes proves the varying input is client-local.
 	StableSessions bool
+
+	// SioKey, SioIV and SioMode pin the /sio payload codec to key material
+	// captured from a traced client launch, skipping the key derivation.
+	//
+	// SECURITY-SENSITIVE DIAGNOSTIC, off by default. The client derives its
+	// cipher password per connection from an input that includes the socket.io
+	// session id, and that derivation is not reproduced yet, so the key cannot
+	// be computed here. A captured key can still be pinned by hand, which is
+	// only useful together with StableSessions: the same sid has to be issued
+	// again for the captured key to be the one the client actually uses.
+	SioKey  []byte
+	SioIV   []byte
+	SioMode sio.Mode
 
 	// PhotonAppIDs is keyed by mode: "pun", "realtime", "chat", "voice".
 	PhotonAppIDs map[string]string
@@ -121,15 +136,70 @@ func Load() (*Config, error) {
 		cfg.AppIDKey = key
 	}
 
+	if err := loadSioCodec(cfg); err != nil {
+		return nil, err
+	}
+
 	if cfg.DiscoveryPort < 0 || cfg.DiscoveryPort > 65535 {
 		return nil, fmt.Errorf("config: OPG3D_DISCOVERY_PORT out of range: %d", cfg.DiscoveryPort)
 	}
 	return cfg, nil
 }
 
+// loadSioCodec resolves the pinned /sio codec material.
+//
+// The key and the IV have to arrive together: half a codec cannot decrypt
+// anything, so it is reported as a configuration error instead of being
+// silently dropped. The mode defaults to the variant measured against real
+// traffic and only has to be given when re-testing that conclusion.
+func loadSioCodec(cfg *Config) error {
+	keyHex, ivHex := env("OPG3D_SIO_KEY", ""), env("OPG3D_SIO_IV", "")
+	if keyHex == "" && ivHex == "" {
+		return nil
+	}
+	if keyHex == "" || ivHex == "" {
+		return fmt.Errorf("config: OPG3D_SIO_KEY and OPG3D_SIO_IV must be set together")
+	}
+
+	key, err := hexBlob("OPG3D_SIO_KEY", keyHex, sio.KeyLen)
+	if err != nil {
+		return err
+	}
+	iv, err := hexBlob("OPG3D_SIO_IV", ivHex, sio.IVLen)
+	if err != nil {
+		return err
+	}
+
+	mode := sio.DefaultMode
+	if name := env("OPG3D_SIO_MODE", ""); name != "" {
+		if mode, err = sio.ParseMode(name); err != nil {
+			return fmt.Errorf("config: OPG3D_SIO_MODE: %w", err)
+		}
+	}
+
+	cfg.SioKey, cfg.SioIV, cfg.SioMode = key, iv, mode
+	return nil
+}
+
+func hexBlob(name, value string, want int) ([]byte, error) {
+	blob, err := hex.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("config: %s: %w", name, err)
+	}
+	if len(blob) != want {
+		return nil, fmt.Errorf("config: %s must be %d bytes of hex, got %d", name, want, len(blob))
+	}
+	return blob, nil
+}
+
 // SealsAppIDs reports whether the AppID endpoint can serve anything.
 func (c *Config) SealsAppIDs() bool {
 	return len(c.AppIDKey) > 0 && len(c.PhotonAppIDs) > 0
+}
+
+// DecodesSio reports whether a /sio payload codec is pinned.
+func (c *Config) DecodesSio() bool {
+	return len(c.SioKey) == sio.KeyLen && len(c.SioIV) == sio.IVLen
 }
 
 func env(key, fallback string) string {

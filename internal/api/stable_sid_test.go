@@ -7,19 +7,21 @@ import "testing"
 // TestSioHubStableSidRepeats covers the second half of the OPG3D_STABLE_SESSIONS
 // diagnostic.
 //
-// The /sio payload codec encrypts deterministically and its key is built in
-// SocketManager.get_Extras from two static arrays, with no session input on that
-// path at all. The client's auth_v2 attachment 0 is Encrypt("auth_v2"), a fixed
-// plaintext, so it should be byte-identical on every run. It is not. Some codec
-// input therefore varies per session.
+// The /sio payload codec encrypts deterministically, so the client's auth_v2
+// attachment 0 - Encrypt("auth_v2"), a fixed plaintext - should be identical on
+// every run. It was not, so some codec input varied per session.
 //
 // The first run of this diagnostic pinned only the account session token and
 // left the socket.io id random, so both candidate inputs moved together and the
-// differing ciphertext ruled out neither. The experiment is only decisive once
-// every per-session value this server originates is frozen, which requires
-// successive sessions to reuse a single id.
+// differing ciphertext ruled out neither. Pinning the id as well settled it: the
+// same sid now reproduces the same attachment across boots, so the socket.io id
+// is what the key follows, and the account token is not involved.
+//
+// That makes this diagnostic a prerequisite rather than a curiosity. A key
+// captured from a traced launch is only reusable while the sid it was captured
+// with keeps being issued, which is exactly what this pinning provides.
 func TestSioHubStableSidRepeats(t *testing.T) {
-	hub := newSioHub(true)
+	hub := newSioHub(true, nil)
 
 	first, err := hub.create(eioV4)
 	if err != nil {
@@ -47,7 +49,7 @@ func TestSioHubStableSidRepeats(t *testing.T) {
 // TestSioHubRandomSidByDefault guards the default. A predictable socket.io id is
 // a guessable credential, so the diagnostic must not leak into normal operation.
 func TestSioHubRandomSidByDefault(t *testing.T) {
-	hub := newSioHub(false)
+	hub := newSioHub(false, nil)
 
 	first, err := hub.create(eioV4)
 	if err != nil {

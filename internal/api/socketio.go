@@ -61,7 +61,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/config"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/secrets"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
 )
 
 // sioPath is the channel's namespace on this server. The client-side rewriter
@@ -256,6 +259,16 @@ type sioHub struct {
 	// value this server originates at once, which makes the observation decisive
 	// in either direction.
 	stableSid bool
+
+	// codec decrypts the client's binary attachments. It is nil unless a key
+	// is pinned in the configuration.
+	//
+	// The client re-derives its own key on every connection from an input that
+	// includes the socket.io session id, and that derivation is not reproduced
+	// yet, so a captured key only fits sessions that reuse the sid it was
+	// captured with. In practice that means it is only useful while stableSid
+	// is also on.
+	codec *sio.Codec
 }
 
 // fixedSid is the session id issued while sioHub.stableSid is set. It has the
@@ -263,8 +276,30 @@ type sioHub struct {
 // apart from a real id, while staying obviously synthetic when read in a log.
 const fixedSid = "0123456789abcdef01234567"
 
-func newSioHub(stableSid bool) *sioHub {
-	return &sioHub{sessions: make(map[string]*sioSession), stableSid: stableSid}
+func newSioHub(stableSid bool, codec *sio.Codec) *sioHub {
+	return &sioHub{sessions: make(map[string]*sioSession), stableSid: stableSid, codec: codec}
+}
+
+// newSioCodec builds the pinned payload codec, or nil when none is configured.
+//
+// The key and IV are validated when the configuration is loaded, so a failure
+// here would be a programming error rather than bad input. It is reported and
+// the channel carries on with the verbatim attachment trace it had before,
+// because losing the decryption is not a reason to drop the session.
+func newSioCodec(cfg *config.Config, log *logs.Logger) *sio.Codec {
+	if !cfg.DecodesSio() {
+		return nil
+	}
+	codec, err := sio.NewFromKeyIV(cfg.SioKey, cfg.SioIV, cfg.SioMode)
+	if err != nil {
+		log.Event("socket.codec_unusable", map[string]any{"err": err.Error()})
+		return nil
+	}
+	log.Event("socket.codec_pinned", map[string]any{
+		"mode": cfg.SioMode.String(),
+		"note": "binary attachments will be decrypted; the pinned key only fits sessions reusing the captured sid",
+	})
+	return codec
 }
 
 func (h *sioHub) create(version eioVersion) (*sioSession, error) {

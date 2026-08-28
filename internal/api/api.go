@@ -47,7 +47,7 @@ type Server struct {
 
 // New builds the router.
 func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
-	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions)}
+	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log))}
 	s.routes()
 	return s
 }

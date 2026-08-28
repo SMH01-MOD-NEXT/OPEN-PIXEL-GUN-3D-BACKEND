@@ -64,6 +64,7 @@ func run() error {
 		"appid_sealing":   cfg.SealsAppIDs(),
 		"admin_enabled":   cfg.AdminToken != "",
 		"stable_sessions": cfg.StableSessions,
+		"sio_codec":       cfg.DecodesSio(),
 	})
 	if cfg.StableSessions {
 		logger.Printf("warn: OPG3D_STABLE_SESSIONS is on: session tokens are derived from the device id and are not secret. Diagnostic use only.")

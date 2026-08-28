@@ -112,7 +112,7 @@ func TestBinaryPrefixIsStrippedAndRestored(t *testing.T) {
 // The whole point of the change: the two binary frames belong to the packet
 // that preceded them, and the event cannot be named until they are bound to it.
 func TestBinaryEventIsAssembledFromTheCapture(t *testing.T) {
-	hub := newSioHub(false)
+	hub := newSioHub(false, nil)
 	session, err := hub.create(eioV4)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -212,7 +212,7 @@ func TestResolveEventReadsAPlainName(t *testing.T) {
 }
 
 func TestAttachmentWithoutAWaitingEventIsReported(t *testing.T) {
-	hub := newSioHub(false)
+	hub := newSioHub(false, nil)
 	session, err := hub.create(eioV4)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -223,7 +223,7 @@ func TestAttachmentWithoutAWaitingEventIsReported(t *testing.T) {
 }
 
 func TestStaleAssemblyIsDroppedRatherThanFilled(t *testing.T) {
-	hub := newSioHub(false)
+	hub := newSioHub(false, nil)
 	session, err := hub.create(eioV4)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
