@@ -253,3 +253,99 @@ func TestParseMode(t *testing.T) {
 		t.Fatal("ParseMode accepted an unsupported mode")
 	}
 }
+
+// Captured from a live 23.1.3 handshake on 2026-08-28 with the socket.io sid
+// pinned to 0123456789abcdef01234567 by OPG3D_STABLE_SESSIONS.
+//
+// These are not reconstructed values. The client's own cipher constructor was
+// traced, so the key and IV below are exactly what the client used, and the
+// two ciphertexts are the two attachments the server received for the same
+// auth_v2 emit: attachment 0 is Encrypt(UTF8(eventName)) and attachment 1 is
+// Encrypt(UTF8(jsonArgs)).
+//
+// This vector is what settles FeedbackSize. The constructor never writes it,
+// so the effective variant had to be measured rather than read, and only
+// full-block feedback reproduces the capture.
+const (
+	capturedKey             = "d670c4e97d6aafcdc9940cfb1f411df8c08b8fc480e50b239fe852a1f6ddd6d2"
+	capturedIV              = "c72cc19a7fb79ef6e6d7a6f3944514bd"
+	capturedPassword        = "a6aa0aee01fc80f44dc4252079475465e2b07448974597a25a2473a342b3588b"
+	capturedEvent           = "auth_v2"
+	capturedEventCiphertext = "74a1de5b1e2465e4529d219ac23400fe"
+	capturedArgsCiphertext  = "6ef6df5d282308843fb612b1f80839c046751ab76e16e82f596b37130e4d088ab2ab5c4bd8ce71fa513f326c9e41df864e8c0cb7d9037529821cd18157cd36d12e009a26ec0e3a4ccbbe1892ed63ffe0c303d80fb4f455b95b1ab58075c09cb7887e01958b28908919517c04f244ed63cbfb299e7f9edf52a36bbdf8b4c3be37c59a1aaae878fc2834c4a394e1b54cd80a0c1adb8dcf69c83100156ec7c9babeda22f5084991fe03c5fa46de506f84d2e057acd490848409a5cd126513051536a34bdf52c505eed1e9fe43970eb0dfce88d666ed94190bb113b7a561649f86bb618819e7fe66b687b00b7ee981ba6af4b74a48038408b904d80c1eb7eedb6ca4fd64bd6ec2f33d2fa518e86088bfa6d1e89587890c0e9a0187e740fa8803e1e5ace6d9fd5328d8e7f364f88d068f8258ca012f5fe2f667a99ff4236fe71461a51e3dc92c090557eabf9322af17e00a709882039ec0d908650f2265d817c0f665ffbbe9c7f10c580015fd3f96f88ebba3a18021ffd776f14152adb5a6e8b51b44946db4599fce386bb4b718fe322f8a86b767b6efcaae7488dd9b107e483e49ff714e98b34df4b9f181c0cab23d7639dddeb753ebb70fb8606478ca91bf17ef8861eac34c1f84d026fbd87459b0f48d69b84345d6aa00f6e4cdf98ee011692c57d83827a9e202090ca651057e5837903907c21c1538c912d50768b1bfe2f70a90822f8143f790e5300ebde9add05cf08b26d18c1ac63868474c33923f42328c1d66acd819cb4799e876ec1ec36fc8a8f675f8c558dbc390197e7ed6abeb87b4eac55c9bf21f77d2b7fc2a79c39dab454d1d5e057f12042d320a09bbc1aa3a88c9"
+)
+
+// capturedArgs is the plaintext of attachment 1. The client builds it with a
+// space after every comma, so it is stored verbatim rather than re-marshalled:
+// a byte-exact plaintext is what makes the re-encryption check meaningful.
+const capturedArgs = `{"uniq_id":"350713954", "hash":"afd8f926-88c0-49d7-9a90-3f6d662fcd28", "device":"918ad658854434c89292b80c5e573229", "token":"2690ea3d61c0ae48fb958bbadcd076aeee6fd722b01f8097240cd9a6c7749b48870bd5a7441895fe4cda772276ba133c25706be288dd16c7cc7dd0252807db645851a9c63ffa9540be947b46165b380484d79576bed98317692e39de067a914e8fc4b69693fd3f6193ef0cab3caca75cc66c5bda44c38d96525284c0a07f3b44", "return":"1510171621262214222614262242213712121715203430121632302611223", "platform":"1", "device_model":"Nothing A059P", "type_device":2, "abuse_method":1, "block_param":1, "req_id":1, "sid":"0123456789abcdef01234567"}`
+
+func mustDecodeHex(t *testing.T, in string) []byte {
+	t.Helper()
+	out, err := hex.DecodeString(in)
+	if err != nil {
+		t.Fatalf("hex.DecodeString: %v", err)
+	}
+	return out
+}
+
+// TestCapturedVectorPinsFullBlockCFB is the end-to-end check against real
+// traffic. It proves three separate things at once: the chaining mode is
+// full-block CFB, encryption is deterministic across a 38-block payload, and
+// this package can both read and produce what the client accepts.
+func TestCapturedVectorPinsFullBlockCFB(t *testing.T) {
+	key := mustDecodeHex(t, capturedKey)
+	iv := mustDecodeHex(t, capturedIV)
+	event := mustDecodeHex(t, capturedEventCiphertext)
+	args := mustDecodeHex(t, capturedArgsCiphertext)
+
+	if got := len(mustDecodeHex(t, capturedPassword)); got != PasswordLen {
+		t.Fatalf("captured password is %d bytes, want PasswordLen=%d", got, PasswordLen)
+	}
+	if len(event) != BlockLen {
+		t.Fatalf("captured event ciphertext is %d bytes, want %d", len(event), BlockLen)
+	}
+	if len(args) != 608 {
+		t.Fatalf("captured payload ciphertext is %d bytes, want 608", len(args))
+	}
+
+	codec, err := NewFromKeyIV(key, iv, ModeCFB128)
+	if err != nil {
+		t.Fatalf("NewFromKeyIV: %v", err)
+	}
+
+	name, err := codec.Decrypt(event)
+	if err != nil {
+		t.Fatalf("Decrypt(attachment 0): %v", err)
+	}
+	if string(name) != capturedEvent {
+		t.Fatalf("attachment 0 = %q, want %q", name, capturedEvent)
+	}
+	if got := hex.EncodeToString(codec.Encrypt([]byte(capturedEvent))); got != capturedEventCiphertext {
+		t.Fatalf("Encrypt(%q) = %s, want %s", capturedEvent, got, capturedEventCiphertext)
+	}
+
+	payload, err := codec.Decrypt(args)
+	if err != nil {
+		t.Fatalf("Decrypt(attachment 1): %v", err)
+	}
+	if string(payload) != capturedArgs {
+		t.Fatalf("attachment 1 plaintext mismatch:\n got %q\nwant %q", payload, capturedArgs)
+	}
+	if got := hex.EncodeToString(codec.Encrypt(payload)); got != capturedArgsCiphertext {
+		t.Fatal("re-encrypting attachment 1 did not reproduce the captured ciphertext")
+	}
+
+	// The other two variants are controls. If either ever reproduced the
+	// event name, the mode would be ambiguous and every conclusion drawn
+	// from this vector would need revisiting.
+	for _, mode := range []Mode{ModeCFB8, ModeCBC} {
+		control, err := NewFromKeyIV(key, iv, mode)
+		if err != nil {
+			t.Fatalf("NewFromKeyIV(%s): %v", mode, err)
+		}
+		if plain, err := control.Decrypt(event); err == nil && string(plain) == capturedEvent {
+			t.Fatalf("%s also decrypted the capture; the mode is not pinned", mode)
+		}
+	}
+}

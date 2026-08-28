@@ -39,9 +39,23 @@
 //	attachment 1 = Encrypt(UTF8(jsonArgs))
 //
 // FeedbackSize is never written by the constructor, so it keeps the framework
-// default. That default is not the same on every runtime, so both the 8-bit
-// and the full-block feedback variants are implemented here and callers sweep
-// them rather than assuming one.
+// default and had to be measured rather than read. A traced handshake settled
+// it: given the client's own key and IV, only full-block feedback reproduces
+// the captured attachments, so ModeCFB128 is the real mode. The 8-bit variant
+// and CBC are kept as controls (see TestCapturedVectorPinsFullBlockCFB).
+//
+// The same trace pinned down which input varies per connection:
+//
+//	salt      static. Every cipher instance in a launch is built by this one
+//	          constructor, which reads the salt from a FieldRVA blob, so the
+//	          salt cannot be what moves.
+//	password  per connection. It is the only remaining input, so the password
+//	          is what carries the socket.io session id into the key schedule.
+//
+// How the session id reaches the password is still open. 547 candidate salts
+// built from the sid and from every field of the auth_v2 payload reproduce
+// neither the key nor the IV from the captured password, and the password is
+// not a plain digest of any of those fields either.
 package sio
 
 import (
@@ -82,9 +96,11 @@ var (
 // Mode selects how the AES block cipher is chained.
 //
 // The client asks for CipherMode.CFB. .NET's CFB is parameterised by
-// FeedbackSize, which the constructor never sets, so the effective variant
-// depends on the runtime default. ModeCBC is kept as a control: if a sweep
-// ever matches under CBC, the CFB reading of the disassembly is wrong.
+// FeedbackSize, which the constructor never sets, so the effective variant had
+// to be measured against real traffic rather than read out of the code. It is
+// full-block: ModeCFB128. ModeCFB8 and ModeCBC stay as controls, so a future
+// capture that matches under either of them is an immediate signal that this
+// reading of the client is wrong.
 type Mode uint8
 
 // Supported chaining modes.
@@ -118,8 +134,12 @@ func ParseMode(name string) (Mode, error) {
 	return 0, fmt.Errorf("%w: %q", ErrMode, name)
 }
 
-// Modes lists every chaining variant worth sweeping, most likely first.
-func Modes() []Mode { return []Mode{ModeCFB8, ModeCFB128, ModeCBC} }
+// Modes lists every chaining variant worth sweeping, the confirmed one first.
+func Modes() []Mode { return []Mode{ModeCFB128, ModeCFB8, ModeCBC} }
+
+// DefaultMode is the chaining variant the client actually uses. Callers that
+// configure a recovered key should use it instead of picking a mode by hand.
+const DefaultMode = ModeCFB128
 
 // PBKDF2SHA1 implements PBKDF2-HMAC-SHA1 (RFC 2898), which is what
 // Rfc2898DeriveBytes computes. It is hand-rolled to keep this module free of
