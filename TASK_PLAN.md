@@ -70,19 +70,92 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       packet verbatim on both transports, `socket.ws_closed` carries the close
       code, close reason and packet count, and `socket.ws_open` records the raw
       query.
-- [/] Remote configuration delivery (the `pixelgun3d-config/*` family). The
-      transport is done; the payload is deliberately not pushed yet. The next
-      step is to read `socket.rx` / `socket.event` from a real client boot to
-      learn which documents it subscribes to and under which keys, rather than
-      guessing at MessagePack contents. The client-side consumer is
-      `BalanceController.<obfuscated>(String, Byte[], <type>, ConfigId)`, so a
-      document arrives as a name plus a MessagePack byte array identified by a
-      `ConfigId`.
-- [ ] Serve the config documents over the channel from server-side JSON.
+- [x] Bind binary attachments to the event that declared them
+      (`internal/api/socketio_binary.go`). This is what the capture was waiting
+      on, and it reshapes everything below it.
+
+      The 2026-08-27 boot (`log_back.txt`) shows the client's first real
+      request on the channel:
+
+          40/sio
+          452-/sio,[{"_placeholder":true, "num":0}, {"_placeholder":true, "num":1}]
+          <binary 17 bytes>   04 37 4b c0 db ...
+          <binary 609 bytes>  04 2d 1c c1 dd ...
+
+      Three readings follow, and each closes a question that was open:
+
+      1. **The event name is not on the wire.** `arg[0]` is a placeholder, so
+         the name travels inside attachment 0. `event=<unparsed>` was never a
+         parser bug — there was nothing to parse. No further log reading will
+         produce a name.
+      2. **The payload is encrypted.** With the marker removed the attachments
+         are 16 and 608 bytes, both exact multiples of the AES block size
+         (608 = 38 × 16). They are not plain MessagePack.
+      3. **The leading `0x04` is the engine.io v3 binary marker.** BestHTTP
+         sends it on the WebSocket transport despite asking for `EIO=4`, which
+         is the same v2-client behaviour that made the namespace auto-connect
+         necessary above.
+
+      The server now buffers the frames per session, binds them to the
+      preceding `BINARY_EVENT`, strips the marker inbound and restores it
+      outbound, and traces every attachment with its length, marker state and
+      block alignment (`socket.binary_header`, `socket.binary_event`,
+      `socket.attachment`). An abandoned or expired assembly is reported rather
+      than leaked, a frame arriving with no event waiting is reported instead
+      of dropped, and `socket.ws_closed` now carries how much of a pending
+      event was still missing. The XHR transport's base64 `b` framing works in
+      both directions too, so a pushed document can no longer be silently
+      discarded before the upgrade.
+- [ ] Recover the attachment codec. This is now the single blocker for the rest
+      of the channel. Parse the registration path for the constants instead of
+      guessing them; keep the key in `.env` (`OPG3D_SIO_KEY`), put the codec in
+      `internal/secrets` beside the existing envelope, and unit-test it against
+      the captured 16-byte and 608-byte blobs.
+- [ ] Only then: name the events the client sends, and answer them. The names
+      cannot be assumed. `get_progress_slots`, `get_progress_hashes_v2`,
+      `get_binded_ids`, `get_reg_ver` and `full_check_version` appear nowhere —
+      not in the capture, not in `dump2313.cs`, not in the client repo's docs —
+      and `CommandsWithFullSlots` is not an RPC at all: it is
+      `PGCompany.ConfigId = 7` (`dump2313.cs:449064`), a config document id on
+      this same channel. Whatever attachment 0 decrypts to is the real list.
+- [ ] Serve the config documents over the channel from server-side JSON. The
+      consumer is `BalanceController.<obfuscated>(String, Byte[], <type>,
+      ConfigId)`, so a document arrives as a name plus a MessagePack byte array
+      identified by a `ConfigId`.
+- [ ] Deliver the slot config with a `versionDict` entry for `23.1.3`. The
+      client-side failure is `ParseFullSlotConfig: versionDict not contains
+      version 23.1.3` (`log_front.txt:654`, raised from a `Progress.*`
+      coroutine), so this is a `ConfigId` document on this channel, not an HTTP
+      file.
 - [ ] Player profile / progression persistence server-side (replaces the
       client-side `Storager` trust model).
 - [ ] Clans, mailbox, leaderboards, friends/invites.
 - [ ] Decide per endpoint: implement, stub with a logged 200, or refuse.
+
+### The auth state machine needs no further disassembly
+
+The remaining boot question — what moves the auth scene out of
+`Initial`/`Authorizing` — is already answered in the client repo, and the
+answer is negative in a useful way:
+
+- `AuthSceneState` (`dump2313.cs:92853`): `Initial 0`, `Authorizing 1`,
+  `Authorized 2`, `FullySynchronized 3`, `Empty 4`, `CheckBindedId 5` …
+  `TechnicalWorks 15`.
+- `AuthSceneController.Start` (`0x3DC1BCC`) tail-calls the dispatcher
+  (`0x3DC1F38`), which handles only `0`, `1` and `2`.
+- A caller scan over 161,400 parsed methods finds **zero** call sites for the
+  state getter (`0x3DC0920`), the state setter (`0x3DC0968`) or the
+  session-ready setter (`0x3DC0A04`): IL2CPP inlined those
+  `[CompilerGenerated]` accessors and stock code writes the static field at
+  `+0x10` directly (`docs/PORT_23_1_3_AUTH_COMPLETION.md`, client repo).
+
+So there is no single call to find: nothing calls a setter. The state is moved
+by whichever response handler writes that static field, and the second state
+machine names the route that matters to a server — `AuthorizationStates`
+(`dump2313.cs:230714`) has `AuthorizingWithHttp 3`,
+`AuthorizingWithSessionKey 4` and **`WaitSocketAuthReponse 6`**. Authorization
+completes on a socket response, on the channel above. This item is therefore
+blocked on the codec as well, and needs no further static analysis first.
 
 ## Phase 3 — Client-side surgery (repo: OLD-PIXEL-GUN-3D-ONLINE-PROJECT, branch 23.1.3)
 
