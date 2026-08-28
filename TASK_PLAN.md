@@ -392,3 +392,64 @@ correct reply still requires decoding attachment 1.
       `Rilisoft.丏东丑丄东丈丟且东..ctor` 0x3B680F4 (dump the password), 0x3B6883C and
       0x3B6835C (plaintext/ciphertext pairs), `SocketManager.get_Extras`
       0x3ECF1F4 (the two XOR halves).
+
+## Session 2026-08-28, part 2: the codec in code, and what the sweeps ruled out
+
+### Landed
+
+- `7e123bf` `internal/sio`: the client's payload codec transcribed from
+  libil2cpp.so (PBKDF2-HMAC-SHA1, one iteration, 8-byte static salt, 48 derived
+  bytes split into an AES-256 key and a 128-bit IV, CFB chaining, PKCS#7), plus
+  a known-plaintext search and the `opg3d-siokey` command that drives it.
+  PBKDF2 is checked against RFC 6070; the full-block feedback path is
+  cross-checked against `crypto/cipher`.
+- `3cfa181` `OPG3D_STABLE_SESSIONS`: session tokens become SHA-256(device id)
+  so two game runs differ in everything except the token. Off by default,
+  warned about at boot, documented in `docs/RUN.md` as lab-only.
+
+### The oracle
+
+`Socket.Emit` puts `Encrypt(UTF8(eventName))` in attachment 0, so all 16 bytes
+of the first block's plaintext are known: `auth_v2` plus nine bytes of PKCS#7.
+A candidate key either reproduces those 16 bytes or it does not, which makes
+any hit certain rather than probable. No scoring, no heuristics.
+
+### Candidate constants
+
+Every FieldRVA default value was exported from `global-metadata.dat`:
+292 distinct 8-byte blobs (salt candidates) and 641 distinct 32-byte prefixes
+(password-half candidates; blobs longer than 32 are truncated because the XOR
+loop in `get_Extras` only reads `0x20` bytes).
+
+### Ruled out
+
+All three chaining variants (CFB-8, CFB-128, CBC) were swept for each:
+
+| Hypothesis | Trials | Result |
+| --- | --- | --- |
+| password = one static constant | 561,516 | no hit |
+| password = session token, 7 encodings, alone or XOR any constant | 7,866,356 | no hit |
+| password = socket sid, 7 encodings, alone or XOR any constant | 7,866,356 | no hit |
+
+Session encodings tried: raw 32 bytes, ASCII first half, ASCII second half,
+SHA-256 of each, byte-reversed, and UTF-8 of the device id. Sid encodings:
+SHA-256 of the ASCII and of the raw bytes, zero-padded, repeated, doubled MD5,
+and SHA-256 of sid concatenated with the session token.
+
+### Why the static pair sweep is not worth running
+
+Encryption is deterministic, the plaintext is always `auth_v2`, and the salt is
+a build-time constant read from a FieldRVA blob. If both password halves were
+also constants, attachment 0 would be byte-identical in every capture. It is
+not: four captures differ in all 16 bytes. At least one codec input therefore
+varies per session, which closes the entire pure-constant branch by argument
+rather than by brute force.
+
+### Next
+
+The stable-session experiment decides where to look. If attachment 0 stops
+changing when the token is held still, the key is a function of a value the
+server issues and the server can derive it. If it keeps changing, the varying
+input is client-side and the remaining static route is to disassemble the
+assignment site of the runtime-filled half (static field behind TypeInfo slot
+`0x6842528`) rather than to search for it.
