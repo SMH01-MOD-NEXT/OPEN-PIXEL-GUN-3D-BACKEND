@@ -55,6 +55,14 @@ type Config struct {
 	// changes proves the varying input is client-local.
 	StableSessions bool
 
+	// SioReply answers events on the encrypted /sio channel instead of only
+	// tracing them. On by default, because an unanswered auth_v2 is exactly what
+	// holds this client's loading bar at 78%: silence is not a safe fallback. It
+	// is a switch because a wrong answer can be worse than none - a malformed
+	// packet may read to the client as a protocol error - so the trace-only
+	// behaviour can be restored without a rebuild.
+	SioReply bool
+
 	// SioKey, SioIV and SioMode pin the /sio payload codec to key material
 	// captured from a traced client launch, skipping the key derivation.
 	//
@@ -97,6 +105,7 @@ func Load() (*Config, error) {
 		AdminToken:     env("OPG3D_ADMIN_TOKEN", ""),
 		Maintenance:    envBool("OPG3D_MAINTENANCE", false),
 		StableSessions: envBool("OPG3D_STABLE_SESSIONS", false),
+		SioReply:       envBool("OPG3D_SIO_REPLY", true),
 		PhotonAppIDs:   map[string]string{},
 		PhotonRegion:   env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{

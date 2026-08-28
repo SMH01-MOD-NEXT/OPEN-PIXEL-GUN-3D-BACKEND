@@ -489,6 +489,8 @@ func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 		fields[fmt.Sprintf("arg%d", i+1)] = s.log.Body(plain)
 	}
 	s.log.Event("socket.event_decoded", fields)
+
+	s.answerDecodedEvent(session, a, codec, decoded)
 }
 
 // encodeBinaryEvent builds the frames of an outgoing socket.io BINARY_EVENT:
@@ -499,9 +501,10 @@ func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 // transport for this client because that is the framing it sends itself.
 //
 // This writes the documented socket.io shape, with the event name as a plain
-// string in arg[0]. Whether a reply must instead hide its name inside
-// attachment 0, the way the client's own requests do, cannot be settled until
-// the capture is decrypted, so nothing calls this on the live path yet.
+// string in arg[0]. That question is now settled, and this is not the shape the
+// 23.1.3 client accepts: its inbound path hides the name inside attachment 0,
+// so live replies are built by encodeEncryptedEvent instead. This stays as the
+// reference encoder for the stock protocol, covered by its own test.
 func encodeBinaryEvent(namespace, event string, attachments [][]byte, prefixed bool) ([]sioFrame, error) {
 	if len(attachments) > sioMaxAttachments {
 		return nil, fmt.Errorf("%d attachments exceeds the cap of %d", len(attachments), sioMaxAttachments)
