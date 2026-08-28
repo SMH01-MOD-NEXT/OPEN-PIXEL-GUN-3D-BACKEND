@@ -977,3 +977,81 @@ for the reply event name and its shape. For the pinned sid nothing blocks that
 any more: the key, the IV and now the salt are all known. Unchanged: what
 `prefixed=true` denotes, the `state=40` stall, and a slot config containing
 23.1.3.
+
+## 8. Every session opens: the password follows the sid
+
+The last unknown is closed. The per-connection password is a plain function of
+the socket.io session id, and settling it took one capture rather than more
+disassembly: a launch with a **random** sid and the tracer armed, paired against
+the pinned-sid capture already on file.
+
+### The rule
+
+```
+password[i] = STATIC32[i] XOR (0x30 + hexnibble(sid[i]))   i = 0..23
+password[i] = STATIC32[i]                                  i = 24..31
+
+STATIC32 = 969b38dd35c9b6c375fd1f1b457a6a5ad281467ba370a1955a2473a342b3588b
+```
+
+`0x30 + hexnibble(c)` is `c` itself for the digits `'0'`..`'9'` and `c - 0x27`
+for `'a'`..`'f'`. That is exactly what the two arrays of `get_Extras` hold: A is
+the sid-derived mask, B is the static base, and the body of the getter really is
+nothing but `password[i] = A[i] XOR B[i]`. It also explains why no offline sweep
+could have found the password: A is written at runtime, after the handshake, and
+is present in neither shipped file.
+
+The sid is 24 hex characters while the password is 32 bytes, so the trailing
+eight bytes are never masked. They are why both traced passwords share the tail
+`5a2473a342b3588b`.
+
+### Verification
+
+Recovering STATIC32 from either traced pair yields the same 32 bytes:
+
+| sid | password |
+| --- | --- |
+| `0123456789abcdef01234567` pinned | `a6aa0aee01fc80f44dc4252079475465e2b07448974597a25a2473a342b3588b` |
+| `7ba611c7d478bc451f8f865c` random | `a1a002eb04f88af448c928237e465e6fe3be7e449b4694a95a2473a342b3588b` |
+
+32 of 32 bytes agree. Through the recovered salt both passwords reproduce the
+captured key, IV and `auth_v2` attachment, so the chain sid -> password ->
+key/IV -> ciphertext is closed end to end and pinned by tests.
+
+### Proven on the wire
+
+A third launch, on a sid neither the code nor the tests had ever seen, with
+nothing pinned at all:
+
+```
+sid                   48957fc7ab292f6c15e313f1
+client key (logcat)   6701d06b5095ea53bdf859cd354971cd466ad0fafc390ef3066005223e45f08c
+client iv  (logcat)   4ec1c3b3f64969b319711b22ec8236fb
+backend boot          sio_codec=false
+result                socket.event_decoded event=auth_v2 key=derived-from-sid mode=cfb128
+```
+
+The backend read the event name and all 605 bytes of arguments, including the
+`"sid":"48957fc7ab292f6c15e313f1"` the payload carries about itself. The key and
+IV were also recomputed independently from the rule above and agree with the
+client trace byte for byte. `OPG3D_SIO_KEY` is no longer needed to read this
+channel and stays only as an override for replaying an old capture.
+
+### Landed
+
+| Commit | What it does |
+| --- | --- |
+| `5e37268` | `sio.PasswordForSid` and `sio.NewForSid`. Tests reproduce password, key, IV and the `auth_v2` attachment for both traced sids, and reject a non-hex or over-long sid. |
+| `5fff99d` | `decodeBinaryEvent` derives the codec from each session's own sid, so every session is readable. The pinned key stays as an override, a non-hex sid is reported as `socket.codec_underived`, and the key origin is recorded on `socket.event_decoded`. |
+
+### Next
+
+Answer `auth_v2`. No key question blocks it for any session now, so what is
+left is the reply's event name and shape, read out of the inbound handler
+(`0x3ED8DC4`, `0x3ED8E58`) in `dump2313.cs`. `encodeBinaryEvent` already writes
+the documented socket.io framing; whether a reply must instead hide its name
+inside attachment 0, the way the client's own emits do, is the open question.
+
+Unchanged and independent: what `prefixed=true` denotes, the `state=40` stall
+(set `OPG3D_APPID_KEY` with `OPG3D_PHOTON_APPID_PUN` or `_REALTIME`), and a slot
+config containing 23.1.3.
