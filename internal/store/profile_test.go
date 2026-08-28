@@ -65,8 +65,55 @@ func TestAdoptSocketIdentityRejectsAMalformedID(t *testing.T) {
 	if _, _, err := s.AdoptSocketIdentity("not-an-id", socketDevice, ""); !errors.Is(err, ErrBadPlayerID) {
 		t.Fatalf("error is %v, want ErrBadPlayerID", err)
 	}
-	if _, _, err := s.AdoptSocketIdentity("", socketDevice, ""); err == nil {
-		t.Fatal("an empty uniq id was accepted")
+	// A socket that presents neither an id nor a device cannot be tied to any
+	// account, so it has to be refused rather than handed a fresh player.
+	if _, _, err := s.AdoptSocketIdentity("", "", ""); err == nil {
+		t.Fatal("a socket with no id and no device was accepted")
+	}
+}
+
+// TestAdoptSocketIdentityRegistersAFirstRun covers the real first launch. The
+// client sends uniq_id and hash empty and identifies itself by device
+// fingerprint alone, so the server has to mint the id, and every later launch
+// from the same handset has to come back to that same account instead of
+// minting another one.
+func TestAdoptSocketIdentityRegistersAFirstRun(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	account, created, err := s.AdoptSocketIdentity("", socketDevice, "192.0.2.10")
+	if err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	if !created {
+		t.Fatal("the first run did not create an account")
+	}
+	if !ValidPlayerID(account.PlayerID) {
+		t.Fatalf("minted id %q is not a valid player id", account.PlayerID)
+	}
+	if account.SocketDevice != socketDevice {
+		t.Fatalf("socket device is %q, want %q", account.SocketDevice, socketDevice)
+	}
+
+	again, created, err := s.AdoptSocketIdentity("", socketDevice, "192.0.2.10")
+	if err != nil {
+		t.Fatalf("second adopt: %v", err)
+	}
+	if created {
+		t.Fatal("the same handset was registered twice")
+	}
+	if again.PlayerID != account.PlayerID {
+		t.Fatalf("second launch became %s, want %s", again.PlayerID, account.PlayerID)
+	}
+
+	other, _, err := s.AdoptSocketIdentity("", "0123456789abcdef0123456789abcdef", "192.0.2.11")
+	if err != nil {
+		t.Fatalf("other adopt: %v", err)
+	}
+	if other.PlayerID == account.PlayerID {
+		t.Fatal("a different device reused the first account")
 	}
 }
 

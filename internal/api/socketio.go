@@ -336,6 +336,14 @@ func (h *sioHub) create(version eioVersion) (*sioSession, error) {
 	return session, nil
 }
 
+// count reports how many sessions are live, which is the operator console's
+// "players connected right now" figure.
+func (h *sioHub) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.sessions)
+}
+
 func (h *sioHub) get(sid string) *sioSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()

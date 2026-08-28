@@ -68,6 +68,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/admin/bans", s.admin(s.handleAdminListBans))
 	s.mux.HandleFunc("POST /api/v1/admin/bans", s.admin(s.handleAdminAddBan))
 	s.mux.HandleFunc("DELETE /api/v1/admin/bans", s.admin(s.handleAdminRemoveBan))
+	s.registerAdminRoutes()
 
 	// Legacy client compatibility.
 	s.mux.HandleFunc("/auth_v2/", s.handleLegacyAuth)

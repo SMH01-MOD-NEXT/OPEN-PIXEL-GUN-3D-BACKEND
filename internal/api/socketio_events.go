@@ -42,13 +42,14 @@ import (
 
 // Event names the client emits after authorisation.
 const (
-	sioSubscribeEvent   = "subscribe"
-	sioProgressEvent    = "progress_status"
-	sioPrefsEvent       = "player_prefs"
-	sioLastCommandEvent = "get_last_command"
-	sioRoomEvent        = "mmc_get_room"
-	sioOnlineEvent      = "update_player_online"
-	sioBindedIDsEvent   = "get_binded_ids"
+	sioSubscribeEvent    = "subscribe"
+	sioProgressEvent     = "progress_status"
+	sioPrefsEvent        = "player_prefs"
+	sioLastCommandEvent  = "get_last_command"
+	sioRoomEvent         = "mmc_get_room"
+	sioOnlineEvent       = "update_player_online"
+	sioBindedIDsEvent    = "get_binded_ids"
+	sioCheckVersionEvent = "full_check_version"
 )
 
 // setIdentity records who authorised this session.
@@ -94,6 +95,8 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerPlayerOnline
 	case sioBindedIDsEvent:
 		return (*Server).answerBindedIDs
+	case sioCheckVersionEvent:
+		return (*Server).answerCheckVersion
 	default:
 		return nil
 	}
@@ -164,8 +167,20 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	}
 
 	body := authReplyBody(session, head, reqID)
+	// On a first run the client sent uniq_id empty and is waiting to be told
+	// which player it is, so the assigned id replaces the echo. The aliases are
+	// the names the retired /auth_v2/ HTTP contract used for this same value -
+	// see handleLegacyAuth - because a JSON consumer ignores members it does not
+	// know and it is not yet established which one the socket handler reads.
+	// They are all the same string, so no alias can surprise a handler with a
+	// type it cannot convert.
+	body["uniq_id"] = account.PlayerID
+	body["id_player"] = account.PlayerID
 	body["player_id"] = account.PlayerID
+	body["id"] = account.PlayerID
+	body["user_id"] = account.PlayerID
 	body["nick"] = account.Nick
+	body["name"] = account.Nick
 	return body
 }
 
@@ -288,6 +303,21 @@ func (s *Server) answerPlayerOnline(session *sioSession, head sioHead, reqID int
 func (s *Server) answerBindedIDs(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["ids"] = []any{}
+	return body
+}
+
+// answerCheckVersion answers the client's version gate.
+//
+// The client sends {"app_version":"1:23.1.3"} - platform and version joined by
+// a colon - and waits to be told whether that build may proceed. This
+// deployment exists to serve exactly that frozen build, so it is always
+// allowed. The version is echoed rather than restated, so the client sees its
+// own string come back instead of one this server invented.
+func (s *Server) answerCheckVersion(session *sioSession, head sioHead, reqID int) map[string]any {
+	body := sioOK(reqID)
+	if version := head.text("app_version"); version != "" {
+		body["app_version"] = version
+	}
 	return body
 }
 

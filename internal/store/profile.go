@@ -276,17 +276,48 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 // treated as authoritative for identity and the account is created under that
 // id when it is well formed and free. Anything else would make the account a
 // player can be banned or restored under differ from the one the game shows.
+//
+// An empty uniq_id is not an error: it is how the client asks to be registered.
+// A first run sends uniq_id and hash empty and identifies itself by device
+// fingerprint alone, so this server mints the id in that case and the reply
+// hands it back for the client to remember.
 func (s *Store) AdoptSocketIdentity(uniqID, device, ip string) (Account, bool, error) {
 	uniqID = strings.TrimSpace(uniqID)
-	if uniqID == "" {
-		return Account{}, false, errors.New("store: empty socket uniq id")
-	}
 	device = strings.TrimSpace(device)
+	if uniqID == "" && device == "" {
+		return Account{}, false, errors.New("store: the socket presented neither an id nor a device")
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
+
+	if uniqID == "" {
+		// The same handset has to come back to the same account, or every
+		// launch of a freshly installed client would mint another player. The
+		// oldest match wins so the result does not depend on map iteration
+		// order if a device ever ends up on two accounts.
+		var match *Account
+		for _, account := range s.state.Accounts {
+			if account.SocketDevice != device && account.DeviceID != device {
+				continue
+			}
+			if match == nil || account.CreatedAt.Before(match.CreatedAt) {
+				match = account
+			}
+		}
+		if match != nil {
+			uniqID = match.PlayerID
+		} else {
+			minted, err := s.mintFreePlayerIDLocked()
+			if err != nil {
+				return Account{}, false, err
+			}
+			uniqID = minted
+		}
+	}
+
 	if account, ok := s.state.Accounts[uniqID]; ok {
 		account.LastSeenAt = now
 		if ip != "" {
