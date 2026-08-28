@@ -111,6 +111,45 @@ Status keys: `[ ]` pending · `[/]` in progress · `[x]` completed
       guessing them; keep the key in `.env` (`OPG3D_SIO_KEY`), put the codec in
       `internal/secrets` beside the existing envelope, and unit-test it against
       the captured 16-byte and 608-byte blobs.
+
+      The encryption is measured, not assumed. Both captured sessions produced
+      the same two lengths (16 B and 608 B, each an exact multiple of the AES
+      block size), yet across sessions the blobs share no structure at all:
+      common prefix 0 bytes, 1/16 and 2/608 byte positions equal, which is
+      what chance alone predicts. The 608-byte bodies carry 7.64 bits of
+      entropy per byte over 227-229 distinct values; the 16-byte bodies use 16
+      distinct values, so every single byte differs. A MessagePack document
+      would repeat structure and open with a stable type tag - these open with
+      0x37, 0x2d, 0xd6 and 0xcc. Nothing is appended for an IV or a MAC, so the
+      frame length is exactly the ciphertext length: attachment 0 hides at most
+      15 bytes of plaintext under PKCS#7, which is the size of a short event
+      name.
+
+      The emitter is located, and it is not the socket library.
+      `BestHTTP.SocketIO` is stock, and its `Emit(string, object[])`
+      (`dump2313.cs:422755`, RVA 0x3ECE0C4) has exactly two callers, so the
+      game seals the bytes before emitting them:
+      `Rilisoft.WebSocket.WebSocketManager` and `MatchmakingSocketManager`.
+      Only the former's wrapper carries bytes - `(string, object, byte[])` at
+      RVA 0x35C31E8 - and it is reached from one place only, the payload
+      builder at RVA 0x35C2D4C, so `/sio` is `WebSocketManager`. Neither
+      direction contains a crypto call: inbound runs
+      `Packet.ReconstructAttachmentAsIndex` plus `Convert.ToInt32`, meaning the
+      client resolves attachments by index itself. The bytes therefore arrive
+      already sealed from outside the socket layer.
+
+      The key material has an honest source, so nothing needs to be guessed.
+      `PGCompany.丈丛业不东丅丐丝世` (`dump2313.cs:448770`) hands out byte
+      arrays: one path runs `Convert.FromBase64String` over an embedded
+      constant, the other calls `Rilisoft.万东丕丏丄万丝且不.世丌丟丟丁上不丗三()`
+      (RVA 0x26C933C), which builds its result with `SHA1Managed` and
+      BouncyCastle array helpers over a value read from an `AndroidJavaObject`
+      - the APK signing certificate. Both constants can be recovered from the
+      APK already on disk. Do not confuse any of this with
+      `PGCompany.丅丝业七三丈丝丑丏`, whose `"BinaryConfigStorage.Key"` and
+      Rijndael container (32-byte key, 16-byte block, 20-byte MAC,
+      `RNGCryptoServiceProvider`, `dump2313.cs:452433`) seal the *local disk
+      cache*; that framing cannot fit inside a 16-byte attachment.
 - [ ] Only then: name the events the client sends, and answer them. The names
       cannot be assumed. `get_progress_slots`, `get_progress_hashes_v2`,
       `get_binded_ids`, `get_reg_ver` and `full_check_version` appear nowhere —
