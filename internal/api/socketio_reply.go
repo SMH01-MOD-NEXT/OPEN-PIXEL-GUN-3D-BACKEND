@@ -202,7 +202,8 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 	}
 
 	event := decodedEventName(decoded[0])
-	if event != sioAuthEvent {
+	answer := sioAnswerFor(event)
+	if answer == nil {
 		s.log.Event("socket.event_unanswered", map[string]any{
 			"sid":   session.sid,
 			"event": event,
@@ -213,67 +214,46 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 
 	var head sioHead
 	if err := json.Unmarshal(decoded[1], &head); err != nil {
-		s.log.Event("socket.auth_unreadable", map[string]any{
-			"sid":  session.sid,
-			"err":  err.Error(),
-			"note": "the decrypted argument is not a JSON object",
+		s.log.Event("socket.event_unreadable", map[string]any{
+			"sid":   session.sid,
+			"event": event,
+			"err":   err.Error(),
+			"note":  "the decrypted argument is not a JSON object",
 		})
 		return
 	}
 
 	reqID, ok := head.number(sioRequestIDKey)
 	if !ok {
-		s.log.Event("socket.auth_uncorrelated", map[string]any{
-			"sid":  session.sid,
-			"key":  sioRequestIDKey,
-			"note": "the request carries no integer request id, so no reply can be matched to it",
+		s.log.Event("socket.event_uncorrelated", map[string]any{
+			"sid":   session.sid,
+			"event": event,
+			"key":   sioRequestIDKey,
+			"note":  "the request carries no integer request id, so no reply can be matched to it",
 		})
 		return
 	}
 
-	body := authReplyBody(session, head, reqID)
-	frames, err := encodeEncryptedEvent(codec, a.namespace, sioAuthEvent, body)
-	if err != nil {
-		s.log.Event("socket.auth_unencodable", map[string]any{
-			"sid": session.sid,
-			"err": err.Error(),
-		})
+	body := answer(s, session, head, reqID)
+	if body == nil {
+		// The builder declined to answer and logged why. Sending an invented
+		// payload instead can hang the client harder than silence, because a
+		// field of the wrong type throws inside its own handler.
 		return
 	}
-
-	for i, frame := range frames {
-		if session.send(frame) {
-			continue
-		}
-		// A dropped frame leaves a half-written binary event on the wire, which
-		// the client would wait on forever, so it is reported as the failure it
-		// is instead of being retried into a worse state.
-		s.log.Event("socket.auth_undelivered", map[string]any{
-			"sid":    session.sid,
-			"frame":  i,
-			"frames": len(frames),
-			"note":   "the session send queue is full; the reply is incomplete",
-		})
+	if !s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body) {
 		return
 	}
-
-	sent, err := json.Marshal(body)
-	if err != nil {
-		// body came from json.Marshal already, inside encodeEncryptedEvent.
-		sent = nil
+	if event == sioAuthEvent {
+		// Authorisation is the one reply the loading bar waits on, so it keeps
+		// a line of its own naming the identity the client presented.
+		s.log.Event("socket.auth_answered", map[string]any{
+			"sid":            session.sid,
+			"req_id":         reqID,
+			"client_uniq_id": head.text("uniq_id"),
+			"client_sid":     head.text("sid"),
+		})
 	}
-	s.log.Event("socket.auth_answered", map[string]any{
-		"sid":            session.sid,
-		"transport":      a.transport,
-		"namespace":      a.namespace,
-		"event":          sioAuthEvent,
-		"req_id":         reqID,
-		"attachments":    sioReplyAttachments,
-		"mode":           codec.Mode().String(),
-		"client_uniq_id": head.text("uniq_id"),
-		"client_sid":     head.text("sid"),
-		"body":           s.log.Body(sent),
-	})
 }
 
 // authReplyBody builds the one argument an auth_v2 answer carries.

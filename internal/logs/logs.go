@@ -8,6 +8,10 @@
 // configured, to a dated file. Bodies are captured verbatim when they are
 // printable and hex-dumped when they are not, so an encrypted or binary
 // payload is still inspectable.
+//
+// The same lines are also fanned out to live subscribers, which is what the
+// admin console's log view reads. Fanout never blocks: a subscriber that stops
+// reading loses lines rather than stalling the server that produced them.
 package logs
 
 import (
@@ -23,7 +27,24 @@ import (
 	"unicode/utf8"
 )
 
-const defaultMaxBody = 8192
+const (
+	defaultMaxBody = 8192
+
+	// maxRecent is how many lines are kept for a console that has just been
+	// opened, so a live view starts with context instead of an empty pane.
+	maxRecent = 500
+
+	// subscriberQueue is how far one live subscriber may fall behind before it
+	// starts losing lines.
+	subscriberQueue = 256
+)
+
+// Entry is one recorded line, as handed to a live subscriber.
+type Entry struct {
+	At   time.Time `json:"at"`
+	Kind string    `json:"kind"`
+	Line string    `json:"line"`
+}
 
 // Logger writes line-oriented diagnostics. It is safe for concurrent use.
 type Logger struct {
@@ -31,11 +52,22 @@ type Logger struct {
 	file        *os.File
 	traceBodies bool
 	maxBody     int
+
+	// recent is a ring of the last maxRecent entries.
+	recent []Entry
+
+	subscribers map[uint64]chan Entry
+	nextID      uint64
+	dropped     uint64
 }
 
 // New opens a logger. An empty dir logs to stdout only.
 func New(dir string, traceBodies bool, maxBody int) (*Logger, error) {
-	l := &Logger{traceBodies: traceBodies, maxBody: maxBody}
+	l := &Logger{
+		traceBodies: traceBodies,
+		maxBody:     maxBody,
+		subscribers: map[uint64]chan Entry{},
+	}
 	if l.maxBody <= 0 {
 		l.maxBody = defaultMaxBody
 	}
@@ -56,7 +88,7 @@ func New(dir string, traceBodies bool, maxBody int) (*Logger, error) {
 
 // Printf writes a free-form line.
 func (l *Logger) Printf(format string, args ...any) {
-	l.write(stamp() + " " + fmt.Sprintf(format, args...))
+	l.emit("", stamp()+" "+fmt.Sprintf(format, args...))
 }
 
 // Event writes a structured line: "<ts> <kind> k=v k=v".
@@ -77,7 +109,7 @@ func (l *Logger) Event(kind string, fields map[string]any) {
 		line.WriteByte('=')
 		line.WriteString(field(fields[key]))
 	}
-	l.write(line.String())
+	l.emit(kind, line.String())
 }
 
 // Body renders a request or response body for a log line.
@@ -99,10 +131,60 @@ func (l *Logger) Body(raw []byte) string {
 	return "hex:" + hex.EncodeToString(shown) + suffix
 }
 
-// Close releases the log file, if any.
+// Recent returns up to limit of the most recent lines, oldest first. A limit of
+// zero or less returns everything held.
+func (l *Logger) Recent(limit int) []Entry {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if limit <= 0 || limit > len(l.recent) {
+		limit = len(l.recent)
+	}
+	out := make([]Entry, limit)
+	copy(out, l.recent[len(l.recent)-limit:])
+	return out
+}
+
+// Subscribe registers a live consumer and returns its id and channel. The
+// caller must Unsubscribe, which is what closes the channel.
+func (l *Logger) Subscribe() (uint64, <-chan Entry) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.nextID++
+	id := l.nextID
+	ch := make(chan Entry, subscriberQueue)
+	l.subscribers[id] = ch
+	return id, ch
+}
+
+// Unsubscribe removes a live consumer and closes its channel.
+func (l *Logger) Unsubscribe(id uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ch, ok := l.subscribers[id]
+	if !ok {
+		return
+	}
+	delete(l.subscribers, id)
+	close(ch)
+}
+
+// Dropped reports how many lines were lost to slow subscribers. A non-zero
+// value means a live view is incomplete, which is worth showing rather than
+// hiding.
+func (l *Logger) Dropped() uint64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.dropped
+}
+
+// Close releases the log file, if any, and disconnects every live subscriber.
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	for id, ch := range l.subscribers {
+		delete(l.subscribers, id)
+		close(ch)
+	}
 	if l.file == nil {
 		return nil
 	}
@@ -111,12 +193,35 @@ func (l *Logger) Close() error {
 	return err
 }
 
-func (l *Logger) write(line string) {
+// emit writes one line everywhere it has to go.
+func (l *Logger) emit(kind, line string) {
+	entry := Entry{At: time.Now().UTC(), Kind: kind, Line: line}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	fmt.Fprintln(os.Stdout, line)
 	if l.file != nil {
 		fmt.Fprintln(l.file, line)
+	}
+
+	l.recent = append(l.recent, entry)
+	if len(l.recent) > maxRecent {
+		// Re-slice from a copy rather than holding the whole history alive
+		// through the underlying array.
+		trimmed := make([]Entry, maxRecent)
+		copy(trimmed, l.recent[len(l.recent)-maxRecent:])
+		l.recent = trimmed
+	}
+
+	for _, ch := range l.subscribers {
+		select {
+		case ch <- entry:
+		default:
+			// A console that stopped reading must never be able to stall the
+			// server whose behaviour it is watching.
+			l.dropped++
+		}
 	}
 }
 

@@ -162,6 +162,14 @@ type sioSession struct {
 	packets      uint64
 	clientPinged bool
 
+	// The identity the client presented when it authorised this session.
+	// Only auth_v2 carries it; every later event names nothing but its req_id
+	// and this sid, so it has to be remembered here or the rest of the session
+	// cannot be attributed to a player. See socketio_events.go.
+	uniqID   string
+	device   string
+	playerID string
+
 	// pending is the binary event whose text header has arrived and whose
 	// attachments are still being collected. A socket.io binary event is split
 	// across one text packet and one frame per attachment, so the halves have

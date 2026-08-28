@@ -49,8 +49,16 @@ var (
 
 // Account is one registered player.
 type Account struct {
-	PlayerID   string    `json:"player_id"`
-	DeviceID   string    `json:"device_id"`
+	PlayerID string `json:"player_id"`
+	DeviceID string `json:"device_id"`
+
+	// SocketDevice is the device fingerprint the client presents on the
+	// encrypted /sio channel. It is recorded separately because it is not the
+	// same value as DeviceID: a captured session showed 918ad65... on the
+	// socket while the HTTP registration for the same handset used 45fdd05...
+	// Both are needed to ban a device and have the ban actually hold.
+	SocketDevice string `json:"socket_device,omitempty"`
+
 	Nick       string    `json:"nick"`
 	Session    string    `json:"session"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -75,6 +83,7 @@ func (b Ban) Active(now time.Time) bool {
 
 type state struct {
 	Accounts map[string]*Account `json:"accounts"`
+	Profiles map[string]*Profile `json:"profiles,omitempty"`
 	Bans     []Ban               `json:"bans"`
 }
 
