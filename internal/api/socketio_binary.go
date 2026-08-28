@@ -29,8 +29,9 @@ package api
 //     attachment rather than assumed.
 //   - Once the marker is removed both attachments are AES-block-aligned
 //     (16 bytes and 608 = 38 x 16). The payload is encrypted, so it is traced
-//     verbatim and never parsed as MessagePack here. Reading it needs the codec
-//     task, not a guess in this file.
+//     verbatim and never parsed as MessagePack here, and it is then opened by
+//     the codec that follows from the session's sid (decodeBinaryEvent below)
+//     rather than guessed at.
 
 import (
 	"encoding/base64"
@@ -39,6 +40,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
 )
 
 const (
@@ -372,9 +375,10 @@ func (s *Server) acceptAttachment(session *sioSession, raw []byte, transport str
 // completed it. The attachment bodies are the payload this whole stage exists
 // to capture, so they are traced verbatim through the logger's hex fallback.
 //
-// When a payload codec is pinned the attachments are decrypted as well, which
-// is what turns "<binary:16 bytes ...>" in the trace above into a real event
-// name and its arguments.
+// The attachments are then decrypted as well, which is what turns the
+// "<binary:16 bytes ...>" of the trace above into a real event name and its
+// arguments. No pinned key is needed for that any more: the codec follows from
+// the session's sid.
 func (s *Server) logBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 	name, resolved, nameInAttachment := a.resolveEvent()
 
@@ -409,32 +413,61 @@ func (s *Server) logBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 	s.decodeBinaryEvent(session, a)
 }
 
-// decodeBinaryEvent decrypts a completed binary event with the pinned payload
-// codec and logs what it says.
+// keyOrigin names where the codec that opened an event came from, so a trace
+// distinguishes the sid-derived key from a pinned override without the reader
+// having to check the environment the server was started with.
+func keyOrigin(derived bool) string {
+	if derived {
+		return "derived-from-sid"
+	}
+	return "pinned"
+}
+
+// decodeBinaryEvent decrypts a completed binary event and logs what it says.
 //
 // Attachment 0 carries the event name and the remaining ones carry the JSON
 // arguments, which is the layout the traced client uses for every emit.
 //
-// A failure here is an expected outcome rather than an error in the server: the
-// client derives its key per connection, so a pinned key only fits the session
-// it was captured from. It is recorded and the verbatim trace above still
-// stands on its own, so nothing is lost when the key does not match.
+// SECURITY-SENSITIVE: the codec is derived from the session's own sid, because
+// that is where the client takes its password from -- see sio.PasswordForSid.
+// Every session can therefore be read, not only the one a key was captured
+// from, and OPG3D_SIO_KEY is no longer needed to see inside this channel. A
+// pinned key still wins when it is set, so an old capture can be replayed
+// against a fixed key while investigating.
+//
+// A failure is recorded rather than raised: the verbatim trace above stands on
+// its own, so nothing is lost when the bytes do not open.
 func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
-	if s.sio == nil || s.sio.codec == nil || len(a.attachments) == 0 {
+	if s.sio == nil || len(a.attachments) == 0 {
 		return
+	}
+
+	// The pinned codec is an override; without one the sid gives the key.
+	codec := s.sio.codec
+	if codec == nil {
+		derived, err := sio.NewForSid(session.sid, sio.DefaultMode)
+		if err != nil {
+			s.log.Event("socket.codec_underived", map[string]any{
+				"sid":  session.sid,
+				"err":  err.Error(),
+				"note": "the session id is not hex, so no codec follows from it",
+			})
+			return
+		}
+		codec = derived
 	}
 
 	decoded := make([][]byte, 0, len(a.attachments))
 	for i, att := range a.attachments {
-		plain, err := s.sio.codec.Decrypt(att.data)
+		plain, err := codec.Decrypt(att.data)
 		if err != nil {
 			s.log.Event("socket.attachment_undecodable", map[string]any{
 				"sid":   session.sid,
 				"num":   i,
 				"bytes": len(att.data),
-				"mode":  s.sio.codec.Mode().String(),
+				"mode":  codec.Mode().String(),
 				"err":   err.Error(),
-				"note":  "the pinned key does not fit this session; the client re-derives it per connection",
+				"note":  "the codec in force for this sid did not open the attachment",
 			})
 			return
 		}
@@ -448,7 +481,8 @@ func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 		"namespace":   a.namespace,
 		"ack":         a.ack,
 		"attachments": len(decoded),
-		"mode":        s.sio.codec.Mode().String(),
+		"mode":        codec.Mode().String(),
+		"key":         keyOrigin(s.sio.codec == nil),
 		"event":       s.log.Body(decoded[0]),
 	}
 	for i, plain := range decoded[1:] {

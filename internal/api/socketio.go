@@ -260,14 +260,12 @@ type sioHub struct {
 	// in either direction.
 	stableSid bool
 
-	// codec decrypts the client's binary attachments. It is nil unless a key
-	// is pinned in the configuration.
-	//
-	// The client re-derives its own key on every connection from an input that
-	// includes the socket.io session id, and that derivation is not reproduced
-	// yet, so a captured key only fits sessions that reuse the sid it was
-	// captured with. In practice that means it is only useful while stableSid
-	// is also on.
+	// codec is an optional pinned override for the payload cipher, non-nil only
+	// when a key is set in the configuration. The per-connection derivation is
+	// reproduced now (decodeBinaryEvent derives a codec from each session's
+	// sid), so this is no longer required to read attachments; it stays as a
+	// diagnostic hook for pinning captured key material by hand and takes
+	// precedence over the derived codec when set.
 	codec *sio.Codec
 }
 
