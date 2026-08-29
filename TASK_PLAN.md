@@ -2905,3 +2905,56 @@ can be run without a rebuild is worth the two fields.
       readable, or whether the client needs it named somewhere first
 - [ ] Consider hosting the late-polled names the client has no copy of
       (`GameModeEvents`, `ClanChests`, `AdsGun`, `OffersModules`)
+
+## Runs 63-64: the consumer calls get-text, and get-text reads the embedded set
+
+Run 63 was the restoration check after run 62 took the push away: the push is
+back, six `store id=... ok=1` are back, and the client is back where it was.
+The log of that run answered two questions that no server change could.
+
+**The client remembers what it stored.** Its boot poll now carries this
+server's own hashes back: `Boosters c5078ace838a9a63`, `TopUp
+5181351cf6887c00`, `TrophyRoad dfe85e46b697d7e3`, `ManualOffers
+d408b9c50beae45a`, `ConfrontationEvent b2cce38eae46fa54`,
+`CommandsWithFullSlots 574622668ac01548`. Storage is written, survives a
+restart, and is read back into the version list the client polls with. The
+documents are not lost; the client considers them current.
+
+**The consumer calls `get-text`, and gets nothing.** Every
+`[Boosters] ---- _config == null` is immediately preceded by
+`get-text id=167 null=0 chars=0`, and every `get-text` is preceded by
+`embedded set count@0x20=80`. So the accessor is not in doubt any more: the
+consumer asks the config system for the text of its ConfigId, the config system
+looks in the set of 80 documents baked into the build, and answers with an
+empty string for the six ids this server hosts. Storage and that set are two
+different places, and only the second one is read.
+
+The request coroutine is alive and does finish: `request step #1 state 0 -> 2`
+through `#274 state 2 -> -1 more=0`, waiting on `WaitUntil` between groups. It
+is not stalled waiting for a document.
+
+**Run 64 asked whether a missing document is the problem.** Of the 153 names
+the client polls, 80 come with an empty hash - it holds no copy of them at all,
+`ClanCommon` among them, and the small late polls add `GameModeEvents`,
+`ClanChests`, `AdsGun` and `OffersModules`. Five of those were given minimal
+documents and hosted. The delivery worked exactly as before - eleven
+`store id=... ok=1` including `id=69 bytes=25` for `ClanCommon` - and nothing
+else moved: the same four complaints, `get-text id=167` still empty, the same
+stop. `config 'ClanCommon' is null or empty` still fires, because it fires
+before the push arrives and reads the same embedded set.
+
+So hosting more names is not the missing piece, and neither is delivery,
+storage, the poll answer, nor `apply`. What is missing is the step that puts a
+stored document into the dictionary `get-text` reads. Nothing on the wire can
+be changed to find it: the next move is client-side, tracing the read at
+`libil2cpp.so+0x2606608` (`0x24981B0`) to see which field it consults, and the
+storage class at `dump2313.cs:448789` to see who ever loads from it.
+
+- [x] Confirm the stored documents survive a restart (the boot poll carries
+      this server's hashes)
+- [x] Identify the accessor behind `_config == null` (`get-text`, per-consumer,
+      immediately before each complaint)
+- [x] Rule out missing documents as the cause (run 64, five more hosted)
+- [ ] Trace `get-text` internals and the storage reader in a new libopg3d, and
+      find the loader that fills the readable dictionary
+- [ ] Keep the five stub documents unstaged until a device run shows a change
