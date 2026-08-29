@@ -687,19 +687,21 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 // sioProgressDocumentKey is the member of the init_progress reply the client
 // casts to a dictionary and applies.
 //
-// Run 51 read the name out of the running client instead of guessing it. The
-// consumer at RVA 0x17AB704 loads three string literals from its metadata
-// cells, and a trace at the applier's own entry point printed them at the
-// first moment the consumer had filled them in:
+// Run 52 pinned the caller down and it is not the Progress method runs 50 to
+// 52 assumed. The applier has exactly two callers; the return address its own
+// device trace printed, libil2cpp.so+0x3E753B8, is the instruction after the
+// call at 0x3E753B4 inside AuthSceneController's boot coroutine. That
+// coroutine awaits this request, takes the response object the task produces,
+// and hands the applier the object's member at +0x18 without checking it.
 //
-//	key whose presence ends the answer = "err_code"
-//	key whose value is cast to the applier's dictionary = "slots"
-//
-// The same trace caught the applier being handed a null, which settles what
-// the consumer does when the key is absent: it does not skip the call, it
-// casts a missing member and passes the null on. An answer without this key
-// is therefore not one the client quietly ignores, it is the one it dies on.
-const sioProgressDocumentKey = "slots"
+// So the name that matters is the one the client's socket layer turns into
+// that member. The run-52 answer put the document under "slots" and left
+// "result" carrying the acknowledgement string "ok", and the applier was
+// handed a null - which is what a failed cast to Dictionary<string, object>
+// leaves behind. That puts the document back under "result": of the members
+// this server controls it is the one that was holding a string at the moment
+// the cast produced nothing.
+const sioProgressDocumentKey = "result"
 
 // sioProgressRejected is the client's own code for a refused progress sync. It
 // is written here only to name what this server deliberately never sends.
@@ -709,31 +711,17 @@ const sioProgressRejected = 1602
 // the authoritative document the client applies slot by slot.
 //
 // Run 48 answered this event with the bare acknowledgement and the boot died
-// on the spot, which is what held the loading bar at 87%:
+// on the spot, which is what holds the loading bar at 87%:
 //
 //	NullReferenceException
 //	  at Progress.<applier> (System.Collections.Generic.Dictionary`2[TKey,TValue])
 //	  at AuthSceneController+<boot coroutine>[T].MoveNext ()
 //
-// The consumer is at 0x17AB704 in the 23.1.3 arm64 image, and its code reads:
-//
-//	if (ContainsKey(answer, <a>))        answer["err_code"] = 1602;
-//	if (ContainsKey(answer, "err_code")) { fail(answer); return; }
-//	if (ContainsKey(answer, <c>))        apply(answer[<c>] as Dictionary<string, object>);
-//
-// The apply is entered on ContainsKey alone and the cast result is passed on
-// unchecked: 0x17AB974 selects null when the isinst fails, and the applier
-// throws on a null argument at its first instruction, 0x2701904. So the crash
-// says <c> was present and was not a dictionary. This server sends exactly
-// three keys - req_id, error and result - and the first two arrive as integers
-// in every reply this client already accepts, which leaves result. It went out
-// as the string "ok".
-//
-// The middle key is not read off a guess either: its literal cell 0x67DB910 is
-// the one the Google Play bind check at 0x3DCFC04 indexes first, which runs 32
-// and 35 identified on the device as err_code. Leaving err_code out of this
-// reply is therefore deliberate - present, it means refusal, and the client
-// returns before it ever looks at the document.
+// The coroutine reads one member of the response object and passes it straight
+// to the applier, which throws on null at its first instruction, 0x2701904.
+// The applier is therefore entered whether that member is missing or merely
+// the wrong type, and a device trace confirmed it arrives null while the reply
+// itself decodes intact.
 //
 // The applier enumerates the document and parses each key as an integer slot
 // id, with a second path for the names that are not numeric, which is how the
@@ -781,7 +769,7 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 		"received":  len(snapshot),
 		"answered":  len(document),
 		"hash":      head.text("hash"),
-		"note":      "the document travels in slots; the applier casts that member to a dictionary",
+		"note":      "the document travels in result; the boot coroutine casts that member to a dictionary before applying it",
 	})
 	return body
 }
