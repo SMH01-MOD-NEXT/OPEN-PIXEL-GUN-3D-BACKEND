@@ -695,13 +695,22 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 // and hands the applier the object's member at +0x18 without checking it.
 //
 // So the name that matters is the one the client's socket layer turns into
-// that member. The run-52 answer put the document under "slots" and left
-// "result" carrying the acknowledgement string "ok", and the applier was
-// handed a null - which is what a failed cast to Dictionary<string, object>
-// leaves behind. That puts the document back under "result": of the members
-// this server controls it is the one that was holding a string at the moment
-// the cast produced nothing.
-const sioProgressDocumentKey = "result"
+// that member, and run 54 read it out of the client rather than guessing.
+// The request keeps the document in a field of its own, filled in exactly one
+// place: the reply reader at libil2cpp.so+0x17A8B40, which looks the answer up
+// by a single key, casts it to Dictionary<string, object>, and keeps a null
+// when the cast does not hold. A device probe named the two literals that
+// reader loads:
+//
+//	key holding the progress document = "progress"
+//	key holding the error code        = "err_code"
+//
+// The same probe listed the reply as the client saw it, "error" and "req_id"
+// as doubles and the document member as a dictionary, so the shape was never
+// the problem: "slots" and "result" were simply the wrong members. The client
+// sends its own snapshot under this name too and expects the server's
+// document back under it.
+const sioProgressDocumentKey = "progress"
 
 // sioProgressRejected is the client's own code for a refused progress sync. It
 // is written here only to name what this server deliberately never sends.
@@ -744,7 +753,8 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 		return body
 	}
 
-	snapshot, _ := head["progress"].(map[string]any)
+	// The client uploads under the same member it reads the answer from.
+	snapshot, _ := head[sioProgressDocumentKey].(map[string]any)
 	if len(snapshot) > 0 {
 		if _, err := s.st.MergeProfileProgressDocument(playerID, snapshot); err != nil {
 			// The client is waiting on a document, not on this server's
@@ -769,7 +779,7 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 		"received":  len(snapshot),
 		"answered":  len(document),
 		"hash":      head.text("hash"),
-		"note":      "the document travels in result; the boot coroutine casts that member to a dictionary before applying it",
+		"note":      "the document travels in progress, the member the reply reader casts to a dictionary before the boot coroutine applies it",
 	})
 	return body
 }
