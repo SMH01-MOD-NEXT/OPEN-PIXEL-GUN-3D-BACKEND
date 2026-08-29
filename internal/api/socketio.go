@@ -170,6 +170,11 @@ type sioSession struct {
 	device   string
 	playerID string
 
+	// authHash is the account hash the client presented in auth_v2. It is kept
+	// because get_binded_ids is answered with id/hash pairs and the hash the
+	// client authorised with is the only one this server can name truthfully.
+	authHash string
+
 	// pending is the binary event whose text header has arrived and whose
 	// attachments are still being collected. A socket.io binary event is split
 	// across one text packet and one frame per attachment, so the halves have

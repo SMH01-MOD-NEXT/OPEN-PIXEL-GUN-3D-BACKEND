@@ -42,15 +42,17 @@ import (
 
 // Event names the client emits after authorisation.
 const (
-	sioSubscribeEvent    = "subscribe"
-	sioProgressEvent     = "progress_status"
-	sioPrefsEvent        = "player_prefs"
-	sioLastCommandEvent  = "get_last_command"
-	sioRoomEvent         = "mmc_get_room"
-	sioOnlineEvent       = "update_player_online"
-	sioBindedIDsEvent    = "get_binded_ids"
-	sioCheckVersionEvent = "full_check_version"
-	sioRegisterPushEvent = "register_push"
+	sioSubscribeEvent     = "subscribe"
+	sioProgressEvent      = "progress_status"
+	sioPrefsEvent         = "player_prefs"
+	sioLastCommandEvent   = "get_last_command"
+	sioRoomEvent          = "mmc_get_room"
+	sioOnlineEvent        = "update_player_online"
+	sioBindedIDsEvent     = "get_binded_ids"
+	sioCheckBindedGCEvent = "check_binded_gc"
+	sioSocialIDKey        = "social_id"
+	sioCheckVersionEvent  = "full_check_version"
+	sioRegisterPushEvent  = "register_push"
 )
 
 // setIdentity records who authorised this session.
@@ -68,6 +70,21 @@ func (s *sioSession) identity() (uniqID, device, playerID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.uniqID, s.device, s.playerID
+}
+
+// setAuthHash records the account hash the client presented in auth_v2.
+func (s *sioSession) setAuthHash(hash string) {
+	s.mu.Lock()
+	s.authHash = hash
+	s.mu.Unlock()
+}
+
+// identityHash returns the hash this session authorised with. It is empty on a
+// first run, where the client has no account to name yet.
+func (s *sioSession) identityHash() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.authHash
 }
 
 // sioAnswer builds the single argument of a reply, or returns nil to send
@@ -96,6 +113,8 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerPlayerOnline
 	case sioBindedIDsEvent:
 		return (*Server).answerBindedIDs
+	case sioCheckBindedGCEvent:
+		return (*Server).answerCheckBindedGC
 	case sioCheckVersionEvent:
 		return (*Server).answerCheckVersion
 	case sioRegisterPushEvent:
@@ -117,11 +136,24 @@ func sioAnswerFor(event string) sioAnswer {
 
 // sioOK is the base every reply shares: the correlation id the client matches
 // on, plus the result spelling the retired HTTP contract used.
+//
+// Two consumers read `err_code` before anything else, and each threw when it
+// was absent. Run 32 found the version checker index
+// `info` on the way out; run 35 found the Google Play bind check index
+// `social_id` the same way, at 0x3DCFC04:
+//
+//	ContainsKey(answer, "err_code") ? (int)answer["err_code"]
+//	                        : answer["social_id"]  <- KeyNotFoundException
+//
+// The guard is the whole answer: a present err_code returns early and the
+// consumer never reaches the key it does not have. The code is not put here
+// on every reply, though - run 36 tried exactly that and the boot went quiet
+// instead, so the answers that need it carry it themselves.
 func sioOK(reqID int) map[string]any {
 	return map[string]any{
 		sioRequestIDKey: reqID,
 		"result":        "ok",
-		"error":         0,
+		"error":         sioErrNone,
 	}
 }
 
@@ -140,6 +172,8 @@ const (
 func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[string]any {
 	uniqID := head.text("uniq_id")
 	device := head.text("device")
+	// Kept for get_binded_ids, which is answered with id/hash pairs.
+	session.setAuthHash(head.text("hash"))
 
 	account, created, err := s.st.AdoptSocketIdentity(uniqID, device, "")
 	if err != nil {
@@ -197,6 +231,39 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	return body
 }
 
+// The client's config system speaks three keys per document: "h" is the hash of
+// the copy it already holds, "c" is the document body, and "v" is the document
+// version. A poll carries "h" for every config the client has cached and asks
+// this server to say which of those copies are stale.
+const (
+	sioConfigHashKey    = "h"
+	sioConfigBodyKey    = "c"
+	sioConfigVersionKey = "v"
+)
+
+// sioCachedConfigHash reads the hash the client reports for one polled config.
+//
+// An empty hash is a value, not a defect: it is the client saying it holds no
+// usable copy of that document. Measured on 2026-08-29 in run 25, 86 of the
+// 153 polled configs arrive that way, ClanCommon among them, and treating them
+// as unreadable dropped all 86 names out of the answer: the client heard back
+// about only the 67 documents it already had, logged Start wait config response
+// and then waited for the rest forever.
+//
+// An entry that carries no hash key at all is still reported rather than
+// guessed at, because acknowledging a hash that was never read would tell the
+// client a lie about its own cache.
+func sioCachedConfigHash(entry any) (string, bool) {
+	fields, ok := entry.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	if _, present := fields[sioConfigHashKey]; !present {
+		return "", false
+	}
+	return sioHead(fields).text(sioConfigHashKey), true
+}
+
 // answerSubscribe answers both shapes the client sends under this one name.
 //
 // A topic subscription names a feed: {"type":"friends_list", ...}. Only an
@@ -209,26 +276,54 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 //
 // The client's own encrypted config cache stores plaintext shaped
 // h_<16 hex>_c_<json>, so h is the hash of the copy it already has and the
-// answer's job is to say which of them changed. An empty change set is the
-// honest answer from this server: it does not host the 23.1.3 config bodies,
-// and naming a config as changed without supplying one would strand the client
-// waiting for content that never arrives. With nothing offered, the client
-// keeps using the cache it already has on disk.
+// answer's job is to say which of them changed. Echoing a hash back asserts
+// that the copy the client holds is current, and naming a config as changed
+// without supplying a body would strand the client waiting for content that
+// never arrives - so a config is named as changed only when this server can
+// hand over the whole document in the same reply.
+//
+// Exactly one document is hosted that way today: CommandsWithFullSlots, the
+// stale embedded copy of which is what held the loading bar at 79%. See
+// slot_config.go for the device measurement that established its shape.
+// Everything else is echoed, which is the truthful answer for a document this
+// server does not host.
 func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 
 	if list, ok := head["list"].(map[string]any); ok {
-		names := make([]string, 0, len(list))
-		for name := range list {
-			names = append(names, name)
+		acknowledged := make(map[string]any, len(list))
+		unreadable := 0
+		uncached := 0
+		served := 0
+		for name, entry := range list {
+			hash, ok := sioCachedConfigHash(entry)
+			if !ok {
+				unreadable++
+				continue
+			}
+			if hash == "" {
+				uncached++
+			}
+			if reply, changed := s.hostedConfigReply(name, hash); reply != nil {
+				acknowledged[name] = reply
+				if changed {
+					served++
+				}
+				continue
+			}
+			acknowledged[name] = map[string]any{sioConfigHashKey: hash}
 		}
 		s.log.Event("socket.config_polled", map[string]any{
-			"sid":     session.sid,
-			"req_id":  reqID,
-			"configs": len(names),
-			"note":    "answered with an empty change set; the client keeps its cached copies",
+			"sid":          session.sid,
+			"req_id":       reqID,
+			"configs":      len(list),
+			"acknowledged": len(acknowledged),
+			"unreadable":   unreadable,
+			"uncached":     uncached,
+			"served":       served,
+			"note":         "every polled name is answered; an empty hash means the client holds no copy of that document, which is answered rather than dropped",
 		})
-		body["list"] = map[string]any{}
+		body["list"] = acknowledged
 		return body
 	}
 
@@ -238,12 +333,40 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 	return body
 }
 
+// sioProgressEnabledKey names the single integer the auth scene waits for in
+// this answer. The name was read out of the live client; the meaning was read
+// off the screen: the client stores "true" when the value is zero and raises
+// its technical works screen, so zero is how a live server announces downtime
+// and one says it is open. Either value satisfies the waiting scene, which only
+// needs the field to be present.
+const (
+	sioProgressEnabledKey = "enabled"
+
+	// sioProgressOpen and sioProgressMaintenance are the only two values this
+	// field is allowed to carry. Neither is hardcoded into an answer: the one
+	// that goes out is whatever the operator's switch says, so downtime stays
+	// a server decision and the client needs no knowledge of it.
+	sioProgressOpen        = 1
+	sioProgressMaintenance = 0
+)
+
+// progressEnabled maps the operator's maintenance switch onto the integer the
+// auth scene reads. It is the socket half of the flag the liveness endpoint
+// already reports over HTTP: one switch, announced on both channels.
+func (s *Server) progressEnabled() int {
+	if s.settings.snapshot().Maintenance {
+		return sioProgressMaintenance
+	}
+	return sioProgressOpen
+}
+
 // answerProgressStatus hands back the progress this server holds for the
 // player. A fresh profile answers with an empty object, which is the truthful
 // answer for an account that has never synchronised.
 func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["progress"] = map[string]any{}
+	body[sioProgressEnabledKey] = s.progressEnabled()
 
 	profile, ok := s.sessionProfile(session)
 	if !ok {
@@ -310,12 +433,79 @@ func (s *Server) answerPlayerOnline(session *sioSession, head sioHead, reqID int
 	return sioOK(reqID)
 }
 
-// answerBindedIDs reports no linked external accounts. Nothing in this
-// deployment binds a Google or Facebook identity, so an empty list is the
-// accurate answer rather than a placeholder.
+// answerBindedIDs answers the client's request for the accounts bound to this
+// player.
+//
+// The `ids` list is not what the client reads. Its parser for this answer looks
+// for `err_code` first and treats any value of one or more as a failure, and
+// only when that key is absent does it look for a `user_characters` dictionary
+// and build the bound-account object out of it. An answer carrying neither key
+// leaves that object unset, and the login scene waits on it forever - that wait
+// is the stall at 79%.
+//
+// The dictionary is not a list of external logins either. The builder that
+// turns it into that object was read out of the running client: it walks the
+// dictionary's own `ids` list and, for every entry, takes exactly two values -
+// `id` and `hash` - and adds that pair to a set. It then hands back the built
+// object only if the set ended up with at least one member; otherwise it
+// returns nothing at all and the login scene waits forever. An entry missing
+// either half never reaches the set, which is why a list of {id, user_id}
+// entries counted for nothing.
+//
+// The accurate answer is therefore this player themselves, named the way the
+// builder reads it: this deployment gives every account exactly one identity,
+// its own, so one entry carrying the id this socket authenticated as and the
+// hash it authorised with is what the client is asking for. The outer `ids`
+// list stays empty because no external identity is bound.
+//
+// The same builder also accepts `info`, `mobile_pay_shown`, `target_ad`,
+// `inhouse_log_level`, `update_banner_version`, `hub_version` and
+// `change_log_data`, each behind its own presence check. They are left out:
+// this server has nothing true to say about them yet, and their absence only
+// leaves the object's defaults in place.
 func (s *Server) answerBindedIDs(session *sioSession, head sioHead, reqID int) map[string]any {
+	_, _, playerID := session.identity()
+	if playerID == "" {
+		return sioDenied(reqID)
+	}
+	hash := session.identityHash()
+	if hash == "" {
+		// A first run authorises without a hash, so the id this server just
+		// assigned is the only name it can give the identity. What the builder
+		// requires is that both halves are there.
+		hash = playerID
+	}
 	body := sioOK(reqID)
 	body["ids"] = []any{}
+	body["user_characters"] = map[string]any{
+		"id":  playerID,
+		"ids": []any{map[string]any{"id": playerID, "hash": hash}},
+	}
+	return body
+}
+
+// answerCheckBindedGC answers the Google Play bind check.
+//
+// The consumer at 0x3DCFC04 is not the error reader it looked like. Reading
+// the whole method, rather than its first branch, shows what it really does:
+//
+//	if answer has err_code -> return (int)answer[err_code]   // and nothing else
+//	else                   -> store answer[social_id] into the class static
+//	                          at +0x30, look up a second key into +0x38,
+//	                          return 0
+//
+// That static at +0x30 is exactly what the auth scene polls: the predicate at
+// 0x3DC739C loads the same class, reads statics+0x30 and returns true when it
+// is non-null. The client prints `Start wait info about Game Center` and waits
+// for the store, so an error code answers the question and strands the boot -
+// run 37 polled that predicate 2880 times and never got past it.
+//
+// So the bind check has to be answered with the field, not with a code. The
+// empty string is the honest value: the store is what the scene waits for, and
+// an empty id is how a client reads `no account is bound here`.
+func (s *Server) answerCheckBindedGC(session *sioSession, head sioHead, reqID int) map[string]any {
+	body := sioOK(reqID)
+	body[sioSocialIDKey] = ""
 	return body
 }
 
@@ -331,6 +521,12 @@ func (s *Server) answerCheckVersion(session *sioSession, head sioHead, reqID int
 	if version := head.text("app_version"); version != "" {
 		body["app_version"] = version
 	}
+	// The client reads this answer in UpdatesChecker directly: it takes
+	// err_code when the key is present, and otherwise indexes head[info],
+	// which throws KeyNotFoundException inside the socket event dispatch and
+	// tears down the rest of that dispatch. Answering with an explicit zero
+	// keeps the client on the branch that needs no update document.
+	body["err_code"] = 0
 	return body
 }
 

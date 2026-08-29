@@ -244,6 +244,12 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 	if !s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body) {
 		return
 	}
+	if event == sioSubscribeEvent {
+		// The poll is answered above for the facade that asked it; the
+		// documents themselves go to the config system, which listens on
+		// its own event. See socketio_configpush.go for the measurement.
+		s.pushConfigDocuments(session, a.namespace, a.transport, codec, head)
+	}
 	if event == sioAuthEvent {
 		// Authorisation is the one reply the loading bar waits on, so it keeps
 		// a line of its own naming the identity the client presented.
