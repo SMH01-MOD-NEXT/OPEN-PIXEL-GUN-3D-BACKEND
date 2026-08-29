@@ -2677,3 +2677,62 @@ instead of the stored slots.
 - [ ] Answer get_progress_slots with the stored slots
 - [ ] Answer update_accessories, get_player_version and refund_get for real
 - [ ] Index generic instantiations in tools/symbolize_log.py
+
+## Run 56: the 90% stop is five documents nobody hosts
+
+The client clears the applier and stalls at 90% with five consumers complaining
+at once:
+
+    [TrophyRoad] ---- parse error, message below
+    [TopUp] ---- _config == null
+    [ManualOffers] ---- _config == null
+    [ConfrontationEvent] ---- _config == null
+    [Boosters] ---- _config == null
+
+The poll names the cause without any client-side work. In
+logs/backend-2026-08-29.log each of those five names arrives with an empty hash
+in 84 polls of the day and with a fingerprint in 8, while CombatTokens, ExpOpen
+and WearSkins carry a fingerprint in all 100. An empty hash is the client saying
+it holds no copy. This server hosted exactly one document - CommandsWithFullSlots,
+built into slot_config.go - so hostedConfigReply returned nil for every other
+name and each was answered with its own empty hash echoed back. Every poll of
+the day logged served=0 except the three that served the slot document, and all
+three pushes carried documents=1.
+
+The consumer messages are a family, not five special cases. global-metadata.dat
+holds the same two literals for ExpOpen, WearSkins, RecipeSystem, GraffitiSystem,
+CombatTokens, Piggy and Achievements, so any unhosted config will report itself
+the same way once its screen is reached. TrophyRoad differs only in having a
+second source: [TrophyRoad] ---- parse from prefs error, message below sits
+beside it, so a missing document reaches that parser as empty text rather than
+as a null reference.
+
+The shape of a document was measured, not guessed. The client's own parsers dump
+what they receive to /sdcard/Android/data/com.pixel.gun3d/files/opg3d-doc-*.json;
+the 14 files written there at 18:34 local (BalanceRewards, BalanceWeaponSkins,
+BalanceOthers, BalanceLeveling and the rest of the Balance family) are each a
+JSON object whose first member is configId naming the document - the same object
+the client's config cache stores as the plaintext h_<16 hex>_c_<object>.
+
+### The fix
+
+content/sio-configs/<Name>.json is now where hosted documents come from.
+hostedConfigDocument reads that directory first and falls back to the built-in
+slot document, so both delivery paths - the poll answer (h, c, v) and the push
+(val, hash) - serve any named document without a rebuild. A polled name is
+refused as a file name unless it is a plain identifier, because those names
+arrive from the client. The hash stays the sha256 prefix of the re-encoded
+document, so reindenting a file does not tell every client its copy went stale.
+The push now batches: each push spends two attachments on the event name and
+argument, so documents beyond the 14 that fit go out in further pushes instead
+of being dropped, which matters because the client polls once per boot.
+
+The five names are seeded with the minimum the measurement supports,
+{"configId": "<Name>"} and nothing invented on top of it. If a consumer needs a
+member, the next logcat names it and the answer is a file edit rather than a
+build.
+
+- [x] Serve the missing configs from files instead of from code
+- [x] Batch the push so more than 14 documents can be delivered
+- [ ] Confirm on the device that the five consumers stop reporting null
+- [ ] Host ClanCommon the same way if the clan screen still reports it empty
