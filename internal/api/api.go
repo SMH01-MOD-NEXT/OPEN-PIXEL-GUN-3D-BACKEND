@@ -48,11 +48,17 @@ type Server struct {
 	// running. Handlers read them through a snapshot instead of reading the
 	// environment seed directly.
 	settings *settings
+
+	// configNonce salts hosted document fingerprints when ConfigHashNonce is
+	// on. It is fixed for the life of the process, so the poll answer and the
+	// push state the same fingerprint for the same document.
+	configNonce string
 }
 
 // New builds the router.
 func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
 	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log)), settings: newSettings(cfg)}
+	s.configNonce = newConfigNonce()
 	if err := s.settings.load(); err != nil {
 		// A settings file that cannot be read must not stop the server: the
 		// environment seed is still a valid configuration to serve from.

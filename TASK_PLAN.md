@@ -2958,3 +2958,60 @@ storage class at `dump2313.cs:448789` to see who ever loads from it.
 - [ ] Trace `get-text` internals and the storage reader in a new libopg3d, and
       find the loader that fills the readable dictionary
 - [ ] Keep the five stub documents unstaged until a device run shows a change
+
+## Runs 65-68: the client ingests every body in full, and the reader still sees nothing
+
+Four runs closed the delivery question. The client does not merely receive the
+documents this server pushes: it parses them, re-encodes them with its keys in
+alphabetical order, and saves the result. Run 67 printed the saved bytes for all
+eleven names, and decoding them returns this server's own documents, byte count
+intact:
+
+	{"bs":{"bp":{},"id":"none",...},"configId":"Boosters","e":false,...}   156 bytes
+	{"cg":0,"configId":"TopUp","cu":0,"d":"00:00:00",...}                  231 bytes
+	{"configId":"TrophyRoad","crs":{"irs":{},"its":[],...},...}            163 bytes
+
+So the wire is not the problem, the encoding is not the problem, and the bodies
+are not the problem. Every read of those names still answers with an empty
+string, and every consumer still says `_config == null`.
+
+What each run ruled out:
+
+* Run 65 salted the fingerprint (`OPG3D_CONFIG_HASH_NONCE`) so that no document
+  could ever state a fingerprint the client already holds. The comparison the
+  handler makes is real, but losing it changes nothing: the same eleven bodies
+  were stored, no entry gained text, and the reader kept answering `chars=0`.
+* Run 65 also settled what run 64's five insertions were worth. The reader's
+  dictionary booted at 85 entries instead of 80, so names this server introduces
+  do survive a restart - as entries without text. The five new names joined the
+  six old ones in the same dead state rather than escaping it.
+* Run 66 combined the salt with `OPG3D_CONFIG_ALWAYS_SERVE`, so the poll answer
+  carried every body as well and the client could not consider its copy current.
+  No change.
+* Run 67 widened the vocabulary of each push record (`OPG3D_CONFIG_PUSH_ALIASES`)
+  to state the body index and fingerprint under `h`, `c` and `v` beside `val`
+  and `hash`, in case the reader takes the text from a key the handler never
+  writes. No change, and the handler's own `save incoming config` line appeared
+  exactly twelve times, as it has since run 64.
+* Run 68 replaced the hard kill with a home press and a six second pause before
+  the restart, in case the texts were lost to a flush that never ran. The
+  dictionary booted at 85 again and every read stayed empty.
+
+The boundary is now exact. The push handler owns two destinations: the storage
+it writes with `store id=<n> ok=1`, and the reader's dictionary, where it only
+ever leaves a fingerprint. The text a consumer reads is written by neither. The
+eighty names that answer with a body were populated before any of this server's
+traffic arrived, which is why they answer and ours never will, no matter what
+this server sends or how it spells it.
+
+That makes the next question a client-side measurement rather than another
+guess on the wire: which key the reader looks up inside an entry, and which
+writer fills it. The trace to add sits at the two places already located, the
+parse-side insert at 0x24A2B44 and the reader's inner lookup in 0x24A0E10, and
+it needs to print the keys of the inner dictionary rather than its count. The
+fix stays here afterwards - the trace only names the field this server has to
+make the handler write.
+
+The two flags this batch added stay off by default. They cost nothing when
+unset and they are the controls that proved the fingerprint and the record
+vocabulary are not the barrier.

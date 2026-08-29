@@ -42,6 +42,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 )
 
 const (
@@ -140,12 +142,53 @@ func (s *Server) hostedConfigFromFile(name string) (hostedConfig, bool) {
 		})
 		return hostedConfig{}, false
 	}
-	sum := sha256.Sum256(body)
 	return hostedConfig{
 		document: document,
 		body:     body,
-		hash:     hex.EncodeToString(sum[:8]),
+		hash:     s.hostedConfigHash(body),
 	}, true
+}
+
+// newConfigNonce returns the salt one run of this server states in its
+// fingerprints. The value only has to differ between runs, so the clock is
+// enough.
+func newConfigNonce() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+
+// hostedConfigHash is the fingerprint this server states for a document body.
+//
+// Run 64 measured what the fingerprint decides, by reading the client's own
+// dictionary as the push was handled. The handler looks the polled name up in
+// the dictionary its readers consult, and:
+//
+//	store id=167 ... embedded set count 80  -> 80   (Boosters, held, skipped)
+//	store id=69  ... embedded set count 80  -> 81   (ClanCommon, new, inserted)
+//	store id=7   ... embedded set count 81  -> 81   (held, skipped)
+//	store id=4/38/88/47                     -> 82/83/84/85 (new, inserted)
+//
+// The five names the client held no copy of were inserted; the six it had
+// stored on an earlier run were not. The difference is the fingerprint: the
+// handler compares the one it already holds against the one being delivered
+// and skips the body when they match. That dictionary is rebuilt at boot with
+// fingerprints but without texts - which is why the client polls with this
+// server's own hashes and still answers get-text with nothing - so a document
+// it stored once can never be delivered again while the fingerprint is
+// honest about the bytes.
+//
+// With ConfigHashNonce on, the fingerprint is that digest salted with a value
+// fixed for this run, so it cannot equal anything the client stored earlier
+// and the handler takes the branch that writes the text. Nothing verifies the
+// fingerprint against the body: the client uses it as the name of a cache
+// entry and as the equality test above, both of which a salted digest
+// satisfies.
+func (s *Server) hostedConfigHash(body []byte) string {
+	sum := sha256.Sum256(body)
+	if !s.cfg.ConfigHashNonce {
+		return hex.EncodeToString(sum[:8])
+	}
+	salted := sha256.Sum256(append(sum[:], s.configNonce...))
+	return hex.EncodeToString(salted[:8])
 }
 
 // hostedConfigDocument returns the document this server hosts for one polled
@@ -161,7 +204,7 @@ func (s *Server) hostedConfigDocument(name string) (hostedConfig, bool) {
 	if name != sioFullSlotsConfig {
 		return hostedConfig{}, false
 	}
-	body, hash, ok := fullSlotsPayload()
+	body, _, ok := fullSlotsPayload()
 	if !ok {
 		return hostedConfig{}, false
 	}
@@ -169,5 +212,5 @@ func (s *Server) hostedConfigDocument(name string) (hostedConfig, bool) {
 	if !ok {
 		return hostedConfig{}, false
 	}
-	return hostedConfig{document: document, body: []byte(body), hash: hash}, true
+	return hostedConfig{document: document, body: []byte(body), hash: s.hostedConfigHash([]byte(body))}, true
 }

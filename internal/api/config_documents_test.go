@@ -162,3 +162,33 @@ func TestConfigPushSplitsDocumentsAcrossPushes(t *testing.T) {
 		t.Fatalf("%d documents were pushed, want all %d", len(named), configPushDocumentLimit+extra)
 	}
 }
+
+// TestASaltedFingerprintCannotEqualTheOneTheClientHolds pins the run-64
+// measurement: the client skips a delivered document when the fingerprint it
+// already holds equals the one being delivered, so a run may state a
+// fingerprint the client cannot have stored earlier.
+func TestASaltedFingerprintCannotEqualTheOneTheClientHolds(t *testing.T) {
+	s, cfg := newTestServer(t)
+	body := []byte(`{"configId":"Boosters"}`)
+
+	honest := s.hostedConfigHash(body)
+
+	cfg.ConfigHashNonce = true
+	s.configNonce = "run-65"
+	salted := s.hostedConfigHash(body)
+
+	if salted == honest {
+		t.Fatalf("the salt left the fingerprint unchanged, so the client would skip the body again: %s", salted)
+	}
+	if again := s.hostedConfigHash(body); again != salted {
+		t.Fatalf("the fingerprint moved within one run (%s then %s), so the poll answer and the push would disagree", salted, again)
+	}
+	if len(salted) != len(honest) {
+		t.Fatalf("the client reads a %d character fingerprint, this one is %d", len(honest), len(salted))
+	}
+
+	s.configNonce = "run-66"
+	if next := s.hostedConfigHash(body); next == salted {
+		t.Fatal("two runs stated the same fingerprint, so the second run would be skipped")
+	}
+}

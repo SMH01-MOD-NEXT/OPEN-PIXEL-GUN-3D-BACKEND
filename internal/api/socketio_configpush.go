@@ -163,10 +163,22 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 				documents: make([][]byte, 0, configPushDocumentLimit),
 			}
 		}
-		current.entries[name] = map[string]any{
+		entry := map[string]any{
 			sioPushBodyKey: len(current.documents),
 			sioPushHashKey: hosted.hash,
 		}
+		if s.cfg.ConfigPushAliases {
+			// The reader does not go back to storage: it takes the text out
+			// of the entry the push handler leaves behind, under a key the
+			// handler never wrote in runs 64 to 66. h, c and v are the only
+			// three names this client is known to spell for a cached
+			// document, so the record states the body and its fingerprint
+			// under those as well and leaves the handler to pick.
+			entry[sioConfigHashKey] = hosted.hash
+			entry[sioConfigBodyKey] = len(current.documents)
+			entry[sioConfigVersionKey] = hostedConfigVersion
+		}
+		current.entries[name] = entry
 		current.documents = append(current.documents, hosted.body)
 		if len(current.documents) == configPushDocumentLimit {
 			batches = append(batches, current)

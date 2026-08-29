@@ -105,6 +105,32 @@ type Config struct {
 	// alone does, which is the only way to tell the two delivery paths apart.
 	ConfigPush bool
 
+	// ConfigHashNonce salts the fingerprint this server states for every hosted
+	// document with a value that changes each time the server starts.
+	//
+	// DIAGNOSTIC, off by default. Run 64 measured the client's own reason for
+	// ignoring a delivered document: its config system looks the name up in the
+	// dictionary its readers consult, compares the fingerprint it already holds
+	// with the one being delivered, and skips the body when the two are equal.
+	// The dictionary is rebuilt from storage at boot with fingerprints but
+	// without texts, so a document this client already stored once can never be
+	// delivered again: the fingerprints match and the text stays missing. A
+	// fingerprint the client cannot already hold takes the other branch.
+	ConfigHashNonce bool
+
+	// ConfigPushAliases widens the vocabulary of one push record.
+	//
+	// A record states two keys the handler is known to read: val, the index of
+	// the attachment that carries the body, and hash, the fingerprint of that
+	// body. Runs 64 to 66 measured what happens next: the handler stores the
+	// body, and for a name it has no entry for it even creates one, yet every
+	// later read of that name returns an empty string. The reader takes the
+	// text out of the entry under a key of its own, so a record that never
+	// spells that key leaves the entry text-less no matter how the fingerprint
+	// compares. This states the same body and fingerprint under the cache
+	// vocabulary the client uses in its own poll as well.
+	ConfigPushAliases bool
+
 	Update Update
 }
 
@@ -125,6 +151,8 @@ func Load() (*Config, error) {
 		SioReply:          envBool("OPG3D_SIO_REPLY", true),
 		ConfigAlwaysServe: envBool("OPG3D_CONFIG_ALWAYS_SERVE", false),
 		ConfigPush:        envBool("OPG3D_CONFIG_PUSH", true),
+		ConfigHashNonce:   envBool("OPG3D_CONFIG_HASH_NONCE", false),
+		ConfigPushAliases: envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
 		PhotonAppIDs:      map[string]string{},
 		PhotonRegion:      env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{
