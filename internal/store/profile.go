@@ -59,6 +59,12 @@ type Profile struct {
 	// reads every member of this document as a progress slot.
 	ProgressDocument map[string]any `json:"progress_document,omitempty"`
 
+	// ProgressSlots is the slot document the client uploads with create_slots
+	// and reads back from get_progress_slots. It is kept apart from
+	// ProgressDocument because the two travel under different members and the
+	// client synchronises them at different points of its boot.
+	ProgressSlots map[string]any `json:"progress_slots,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -80,6 +86,7 @@ func (p *Profile) clone() Profile {
 	}
 	out.Progress = cloneAnyMap(p.Progress)
 	out.ProgressDocument = cloneAnyMap(p.ProgressDocument)
+	out.ProgressSlots = cloneAnyMap(p.ProgressSlots)
 	if p.TransferredAt != nil {
 		at := *p.TransferredAt
 		out.TransferredAt = &at
@@ -270,6 +277,38 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 	}
 	for key, value := range document {
 		profile.ProgressDocument[key] = cloneAny(value)
+	}
+	profile.UpdatedAt = time.Now().UTC()
+	if err := s.persistLocked(); err != nil {
+		return Profile{}, err
+	}
+	return profile.clone(), nil
+}
+
+// MergeProfileProgressSlots folds the slot document the client uploads with
+// create_slots into the stored profile.
+//
+// A slot arrives as the client's own encoding of that one slot, so a slot that
+// is sent replaces its stored copy whole and a slot that is not sent is left
+// as it was. That is the rule the boot document already follows, for the same
+// reason: the client owns the slot set, and half merging two versions of one
+// slot would produce a state neither side ever held.
+func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any) (Profile, error) {
+	playerID = strings.TrimSpace(playerID)
+	if playerID == "" {
+		return Profile{}, errors.New("store: empty player id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profile, err := s.ensureProfileLocked(playerID, "")
+	if err != nil {
+		return Profile{}, err
+	}
+	if profile.ProgressSlots == nil {
+		profile.ProgressSlots = make(map[string]any, len(slots))
+	}
+	for key, value := range slots {
+		profile.ProgressSlots[key] = cloneAny(value)
 	}
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {

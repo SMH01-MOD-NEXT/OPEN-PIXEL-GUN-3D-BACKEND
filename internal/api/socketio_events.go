@@ -122,6 +122,10 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerRegisterPush
 	case sioInitProgressEvent:
 		return (*Server).answerInitProgress
+	case sioProgressSlotsEvent:
+		return (*Server).answerProgressSlots
+	case sioCreateSlotsEvent:
+		return (*Server).answerCreateSlots
 	default:
 		// Anything else gets the minimal acknowledgement rather than silence.
 		//
