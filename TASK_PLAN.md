@@ -2574,3 +2574,52 @@ watchdog: it still skips InitializeSwitcher state 35 on every boot
 served yet - it was skipped when the server could not answer at all. The next
 investigation is what state 35 waits for, so it can be answered instead of
 skipped and the watchdog can be removed.
+
+### Runs 48-49: the 87% stall and the config push envelope
+
+Run 48 was the furthest boot yet. Every event the client sent was answered,
+both auth-scene waits cleared instantly, and the loading bar reached 0.750
+before the boot coroutine died on a NullReferenceException inside the progress
+applier. The blind acknowledgement this server sent for init_progress was the
+suspect: the consumer at 0x17AB704 enters the applier on ContainsKey alone and
+passes the isinst result on unchecked, so a member that is not a dictionary
+arrives as null and throws at the first instruction of the applier, 0x2701904.
+
+The same run exposed a second, independent defect. The config system iterates
+the top level of a push and reads every key as a config name, and the push
+carried the ordinary reply envelope:
+
+    [ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: error
+    [ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: list
+    [ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: result
+
+The gate opened, so the push looked healthy in the log of this server while not
+one document was ingested.
+
+Three changes went in for run 49. The store keeps the boot document in its own
+field, apart from the flat counters register_push writes, because the applier
+reads every member of the document as a slot. init_progress has a real handler
+that persists the snapshot and answers with the stored document. And the push
+argument is now the bare name map with no envelope around it.
+
+Run 49 settled one of the two. The Unknown configId lines are gone: the client
+now finds the config by name and asks for the next thing it needs, naming it
+out loud - Key 'val' not found: CommandsWithFullSlots. The entry shape is the
+remaining work there, and it is a measured next step rather than a guess.
+
+The 87% stall did not move, and the trace says it is not a delivery problem.
+The reply was decrypted intact with all 25 slots in result, dispatch #18 for
+init_progress ran and returned, and the NullReferenceException followed four
+milliseconds later. The document reached the consumer and the cast still
+produced null.
+
+That narrows the third literal to something this reply already carries. The
+answer holds exactly three members - error, req_id and result - and result is
+now a dictionary, so either the literal is error or req_id, both integers, or
+the parser of the client hands nested objects back as Dictionary<object,
+object> while the caller casts to Dictionary<string, object>. Run 50 settles it
+with a trace-only probe in the client that prints the runtime type of each
+member and resolves the three literal cells to their managed strings.
+
+Housekeeping: the game process is force-stopped and logcat is killed at the end
+of every run, so nothing is left hanging on the device.
