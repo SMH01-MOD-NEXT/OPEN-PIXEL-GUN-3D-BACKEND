@@ -2623,3 +2623,57 @@ member and resolves the three literal cells to their managed strings.
 
 Housekeeping: the game process is force-stopped and logcat is killed at the end
 of every run, so nothing is left hanging on the device.
+
+## Runs 50-55: the 87% stall is broken
+
+Runs 50 to 53 kept guessing the name of the member the boot coroutine applies.
+"slots" produced a null document, "result" produced a null document, and each
+guess cost a full run to disprove. Two of those runs were spent on the wrong
+method entirely, because tools/symbolize_log.py does not index generic
+instantiations and resolved the applier's return address to a method 166 KB
+away. The real caller is the boot coroutine of AuthSceneController: the call at
+0x3E753B4 inside its generic MoveNext hands the applier the response member at
++0x18 without checking it.
+
+Run 54 stopped guessing and read the answer out of the client. The response is
+built by the socket callback at 0x17A88A4, and its document member is not taken
+from the reply body at all - it is copied from a field the request fills in
+exactly one place, the reply reader at 0x17A8B40. That reader looks the answer
+up by a single key, casts it to Dictionary<string, object>, and keeps a null
+when the cast does not hold. A probe on that reader printed the two literals it
+loads:
+
+    key holding the progress document = "progress"
+    key holding the error code        = "err_code"
+
+The second is the control, since run 51 had already resolved that cell to
+err_code by other means. The same probe listed the reply as the client saw it,
+error and req_id as doubles and the document member as a dictionary, which
+retired the last competing theory. The shape was never wrong. The name was.
+
+Run 55 answered init_progress with the document under progress. There was no
+NullReferenceException. The applier was handed a 25-entry dictionary,
+InitializeSwitcher finished at state 45, LoadMainMenu completed its tail
+(state 0 -> 2, result=1), the loading watchdog disarmed itself because the
+Switcher is destroyed with its scene, and the client produced traffic it had
+never reached before: get_progress_slots, create_slots, 23 update_progress,
+8 update_accessories, get_player_version and refund_get. The Unity activity is
+top-resumed with no ANR, and two screen captures four seconds apart differ, so
+the menu is drawing rather than frozen on a last frame.
+
+The 90% stop that was expected next never appeared. The client went from the
+87% point into the menu in one step.
+
+That run exposed the next piece of work. Forty events were answered by the
+generic acknowledgement, and among them are the ones carrying the state of the
+player: update_progress arrived 23 times in under three seconds, and
+create_slots brought slots 25 to 30 that the stored document does not have.
+Nothing persists either of them, and get_progress_slots is answered with ok
+instead of the stored slots.
+
+- [x] Read the literal the reply reader loads instead of guessing it
+- [x] Answer init_progress under the progress member the client casts
+- [ ] Persist update_progress and create_slots into the stored document
+- [ ] Answer get_progress_slots with the stored slots
+- [ ] Answer update_accessories, get_player_version and refund_get for real
+- [ ] Index generic instantiations in tools/symbolize_log.py
