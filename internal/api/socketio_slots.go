@@ -4,52 +4,49 @@ package api
 
 // Answers for the slot half of the boot handshake.
 //
-// Run 57 left the client parked in AuthSceneState.Authorized (2). The auth
-// scene never dispatched FullySynchronized (3) - the state that ends the
-// loading animation - and the bar stayed at 90% with its spinner running. The
-// session log names the two calls that sit between those states, and this
-// server answered both with the bare fallback acknowledgement:
+// The two calls sit between AuthSceneState.Authorized (2) and
+// FullySynchronized (3), the state that ends the loading animation:
 //
 //	req_id 18  get_progress_slots  {"player_id":"918930694"}
 //	req_id 19  create_slots        {"slots":{"25":{"v":{...}}, "26":{...}, ...}}
 //
-// The member name is the client's own rather than this server's invention:
-// create_slots uploads the document under "slots", and a client that uploads
-// its slots is a client that was just told the server holds none of them.
+// Run 58 measured what happens when the reply carries the member the client
+// uploads its slots under. Answering get_progress_slots with an empty "slots"
+// dictionary made the boot worse rather than better: the client never sent
+// create_slots at all, none of the subscribe and update_progress traffic that
+// normally follows it appeared, and the bar fell back from 90% to 87%. The
+// bare acknowledgement of run 57 is what makes the client upload its slots and
+// carry on, so that is what this server sends.
 //
-// Two earlier stalls in this same boot had the identical shape - a consumer
-// indexing a member the reply did not carry, throwing inside the client's own
-// handler, and leaving behind a pending request nothing ever completes. So the
-// member is always answered, even when it is empty: an empty dictionary
-// survives both the lookup and the cast, and a client with no slots yet is a
-// legitimate first run, not an error.
+// The upload is still stored. The client cannot tell the difference - the
+// reply is byte for byte the fallback's - and it is state a real server owns.
+// Serving it back is a separate question, and run 58 answered "not as an empty
+// dictionary"; the shape that a client with slots expects has to be read out
+// of the client before it is put on the wire again.
 
 const (
 	sioProgressSlotsEvent = "get_progress_slots"
 	sioCreateSlotsEvent   = "create_slots"
 
-	// sioSlotsKey is the member both calls travel under, read off the wire
-	// from the client's own create_slots upload.
+	// sioSlotsKey is the member the client uploads under. It is read here and
+	// deliberately not written back; see the note above.
 	sioSlotsKey = "slots"
 )
 
-// answerProgressSlots hands back the slot document this server holds for the
-// authorised account.
+// answerProgressSlots acknowledges the slot request and records what this
+// server holds for the account, so the gap between stored and served state
+// stays visible in the log.
 //
 // SECURITY: the payload names the player itself, so the id it claims is
-// checked against the one this socket authenticated as. Without that check any
-// authorised socket could read another player's slots by asking for them.
+// checked against the one this socket authenticated as.
 func (s *Server) answerProgressSlots(session *sioSession, head sioHead, reqID int) map[string]any {
-	body := sioOK(reqID)
-	body[sioSlotsKey] = map[string]any{}
-
 	_, _, playerID := session.identity()
 	if playerID == "" {
 		s.log.Event("socket.progress_slots_unowned", map[string]any{
 			"sid":  session.sid,
-			"note": "get_progress_slots arrived before auth_v2 bound an account; answered with an empty document",
+			"note": "get_progress_slots arrived before auth_v2 bound an account",
 		})
-		return body
+		return sioOK(reqID)
 	}
 	if claimed := head.text("player_id"); claimed != "" && claimed != playerID {
 		s.log.Event("socket.progress_slots_rejected", map[string]any{
@@ -61,32 +58,22 @@ func (s *Server) answerProgressSlots(session *sioSession, head sioHead, reqID in
 		return sioDenied(reqID)
 	}
 
-	if profile, ok := s.sessionProfile(session); ok && len(profile.ProgressSlots) > 0 {
-		body[sioSlotsKey] = profile.ProgressSlots
+	held := 0
+	if profile, ok := s.sessionProfile(session); ok {
+		held = len(profile.ProgressSlots)
 	}
-
-	slots, _ := body[sioSlotsKey].(map[string]any)
-	s.log.Event("socket.progress_slots_served", map[string]any{
+	s.log.Event("socket.progress_slots_asked", map[string]any{
 		"sid":       session.sid,
 		"player_id": playerID,
-		"slots":     len(slots),
-		"note":      "the document travels in slots, the member create_slots uploads it under",
+		"held":      held,
+		"note":      "acknowledged without a slots member; run 58 showed an empty one stops the client from uploading its own",
 	})
-	return body
+	return sioOK(reqID)
 }
 
 // answerCreateSlots stores the slot document the client uploads and answers
-// with the document as this server now holds it.
-//
-// The echo is deliberate. This is the client's first write of its own state
-// and the reply is the only place it can learn what the server accepted; the
-// boot document is synchronised the same way, and answering create_slots with
-// less than get_progress_slots would return is a disagreement the client has
-// no way to resolve.
+// with the same acknowledgement the fallback sent through run 57.
 func (s *Server) answerCreateSlots(session *sioSession, head sioHead, reqID int) map[string]any {
-	body := sioOK(reqID)
-	body[sioSlotsKey] = map[string]any{}
-
 	uploaded, _ := head[sioSlotsKey].(map[string]any)
 
 	_, _, playerID := session.identity()
@@ -95,7 +82,7 @@ func (s *Server) answerCreateSlots(session *sioSession, head sioHead, reqID int)
 			"sid":  session.sid,
 			"note": "create_slots arrived before auth_v2 bound an account; nothing was stored",
 		})
-		return body
+		return sioOK(reqID)
 	}
 	if claimed := head.text("player_id"); claimed != "" && claimed != playerID {
 		s.log.Event("socket.progress_slots_rejected", map[string]any{
@@ -111,31 +98,23 @@ func (s *Server) answerCreateSlots(session *sioSession, head sioHead, reqID int)
 	if len(uploaded) > 0 {
 		profile, err := s.st.MergeProfileProgressSlots(playerID, uploaded)
 		if err != nil {
-			// The client is waiting on its slots, not on this server's
-			// bookkeeping, so a failed write is recorded and the reply still
-			// carries whatever was stored before.
+			// The client is waiting on an acknowledgement, not on this
+			// server's bookkeeping, so a failed write is recorded and the
+			// reply still goes out.
 			s.log.Event("socket.profile_unsaved", map[string]any{
 				"player_id": playerID,
 				"part":      "progress_slots",
 				"err":       err.Error(),
 			})
-		} else if len(profile.ProgressSlots) > 0 {
-			body[sioSlotsKey] = profile.ProgressSlots
+		} else {
 			stored = len(profile.ProgressSlots)
 		}
 	}
-	if stored == 0 {
-		if profile, ok := s.sessionProfile(session); ok && len(profile.ProgressSlots) > 0 {
-			body[sioSlotsKey] = profile.ProgressSlots
-			stored = len(profile.ProgressSlots)
-		}
-	}
-
-	s.log.Event("socket.progress_slots_created", map[string]any{
+	s.log.Event("socket.progress_slots_stored", map[string]any{
 		"sid":       session.sid,
 		"player_id": playerID,
 		"received":  len(uploaded),
-		"answered":  stored,
+		"stored":    stored,
 	})
-	return body
+	return sioOK(reqID)
 }

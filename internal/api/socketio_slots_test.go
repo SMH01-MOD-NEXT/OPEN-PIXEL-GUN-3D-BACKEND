@@ -15,10 +15,13 @@ func clientSlotUpload() map[string]any {
 	}
 }
 
-// TestProgressSlotsAlwaysAnswersADictionary is the 90% stall, pinned. A first
-// boot owns no slots yet, and the member still has to be there: the client
-// indexes it out of the reply before it looks at anything else.
-func TestProgressSlotsAlwaysAnswersADictionary(t *testing.T) {
+// TestProgressSlotsAnswersWithoutASlotsMember pins the run 58 regression.
+//
+// Answering with an empty slots dictionary stopped the client from uploading
+// its own slots at all and moved the stall from 90% back to 87%. Until the
+// shape a client with slots expects is read out of the client, the reply is
+// the acknowledgement and nothing else.
+func TestProgressSlotsAnswersWithoutASlotsMember(t *testing.T) {
 	s, _ := newTestServer(t)
 	session := authorisedSession("0123456789abcdef01234567", "918930694")
 
@@ -27,30 +30,29 @@ func TestProgressSlotsAlwaysAnswersADictionary(t *testing.T) {
 		"player_id":     "918930694",
 	}, 18)
 
-	if _, ok := body[sioSlotsKey].(map[string]any); !ok {
-		t.Fatalf("%s is %T, want the dictionary the client casts it to", sioSlotsKey, body[sioSlotsKey])
+	if _, present := body[sioSlotsKey]; present {
+		t.Fatalf("the reply carries %s, and run 58 measured that as a regression to 87%%", sioSlotsKey)
 	}
 	if body[sioRequestIDKey] != 18 {
 		t.Fatalf("req_id is %v, so nothing completes the client's pending request", body[sioRequestIDKey])
 	}
-	if _, refused := body["err_code"]; refused {
-		t.Fatal("err_code is present, and consumers return on it before reading the document")
+	if body["error"] != sioErrNone {
+		t.Fatalf("error is %v, want the plain acknowledgement", body["error"])
 	}
 }
 
-// TestCreateSlotsStoresAndServesTheUpload pins the round trip: what the client
-// uploads is what the next boot is told it has.
-func TestCreateSlotsStoresAndServesTheUpload(t *testing.T) {
+// TestCreateSlotsStoresTheUploadWithoutEchoingIt pins both halves: the server
+// owns the slots afterwards, and the wire is unchanged from run 57.
+func TestCreateSlotsStoresTheUploadWithoutEchoingIt(t *testing.T) {
 	s, _ := newTestServer(t)
 	session := authorisedSession("0123456789abcdef01234567", "918930694")
 
-	created := s.answerCreateSlots(session, sioHead{
+	body := s.answerCreateSlots(session, sioHead{
 		sioRequestIDKey: float64(19),
 		sioSlotsKey:     clientSlotUpload(),
 	}, 19)
-	answered, ok := created[sioSlotsKey].(map[string]any)
-	if !ok || len(answered) != len(clientSlotUpload()) {
-		t.Fatalf("create_slots answered %v, want the %d slots that were sent up", created[sioSlotsKey], len(clientSlotUpload()))
+	if _, present := body[sioSlotsKey]; present {
+		t.Fatalf("the reply carries %s; run 57's acknowledgement is what the client boots on", sioSlotsKey)
 	}
 
 	profile, err := s.st.Profile("918930694")
@@ -62,12 +64,6 @@ func TestCreateSlotsStoresAndServesTheUpload(t *testing.T) {
 	}
 	if _, mixed := profile.ProgressDocument["25"]; mixed {
 		t.Fatal("the slot upload leaked into the init_progress document, which the client applies slot by slot")
-	}
-
-	served := s.answerProgressSlots(session, sioHead{sioRequestIDKey: float64(20)}, 20)
-	slots, ok := served[sioSlotsKey].(map[string]any)
-	if !ok || len(slots) != len(clientSlotUpload()) {
-		t.Fatalf("a later boot was served %v, want the stored slots", served[sioSlotsKey])
 	}
 }
 
@@ -85,13 +81,10 @@ func TestProgressSlotsRefusesAnotherPlayersID(t *testing.T) {
 	if body["error"] != sioErrNotAuthorized {
 		t.Fatalf("error is %v, want the client's not-authorized code", body["error"])
 	}
-	if _, leaked := body[sioSlotsKey]; leaked {
-		t.Fatal("a refused request still carried a slot document")
-	}
 }
 
-// TestSlotEventsAreDispatched pins that both events reach their handlers
-// instead of the fallback acknowledgement they ran on through run 57.
+// TestSlotEventsAreDispatched pins that both events reach their handlers, so
+// the uploads are recorded instead of vanishing into the fallback.
 func TestSlotEventsAreDispatched(t *testing.T) {
 	for _, event := range []string{sioProgressSlotsEvent, sioCreateSlotsEvent} {
 		if sioAnswerFor(event) == nil {
