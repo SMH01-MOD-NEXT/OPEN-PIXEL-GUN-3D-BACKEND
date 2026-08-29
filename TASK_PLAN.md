@@ -2783,3 +2783,55 @@ server slice from 16:31Z on).
       the store reads the files per request, so no rebuild is needed
 - [ ] Decide whether `ClanCommon` deserves a hosted document
 - [ ] Watch the device screen during the next run to see where the bar stands
+
+## Run 59: the documents are stored and still unread
+
+Device 001691527000747, backend pid 140701 (boot 2026-08-29T18:11:52Z), socket
+session 26be541025b22309f215f440, 234 s alive. Logs: `log_front.txt` (28054
+lines of logcat, captured live) and the server slice from 18:11Z on.
+
+Between run 57 and this one six undocumented device runs happened (17:24Z
+through 17:55Z). Two of them carried an experiment that answered the poll with
+the document bodies attached and suppressed the ordinary reply, so the 153-name
+list never reached the client; the 17:51Z session never got past `subscribe`
+and `get_inapps`. The experiment was reverted before this run and only the
+filled seed documents were kept, so exactly one variable moved.
+
+- The five documents now carry members instead of `{"configId":"<Name>"}`, and
+  the client accepts every one of them:
+  `cfgsys: #1 store id=167 bytes=156 ok=1 error=''`, then id 7 (641 B), 171
+  (262 B), 111 (43 B), 169 (231 B), 100 (163 B). Six stores, no error, no
+  `config.document_unparsable`.
+- **The store and the read are two different places.** Three milliseconds after
+  `store id=167 ok=1`, the consumer asks for the same id and gets nothing:
+  `cfgsys: get-text id=167 null=0 chars=0 head=''`, and then
+  `[Boosters] ---- _config == null`. The same pair repeats for 169 (TopUp), 171
+  (ConfrontationEvent), 111 (ManualOffers) and 100 (TrophyRoad, which reports a
+  parse error over the empty text). The write succeeds; the read never sees it.
+- The numbers say why the read is empty: the embedded set holds 80 entries
+  (`embedded set count@0x20=80`) while the name map holds 163. The five ids are
+  in the name map, so the push resolves the name and the store writes, but they
+  are not in the embedded set the getter serves. Filling the bodies therefore
+  cannot move the boot: no body, however complete, is ever read.
+- Consequence for run 56's conclusion: hosting the five documents was necessary
+  but is not the 90 % stop. The stop is the getter, not the content.
+- Everything else held. The poll is answered in full
+  (`acknowledged=153 configs=153 served=0`, served drops to zero only because
+  the client already caches these hashes), the push lands in one batch
+  (`attachments=8 documents=6 names=6`), `init_progress` answers 25 members,
+  `get_progress_slots` is acknowledged without a `slots` member and the client
+  uploads its own: `progress_slots_stored received=63 stored=63`. The bar walks
+  to `bar=0.750`, `InitializeSwitcher` finishes at state 45, `LoadMainMenu` tail
+  completes and `AuthSceneController` dispatches state 2 (Authorized).
+- `config 'ClanCommon' is null or empty` still fires at 21:13:32, before the
+  push, from the embedded set.
+
+- [x] Fill the seed documents with members; delivery and storage confirmed
+- [x] Revert the reply-path experiment; the run-57 delivery path stands
+- [ ] Find the getter behind `get-text` (pc `libil2cpp.so+0x249803c`) and the
+      store behind `0x24a27cc`, and learn what makes a stored id readable:
+      a version bump in the poll answer, a reload call, or an entry the
+      embedded set of 80 is missing
+- [ ] Only then revisit the member names; the bodies are untested until a
+      consumer can read them
+- [ ] Decide whether `ClanCommon` deserves a hosted document
