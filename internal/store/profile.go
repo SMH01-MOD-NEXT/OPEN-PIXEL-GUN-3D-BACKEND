@@ -53,6 +53,12 @@ type Profile struct {
 	// Progress is the progress_status payload, likewise kept verbatim.
 	Progress map[string]any `json:"progress,omitempty"`
 
+	// ProgressDocument is the slot indexed document init_progress
+	// synchronises. It is kept apart from Progress because that map also
+	// carries the flat counters register_push sends, and the client's applier
+	// reads every member of this document as a progress slot.
+	ProgressDocument map[string]any `json:"progress_document,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -73,6 +79,7 @@ func (p *Profile) clone() Profile {
 		}
 	}
 	out.Progress = cloneAnyMap(p.Progress)
+	out.ProgressDocument = cloneAnyMap(p.ProgressDocument)
 	if p.TransferredAt != nil {
 		at := *p.TransferredAt
 		out.TransferredAt = &at
@@ -230,6 +237,39 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (
 	}
 	for key, value := range progress {
 		profile.Progress[key] = cloneAny(value)
+	}
+	profile.UpdatedAt = time.Now().UTC()
+	if err := s.persistLocked(); err != nil {
+		return Profile{}, err
+	}
+	return profile.clone(), nil
+}
+
+// MergeProfileProgressDocument folds the client's boot-time progress document
+// into the stored profile.
+//
+// The document is merged a slot at a time for the same reason prefs are: the
+// client owns the slot set, so a replace would drop a slot this server has not
+// been taught about yet. A slot that does arrive replaces its stored copy
+// whole, because a slot's members are the client's own encoding of that one
+// slot, and half merging two versions of it would produce a state neither side
+// ever held.
+func (s *Store) MergeProfileProgressDocument(playerID string, document map[string]any) (Profile, error) {
+	playerID = strings.TrimSpace(playerID)
+	if playerID == "" {
+		return Profile{}, errors.New("store: empty player id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profile, err := s.ensureProfileLocked(playerID, "")
+	if err != nil {
+		return Profile{}, err
+	}
+	if profile.ProgressDocument == nil {
+		profile.ProgressDocument = make(map[string]any, len(document))
+	}
+	for key, value := range document {
+		profile.ProgressDocument[key] = cloneAny(value)
 	}
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
@@ -465,6 +505,7 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	source.Gems = 0
 	source.Prefs = nil
 	source.Progress = nil
+	source.ProgressDocument = nil
 	source.UpdatedAt = now
 	source.TransferredTo = toID
 	source.TransferredAt = &now
