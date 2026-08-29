@@ -27,8 +27,16 @@ func TestConfigPushCarriesNoReplyEnvelope(t *testing.T) {
 	if !ok {
 		t.Fatalf("%s is not named at the top level: %v", sioFullSlotsConfig, entries)
 	}
-	if entry[sioConfigBodyKey] != 0 {
-		t.Fatalf("the entry indexes attachment %v, want 0", entry[sioConfigBodyKey])
+	if entry[sioPushBodyKey] != 0 {
+		t.Fatalf("the entry indexes attachment %v, want 0", entry[sioPushBodyKey])
+	}
+	if hash, named := entry[sioPushHashKey].(string); !named || hash == "" {
+		t.Fatalf("the entry names no body hash under %q: %v", sioPushHashKey, entry)
+	}
+	for _, polled := range []string{sioConfigHashKey, sioConfigBodyKey, sioConfigVersionKey} {
+		if _, present := entry[polled]; present {
+			t.Fatalf("%q is the poll's spelling, which the push handler never reads", polled)
+		}
 	}
 	if _, named := entries["Ads"]; named {
 		t.Fatal("a config this server does not host must not be named in a push")

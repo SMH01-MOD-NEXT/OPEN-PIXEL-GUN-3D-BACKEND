@@ -103,6 +103,33 @@ func hostedConfigDocument(name string) ([]byte, string, bool) {
 	return []byte(body), hash, true
 }
 
+// The push spells its two keys in full.
+//
+// h, c and v are the client's own cache vocabulary: it uses them in the poll
+// it sends and this server echoes them in the answer to that poll. The config
+// system's push handler reads different names, and run 49 got it to say the
+// first one out loud once the reply envelope stopped hiding the config name:
+//
+//	[ConfigSystem.OnWebS_ocketCallback] Key 'val' not found: CommandsWithFullSlots
+//
+// That warning is raised from RVA 0x24A2850, inside the handler at 0x24A1E1C,
+// which places the failing lookup at 0x24A261C. The three messages that sit
+// beside it in global-metadata.dat spell out the rest of the contract:
+//
+//	[ConfigSystem.OnWebS_ocketCallback] Key 'hash' not found:
+//	[ConfigSystem.OnWebS_ocketCallback] An issue processing 'val' for key:
+//	[ConfigSystem.OnWebS_ocketCallback] save incoming config:
+//
+// val is not the body. At 0x24A26AC the handler hands the value to a converter
+// that ends in a change of type to Int32, bounds-checks the result against the
+// length of the attachment list it was called with, and reads that element as
+// the document. So val is the attachment index and hash identifies the body,
+// which is the pair this server already computes.
+const (
+	sioPushBodyKey = "val"
+	sioPushHashKey = "hash"
+)
+
 // configPushArgument builds one push: the map the client iterates, and the
 // bodies its entries index by position.
 //
@@ -119,9 +146,8 @@ func configPushArgument(list map[string]any) (map[string]any, [][]byte) {
 			continue
 		}
 		entries[name] = map[string]any{
-			sioConfigHashKey:    hash,
-			sioConfigBodyKey:    len(documents),
-			sioConfigVersionKey: fullSlotsVersion,
+			sioPushBodyKey: len(documents),
+			sioPushHashKey: hash,
 		}
 		documents = append(documents, document)
 	}
