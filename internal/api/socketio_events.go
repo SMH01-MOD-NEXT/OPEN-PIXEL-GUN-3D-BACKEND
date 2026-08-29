@@ -685,10 +685,21 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 }
 
 // sioProgressDocumentKey is the member of the init_progress reply the client
-// casts to a dictionary and applies. It shares the spelling of the ordinary
-// result member, and overwrites it, because this event answers with a document
-// where the others answer with a word.
-const sioProgressDocumentKey = "result"
+// casts to a dictionary and applies.
+//
+// Run 51 read the name out of the running client instead of guessing it. The
+// consumer at RVA 0x17AB704 loads three string literals from its metadata
+// cells, and a trace at the applier's own entry point printed them at the
+// first moment the consumer had filled them in:
+//
+//	key whose presence ends the answer = "err_code"
+//	key whose value is cast to the applier's dictionary = "slots"
+//
+// The same trace caught the applier being handed a null, which settles what
+// the consumer does when the key is absent: it does not skip the call, it
+// casts a missing member and passes the null on. An answer without this key
+// is therefore not one the client quietly ignores, it is the one it dies on.
+const sioProgressDocumentKey = "slots"
 
 // sioProgressRejected is the client's own code for a refused progress sync. It
 // is written here only to name what this server deliberately never sends.
@@ -770,7 +781,7 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 		"received":  len(snapshot),
 		"answered":  len(document),
 		"hash":      head.text("hash"),
-		"note":      "the document travels in result; the applier casts that member to a dictionary",
+		"note":      "the document travels in slots; the applier casts that member to a dictionary",
 	})
 	return body
 }
