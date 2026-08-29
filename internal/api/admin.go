@@ -38,6 +38,8 @@ func (s *Server) registerAdminRoutes() {
 	s.mux.HandleFunc("DELETE /api/v1/admin/players/{id}", s.admin(s.handleAdminDeletePlayer))
 	s.mux.HandleFunc("POST /api/v1/admin/change-id", s.admin(s.handleAdminChangeID))
 	s.mux.HandleFunc("POST /api/v1/admin/transfer", s.admin(s.handleAdminTransfer))
+	s.mux.HandleFunc("GET /api/v1/admin/settings", s.admin(s.handleAdminSettings))
+	s.mux.HandleFunc("PATCH /api/v1/admin/settings", s.admin(s.handleAdminSaveSettings))
 	s.mux.HandleFunc("GET /api/v1/admin/logs", s.admin(s.handleAdminLogs))
 	s.mux.HandleFunc("GET /api/v1/admin/logs/stream", s.admin(s.handleAdminLogStream))
 	s.mux.HandleFunc("GET /admin", s.handleAdminConsole)

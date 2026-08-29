@@ -19,7 +19,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 		"ok":          true,
 		"name":        s.cfg.ServerName,
 		"unix":        time.Now().UTC().Unix(),
-		"maintenance": s.cfg.Maintenance,
+		"maintenance": s.settings.snapshot().Maintenance,
 	})
 }
 
@@ -34,11 +34,12 @@ func (s *Server) handleTime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	snap := s.settings.snapshot()
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"server_name":   s.cfg.ServerName,
-		"maintenance":   s.cfg.Maintenance,
-		"photon_region": s.cfg.PhotonRegion,
-		"photon_modes":  photonModes(s.cfg.PhotonAppIDs),
+		"maintenance":   snap.Maintenance,
+		"photon_region": snap.PhotonRegion,
+		"photon_modes":  photonModes(snap.PhotonAppIDs),
 		"features":      map[string]any{},
 	})
 }
@@ -134,7 +135,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 // with AES-256-GCM. SECURITY: the AppID is a credential; it is bound to the
 // requesting player id as additional authenticated data and never logged.
 func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.SealsAppIDs() {
+	if len(s.cfg.AppIDKey) == 0 || len(s.settings.snapshot().PhotonAppIDs) == 0 {
 		s.writeError(w, http.StatusServiceUnavailable, "appid_unconfigured",
 			"set OPG3D_APPID_KEY and at least one OPG3D_PHOTON_APPID_*")
 		return
@@ -150,11 +151,13 @@ func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "pun"
 	}
-	appID, ok := s.cfg.PhotonAppIDs[mode]
+	appID, ok := s.settings.appID(mode)
 	if !ok {
 		s.writeError(w, http.StatusNotFound, "unknown_mode", mode)
 		return
 	}
+
+	region := s.settings.snapshot().PhotonRegion
 
 	envelope, err := secrets.Seal(s.cfg.AppIDKey, []byte(appID), []byte(account.PlayerID+"|"+mode))
 	if err != nil {
@@ -164,12 +167,12 @@ func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
 	s.log.Event("photon.appid_issued", map[string]any{
 		"player_id":     account.PlayerID,
 		"mode":          mode,
-		"region":        s.cfg.PhotonRegion,
+		"region":        region,
 		"from_realtime": mode == "pun" && s.cfg.PhotonPUNFromRealtime,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"mode":     mode,
-		"region":   s.cfg.PhotonRegion,
+		"region":   region,
 		"envelope": envelope,
 	})
 }
@@ -177,15 +180,16 @@ func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
 // handleUpdate lets players update in a couple of taps: the client asks the
 // backend, not a hardcoded store link, where the current build lives.
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Update.Version == "" {
+	update := s.settings.snapshot().Update
+	if update.Version == "" {
 		s.writeJSON(w, http.StatusOK, map[string]any{"available": false})
 		return
 	}
 	current := r.URL.Query().Get("version")
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"available": current != s.cfg.Update.Version,
+		"available": current != update.Version,
 		"current":   current,
-		"update":    s.cfg.Update,
+		"update":    update,
 	})
 }
 

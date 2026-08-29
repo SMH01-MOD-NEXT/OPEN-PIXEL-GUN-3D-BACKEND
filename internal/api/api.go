@@ -43,11 +43,21 @@ type Server struct {
 	// sio holds the live socket.io sessions of the config channel, which
 	// outlive the individual requests that carry them.
 	sio *sioHub
+
+	// settings holds the values an operator may change while the server is
+	// running. Handlers read them through a snapshot instead of reading the
+	// environment seed directly.
+	settings *settings
 }
 
 // New builds the router.
 func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
-	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log))}
+	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log)), settings: newSettings(cfg)}
+	if err := s.settings.load(); err != nil {
+		// A settings file that cannot be read must not stop the server: the
+		// environment seed is still a valid configuration to serve from.
+		log.Event("settings.load_failed", map[string]any{"error": err.Error()})
+	}
 	s.routes()
 	return s
 }
