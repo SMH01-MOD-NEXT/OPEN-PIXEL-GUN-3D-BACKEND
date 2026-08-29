@@ -88,26 +88,45 @@ type Config struct {
 	// endpoint instead of falling back to clear text.
 	AppIDKey []byte
 
+	// ConfigAlwaysServe answers every poll for a hosted document with the whole
+	// document, even when the client says it already holds that hash.
+	//
+	// DIAGNOSTIC, off by default. Runs 59 and 60 measured the push path storing
+	// all six documents (cfgsys store id=... ok=1) while the read path answered
+	// get-text with nothing and the client's apply entry point never ran once.
+	// Serving a body the client did not ask for is the one variable that puts
+	// the poll answer back in play as the path that applies a document.
+	ConfigAlwaysServe bool
+
+	// ConfigPush hands the hosted documents to the config system on the
+	// config_info_versions event. On by default: that push is what run 57
+	// measured writing every document into the client's own storage. It is a
+	// switch so a run can take the push away and see what the poll answer
+	// alone does, which is the only way to tell the two delivery paths apart.
+	ConfigPush bool
+
 	Update Update
 }
 
 // Load resolves configuration from the environment.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerName:     env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
-		Addr:           env("OPG3D_ADDR", ":8080"),
-		DataDir:        env("OPG3D_DATA_DIR", "data"),
-		LogDir:         env("OPG3D_LOG_DIR", "logs"),
-		ContentDir:     env("OPG3D_CONTENT_DIR", "content"),
-		TraceBodies:    envBool("OPG3D_TRACE_BODIES", true),
-		MaxBodyLog:     envInt("OPG3D_MAX_BODY_LOG", 8192),
-		DiscoveryPort:  envInt("OPG3D_DISCOVERY_PORT", 47318),
-		AdminToken:     env("OPG3D_ADMIN_TOKEN", ""),
-		Maintenance:    envBool("OPG3D_MAINTENANCE", false),
-		StableSessions: envBool("OPG3D_STABLE_SESSIONS", false),
-		SioReply:       envBool("OPG3D_SIO_REPLY", true),
-		PhotonAppIDs:   map[string]string{},
-		PhotonRegion:   env("OPG3D_PHOTON_REGION", "eu"),
+		ServerName:        env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
+		Addr:              env("OPG3D_ADDR", ":8080"),
+		DataDir:           env("OPG3D_DATA_DIR", "data"),
+		LogDir:            env("OPG3D_LOG_DIR", "logs"),
+		ContentDir:        env("OPG3D_CONTENT_DIR", "content"),
+		TraceBodies:       envBool("OPG3D_TRACE_BODIES", true),
+		MaxBodyLog:        envInt("OPG3D_MAX_BODY_LOG", 8192),
+		DiscoveryPort:     envInt("OPG3D_DISCOVERY_PORT", 47318),
+		AdminToken:        env("OPG3D_ADMIN_TOKEN", ""),
+		Maintenance:       envBool("OPG3D_MAINTENANCE", false),
+		StableSessions:    envBool("OPG3D_STABLE_SESSIONS", false),
+		SioReply:          envBool("OPG3D_SIO_REPLY", true),
+		ConfigAlwaysServe: envBool("OPG3D_CONFIG_ALWAYS_SERVE", false),
+		ConfigPush:        envBool("OPG3D_CONFIG_PUSH", true),
+		PhotonAppIDs:      map[string]string{},
+		PhotonRegion:      env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{
 			Version:   env("OPG3D_UPDATE_VERSION", ""),
 			APKURL:    env("OPG3D_UPDATE_APK_URL", ""),

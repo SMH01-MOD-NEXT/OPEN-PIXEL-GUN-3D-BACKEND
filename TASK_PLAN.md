@@ -2835,3 +2835,73 @@ filled seed documents were kept, so exactly one variable moved.
 - [ ] Only then revisit the member names; the bodies are untested until a
       consumer can read them
 - [ ] Decide whether `ClanCommon` deserves a hosted document
+
+## Runs 60-62: the push is the only channel the client reads
+
+Three runs asked one question each, and the third answered it by taking the
+working behaviour away.
+
+**Run 60, no server change, cold start.** The documents run 59 wrote into the
+client's own storage are not read back on the next boot: `get-text` answers
+`chars=0` for 167, 100, 169, 171, 111 and 7, the same consumers log
+`_config == null`, and the bar stops where it stopped before. Storage survives
+the restart; whatever reads it does not consult it for these ids.
+
+**Run 61, `OPG3D_CONFIG_ALWAYS_SERVE=true`.** The poll answer carried all six
+bodies even though the client said it already held those hashes
+(`config_polled configs=153 served=6`). Nothing about the client changed: six
+`store id=... ok=1` from the push as before, `apply` still never called, the
+same `_config == null`, the same stop.
+
+Two readings came out of that log that are worth more than the experiment:
+
+- `get-text` is not broken. It answers with real content for ids the client
+  ships with - 153, 99, 75, 43, 44 - and answers empty only for the six this
+  server hands over. The read path works; our documents are not in the place it
+  reads.
+- After the big poll the client polls again in small groups it did not ask for
+  at boot: `BlackMarket_1, GameExtendedRewards, GameModeEvents, TaskBook`, then
+  `ClanChests, Gatcha`, then `AdsGun, OffersModules, UpdateBanner`. Four of them
+  are polled with an empty hash, so the client holds no copy of those at all.
+  This server hosts none of them.
+
+`apply` was also taken off the table by the image itself rather than by a run:
+`tools/find_callers.py` puts its ten call sites (RVA `0x24A1D80`) inside four
+consumer classes, all in the same method name, not in the delivery path. It is
+a setter consumers call, not the door a document comes in through.
+
+**Run 62, `OPG3D_CONFIG_PUSH=false`, the control that cost the run.** With the
+push withheld and only the poll answer carrying bodies, the client fell back to
+the old stop: the loading screen returned to 79%, no `parse`, no `store`, no
+consumer complaints at all because the run never reaches the consumers, and the
+session degenerates into `get_inapps` heartbeats. Restoring the push and
+relaunching (run 63) brought back six `store id=... ok=1` and the 90% state.
+
+So the two delivery paths are now separated by measurement:
+
+- `config_info_versions` (the push, bodies as attachments) is the channel the
+  client actually consumes. It is what carries the run from 79% to 90%.
+- The poll answer's `c` body is inert. Serving it changes nothing, and its
+  absence changes nothing.
+
+That also settles a question run 59 left open: the pushed slot document is not
+written and forgotten - it is read and acted on, because withholding it moves
+the bar back. The five documents whose consumers still log `_config == null`
+differ from it in one measurable way: `CommandsWithFullSlots` has an entry in
+the embedded set of 80, and Boosters, TopUp, TrophyRoad, ManualOffers and
+ConfrontationEvent do not.
+
+The two switches used here are kept, both defaulting to today's behaviour:
+`OPG3D_CONFIG_ALWAYS_SERVE` (off) and `OPG3D_CONFIG_PUSH` (on). A control that
+can be run without a rebuild is worth the two fields.
+
+- [x] Rule out the poll answer as a delivery path (run 61, run 62)
+- [x] Rule out `apply` as the ingestion point (ten call sites, all consumers)
+- [x] Establish that the push is read, not just stored (run 62 regression)
+- [ ] Trace what a consumer calls when it reports `_config == null`: the
+      accessor is not `get-text`, since the slot document is used while its
+      `get-text` is empty too
+- [ ] Test whether an id absent from the embedded set of 80 can ever become
+      readable, or whether the client needs it named somewhere first
+- [ ] Consider hosting the late-polled names the client has no copy of
+      (`GameModeEvents`, `ClanChests`, `AdsGun`, `OffersModules`)

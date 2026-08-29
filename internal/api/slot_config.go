@@ -133,7 +133,7 @@ func (s *Server) hostedConfigReply(name, cachedHash string) (map[string]any, boo
 	if !ok {
 		return nil, false
 	}
-	if cachedHash == hosted.hash {
+	if cachedHash == hosted.hash && !s.cfg.ConfigAlwaysServe {
 		return map[string]any{sioConfigHashKey: hosted.hash}, false
 	}
 	return map[string]any{

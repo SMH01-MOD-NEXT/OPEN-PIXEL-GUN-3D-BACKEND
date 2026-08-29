@@ -182,6 +182,10 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 // pushConfigDocuments hands the hosted documents to the config system on the
 // event that system actually subscribes to.
 func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport string, codec *sio.Codec, head sioHead) {
+	if !s.cfg.ConfigPush {
+		return
+	}
+
 	list, ok := head["list"].(map[string]any)
 	if !ok {
 		return

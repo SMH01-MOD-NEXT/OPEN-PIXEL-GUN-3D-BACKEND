@@ -15,3 +15,6 @@
 .vscode/
 *.swp
 .DS_Store
+
+# the live logcat capture of the current run
+log_front.txt
