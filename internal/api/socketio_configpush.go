@@ -103,19 +103,14 @@ func hostedConfigDocument(name string) ([]byte, string, bool) {
 	return []byte(body), hash, true
 }
 
-// pushConfigDocuments hands the hosted documents to the config system on the
-// event that system actually subscribes to.
+// configPushArgument builds one push: the map the client iterates, and the
+// bodies its entries index by position.
 //
-// Only polled names are pushed: a document the client never asked about would
-// be an unsolicited entry in a list it built itself. Only hosted names carry a
-// body index, because an index into an attachment that was not sent is how a
-// managed handler throws inside the client rather than in this server.
-func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport string, codec *sio.Codec, head sioHead) {
-	list, ok := head["list"].(map[string]any)
-	if !ok {
-		return
-	}
-
+// Only polled names are pushed, because a document the client never asked
+// about would be an unsolicited entry in a list it built itself. Only hosted
+// names carry a body index, because an index into an attachment that was not
+// sent is how a managed handler throws inside the client rather than here.
+func configPushArgument(list map[string]any) (map[string]any, [][]byte) {
 	documents := make([][]byte, 0, 1)
 	entries := make(map[string]any, 1)
 	for name := range list {
@@ -130,17 +125,40 @@ func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport s
 		}
 		documents = append(documents, document)
 	}
+	return entries, documents
+}
+
+// pushConfigDocuments hands the hosted documents to the config system on the
+// event that system actually subscribes to.
+//
+// Only polled names are pushed: a document the client never asked about would
+// be an unsolicited entry in a list it built itself. Only hosted names carry a
+// body index, because an index into an attachment that was not sent is how a
+// managed handler throws inside the client rather than in this server.
+func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport string, codec *sio.Codec, head sioHead) {
+	list, ok := head["list"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	entries, documents := configPushArgument(list)
 	if len(documents) == 0 {
 		return
 	}
 
-	push := map[string]any{
-		"error":  0,
-		"result": "ok",
-		"list":   entries,
-	}
-
-	frames, err := encodeEncryptedConfigPush(codec, namespace, sioConfigPushEvent, push, documents)
+	// The config system iterates the top level of this argument and reads
+	// every key as a config name. Run 48 wrapped the names in the reply
+	// envelope this server uses everywhere else, and the client named all
+	// three wrapper keys back as configs it had never heard of:
+	//
+	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: error
+	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: list
+	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: result
+	//
+	// The gate still opened, so the push looked healthy in this server's log
+	// while not one document was ingested. A push is not a reply: nothing
+	// correlates it, so it carries no req_id and no envelope.
+	frames, err := encodeEncryptedConfigPush(codec, namespace, sioConfigPushEvent, entries, documents)
 	if err != nil {
 		s.log.Event("socket.config_push_unencodable", map[string]any{
 			"sid":   session.sid,
