@@ -2736,3 +2736,50 @@ build.
 - [x] Batch the push so more than 14 documents can be delivered
 - [ ] Confirm on the device that the five consumers stop reporting null
 - [ ] Host ClanCommon the same way if the clan screen still reports it empty
+
+## Run 57: the documents arrive, the bodies are still empty
+
+Device 001691527000747, backend pid 120855 (boot 2026-08-29T16:31:49Z, the
+file-backed store live), socket session e4897e19bf1678978519a620. Logs kept as
+`log_front.txt` (22672 lines of logcat, captured live) and `log_back.txt` (the
+server slice from 16:31Z on).
+
+- The poll is answered for the first time: `socket.config_polled
+  acknowledged=153 configs=153 served=5 uncached=85 unreadable=0`. Every earlier
+  run in this log logged `served=0`.
+- The push carries the whole set in a single batch: `socket.config_pushed
+  attachments=8 batch=0 batches=1 documents=6 names=6`.
+- The client stores all five: `[ConfigSystem.OnWebS_ocketCallback] save incoming
+  config: Boosters | ConfrontationEvent | ManualOffers | TopUp | TrophyRoad`,
+  each value the hex of `{"configId":"<Name>"}`. Hash, body and cache write work
+  end to end, so the delivery gap of run 56 is closed.
+- The consumers still refuse the payload, once each, at construction:
+  `[Boosters] ---- _config == null` (twice), `[TopUp]`, `[ConfrontationEvent]`,
+  `[ManualOffers]`, and `[TrophyRoad] ---- parse error, message below`. Nothing
+  repeats after 19:33:20, so this is a one-shot complaint, not a retry loop. The
+  envelope is accepted and the members each consumer reads are what is missing,
+  exactly as the device dumps hinted: `BalanceRewards` carries `Rewards`,
+  `BalanceLeveling` carries `LevellingV2`.
+- The loading screen does not park on the switcher: `InitializeSwitcher finished
+  on its own at state=45 (1 step(s) skipped)`, `LoadMainMenu tail completed
+  (state 0 -> 2, result=1)`, then `AuthSceneController.Awake` and `state dispatch
+  2 (Authorized)`. Menu traffic follows (`get_binded_ids`, `check_binded_gc`,
+  `init_progress`, `get_progress_slots`, `create_slots`, `update_progress`,
+  `refund_get`, `get_player_version`, `lobby_likes_v2`) and settles into the
+  30-second `get_inapps` heartbeat, still ticking four minutes in at ~28 fps.
+- Honest comparison with the 90% session 8371249689a298609ad42a35 (15:34Z): that
+  one reached the same menu events with `served=0` and `documents=1`, so menu
+  traffic alone does not prove the stop is gone. What changed is measurable on
+  the config channel only; the visible bar needs an eye on the device.
+- Still open: `config 'ClanCommon' is null or empty` fires at 19:32:33 from the
+  embedded set of 75, before the push arrives. Two late polls each ask for one
+  uncached name (`configs=4 served=0 uncached=1`, `configs=2 served=0
+  uncached=1`).
+- Transient and self-healing: `23.1.3-stall: blocked -- InitializeSwitcher
+  .MoveNext entered at state=40 has not returned for 5849 ms`; the state machine
+  resumed and finished at 45.
+
+- [ ] Read the members the five consumers expect and fill the seed documents;
+      the store reads the files per request, so no rebuild is needed
+- [ ] Decide whether `ClanCommon` deserves a hosted document
+- [ ] Watch the device screen during the next run to see where the bar stands
