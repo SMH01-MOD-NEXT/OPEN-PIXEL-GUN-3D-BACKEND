@@ -53,6 +53,7 @@ const (
 	sioSocialIDKey        = "social_id"
 	sioCheckVersionEvent  = "full_check_version"
 	sioRegisterPushEvent  = "register_push"
+	sioInitProgressEvent  = "init_progress"
 )
 
 // setIdentity records who authorised this session.
@@ -119,6 +120,8 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerCheckVersion
 	case sioRegisterPushEvent:
 		return (*Server).answerRegisterPush
+	case sioInitProgressEvent:
+		return (*Server).answerInitProgress
 	default:
 		// Anything else gets the minimal acknowledgement rather than silence.
 		//
@@ -679,4 +682,95 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 		"body":        s.log.Body(sent),
 	})
 	return true
+}
+
+// sioProgressDocumentKey is the member of the init_progress reply the client
+// casts to a dictionary and applies. It shares the spelling of the ordinary
+// result member, and overwrites it, because this event answers with a document
+// where the others answer with a word.
+const sioProgressDocumentKey = "result"
+
+// sioProgressRejected is the client's own code for a refused progress sync. It
+// is written here only to name what this server deliberately never sends.
+const sioProgressRejected = 1602
+
+// answerInitProgress stores the boot-time progress snapshot and answers with
+// the authoritative document the client applies slot by slot.
+//
+// Run 48 answered this event with the bare acknowledgement and the boot died
+// on the spot, which is what held the loading bar at 87%:
+//
+//	NullReferenceException
+//	  at Progress.<applier> (System.Collections.Generic.Dictionary`2[TKey,TValue])
+//	  at AuthSceneController+<boot coroutine>[T].MoveNext ()
+//
+// The consumer is at 0x17AB704 in the 23.1.3 arm64 image, and its code reads:
+//
+//	if (ContainsKey(answer, <a>))        answer["err_code"] = 1602;
+//	if (ContainsKey(answer, "err_code")) { fail(answer); return; }
+//	if (ContainsKey(answer, <c>))        apply(answer[<c>] as Dictionary<string, object>);
+//
+// The apply is entered on ContainsKey alone and the cast result is passed on
+// unchecked: 0x17AB974 selects null when the isinst fails, and the applier
+// throws on a null argument at its first instruction, 0x2701904. So the crash
+// says <c> was present and was not a dictionary. This server sends exactly
+// three keys - req_id, error and result - and the first two arrive as integers
+// in every reply this client already accepts, which leaves result. It went out
+// as the string "ok".
+//
+// The middle key is not read off a guess either: its literal cell 0x67DB910 is
+// the one the Google Play bind check at 0x3DCFC04 indexes first, which runs 32
+// and 35 identified on the device as err_code. Leaving err_code out of this
+// reply is therefore deliberate - present, it means refusal, and the client
+// returns before it ever looks at the document.
+//
+// The applier enumerates the document and parses each key as an integer slot
+// id, with a second path for the names that are not numeric, which is how the
+// client's own version_slot entry travels. That is the shape the client sent
+// up, so the stored snapshot goes back as it came instead of being reshaped
+// into a schema this server invented.
+func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int) map[string]any {
+	body := sioOK(reqID)
+	// An empty document is still a document: it survives the cast, so the
+	// applier runs to a no-op instead of dereferencing null. Every early
+	// return below leaves this in place for that reason.
+	body[sioProgressDocumentKey] = map[string]any{}
+
+	_, _, playerID := session.identity()
+	if playerID == "" {
+		s.log.Event("socket.progress_unowned", map[string]any{
+			"sid":  session.sid,
+			"note": "init_progress arrived before auth_v2 bound an account; answered with an empty document",
+		})
+		return body
+	}
+
+	snapshot, _ := head["progress"].(map[string]any)
+	if len(snapshot) > 0 {
+		if _, err := s.st.MergeProfileProgressDocument(playerID, snapshot); err != nil {
+			// The client is waiting on a document, not on this server's
+			// bookkeeping, so a failed write is recorded and the reply still
+			// goes out with whatever was stored before.
+			s.log.Event("socket.profile_unsaved", map[string]any{
+				"player_id": playerID,
+				"part":      "progress_document",
+				"err":       err.Error(),
+			})
+		}
+	}
+
+	if profile, ok := s.sessionProfile(session); ok && len(profile.ProgressDocument) > 0 {
+		body[sioProgressDocumentKey] = profile.ProgressDocument
+	}
+
+	document, _ := body[sioProgressDocumentKey].(map[string]any)
+	s.log.Event("socket.progress_initialised", map[string]any{
+		"sid":       session.sid,
+		"player_id": playerID,
+		"received":  len(snapshot),
+		"answered":  len(document),
+		"hash":      head.text("hash"),
+		"note":      "the document travels in result; the applier casts that member to a dictionary",
+	})
+	return body
 }
