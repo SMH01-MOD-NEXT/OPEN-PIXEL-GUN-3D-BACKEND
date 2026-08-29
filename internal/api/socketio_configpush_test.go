@@ -10,11 +10,17 @@ import "testing"
 // the reply envelope this server uses elsewhere turned into three configs it
 // had never heard of and not one document was ingested.
 func TestConfigPushCarriesNoReplyEnvelope(t *testing.T) {
-	entries, documents := configPushArgument(map[string]any{
+	s, _ := newTestServer(t)
+
+	batches := s.configPushBatches(map[string]any{
 		sioFullSlotsConfig: map[string]any{sioConfigHashKey: clientCachedFullSlotsHash},
 		"Ads":              map[string]any{sioConfigHashKey: "aec53fac26135f4c"},
 	})
 
+	if len(batches) != 1 {
+		t.Fatalf("built %d pushes, want the one this server has bodies for", len(batches))
+	}
+	entries, documents := batches[0].entries, batches[0].documents
 	if len(documents) != 1 {
 		t.Fatalf("pushed %d bodies, want the one document this server hosts", len(documents))
 	}

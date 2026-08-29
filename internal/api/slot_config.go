@@ -124,29 +124,22 @@ func fullSlotsPayload() (body string, hash string, ok bool) {
 // The second return reports whether the reply carries a body, which is what the
 // poll log counts as served.
 //
-// The protocol's third key, "v", is deliberately absent. The captured poll
-// never sends one for this document, and the client-side trace prints whatever
-// its parser receives, so whether it is wanted is one measurement away instead
-// of a field invented here to hedge.
+// Which documents exist is not a question this function answers any more: it
+// asks hostedConfigDocument, which reads content/sio-configs first and falls
+// back to the one document that is built in. See config_documents.go for the
+// run-56 measurement that made the missing documents files.
 func (s *Server) hostedConfigReply(name, cachedHash string) (map[string]any, bool) {
-	if name != sioFullSlotsConfig {
-		return nil, false
-	}
-	body, hash, ok := fullSlotsPayload()
+	hosted, ok := s.hostedConfigDocument(name)
 	if !ok {
 		return nil, false
 	}
-	if cachedHash == hash {
-		return map[string]any{sioConfigHashKey: hash}, false
-	}
-	document, ok := fullSlotsObject(body)
-	if !ok {
-		return nil, false
+	if cachedHash == hosted.hash {
+		return map[string]any{sioConfigHashKey: hosted.hash}, false
 	}
 	return map[string]any{
-		sioConfigHashKey:    hash,
-		sioConfigBodyKey:    document,
-		sioConfigVersionKey: fullSlotsVersion,
+		sioConfigHashKey:    hosted.hash,
+		sioConfigBodyKey:    hosted.document,
+		sioConfigVersionKey: hostedConfigVersion,
 	}, true
 }
 

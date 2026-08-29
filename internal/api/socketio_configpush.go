@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -91,18 +92,6 @@ func encodeEncryptedConfigPush(codec *sio.Codec, namespace, event string, args a
 	return frames, nil
 }
 
-// hostedConfigDocument returns the body this server hosts for one config name.
-func hostedConfigDocument(name string) ([]byte, string, bool) {
-	if name != sioFullSlotsConfig {
-		return nil, "", false
-	}
-	body, hash, ok := fullSlotsPayload()
-	if !ok {
-		return nil, "", false
-	}
-	return []byte(body), hash, true
-}
-
 // The push spells its two keys in full.
 //
 // h, c and v are the client's own cache vocabulary: it uses them in the poll
@@ -130,91 +119,132 @@ const (
 	sioPushHashKey = "hash"
 )
 
-// configPushArgument builds one push: the map the client iterates, and the
-// bodies its entries index by position.
+// configPushBatch is one push: the map the client iterates, and the bodies its
+// entries index by position.
+type configPushBatch struct {
+	entries   map[string]any
+	documents [][]byte
+}
+
+// configPushDocumentLimit is how many documents one push can carry. Each push
+// spends two attachments on the encrypted event name and argument, and the
+// rest are bodies.
+const configPushDocumentLimit = sioMaxAttachments - sioReplyAttachments
+
+// configPushBatches builds the pushes that hand every hosted document the
+// client polled for over to it.
 //
 // Only polled names are pushed, because a document the client never asked
 // about would be an unsolicited entry in a list it built itself. Only hosted
 // names carry a body index, because an index into an attachment that was not
 // sent is how a managed handler throws inside the client rather than here.
-func configPushArgument(list map[string]any) (map[string]any, [][]byte) {
-	documents := make([][]byte, 0, 1)
-	entries := make(map[string]any, 1)
+//
+// A single push cannot carry more bodies than the attachment cap allows, and
+// the client polls once per boot, so the documents that do not fit are not
+// dropped: they go out in further pushes. Names are ordered so that the
+// batching is reproducible between runs rather than following Go's map order.
+func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
+	names := make([]string, 0, len(list))
 	for name := range list {
-		document, hash, ok := hostedConfigDocument(name)
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	batches := make([]configPushBatch, 0, 1)
+	current := configPushBatch{}
+	for _, name := range names {
+		hosted, ok := s.hostedConfigDocument(name)
 		if !ok {
 			continue
 		}
-		entries[name] = map[string]any{
-			sioPushBodyKey: len(documents),
-			sioPushHashKey: hash,
+		if current.entries == nil {
+			current = configPushBatch{
+				entries:   make(map[string]any, configPushDocumentLimit),
+				documents: make([][]byte, 0, configPushDocumentLimit),
+			}
 		}
-		documents = append(documents, document)
+		current.entries[name] = map[string]any{
+			sioPushBodyKey: len(current.documents),
+			sioPushHashKey: hosted.hash,
+		}
+		current.documents = append(current.documents, hosted.body)
+		if len(current.documents) == configPushDocumentLimit {
+			batches = append(batches, current)
+			current = configPushBatch{}
+		}
 	}
-	return entries, documents
+	if len(current.documents) > 0 {
+		batches = append(batches, current)
+	}
+	return batches
 }
 
 // pushConfigDocuments hands the hosted documents to the config system on the
 // event that system actually subscribes to.
-//
-// Only polled names are pushed: a document the client never asked about would
-// be an unsolicited entry in a list it built itself. Only hosted names carry a
-// body index, because an index into an attachment that was not sent is how a
-// managed handler throws inside the client rather than in this server.
 func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport string, codec *sio.Codec, head sioHead) {
 	list, ok := head["list"].(map[string]any)
 	if !ok {
 		return
 	}
 
-	entries, documents := configPushArgument(list)
-	if len(documents) == 0 {
+	batches := s.configPushBatches(list)
+	if len(batches) == 0 {
 		return
 	}
 
-	// The config system iterates the top level of this argument and reads
-	// every key as a config name. Run 48 wrapped the names in the reply
-	// envelope this server uses everywhere else, and the client named all
-	// three wrapper keys back as configs it had never heard of:
-	//
-	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: error
-	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: list
-	//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: result
-	//
-	// The gate still opened, so the push looked healthy in this server's log
-	// while not one document was ingested. A push is not a reply: nothing
-	// correlates it, so it carries no req_id and no envelope.
-	frames, err := encodeEncryptedConfigPush(codec, namespace, sioConfigPushEvent, entries, documents)
-	if err != nil {
-		s.log.Event("socket.config_push_unencodable", map[string]any{
-			"sid":   session.sid,
-			"event": sioConfigPushEvent,
-			"err":   err.Error(),
-		})
-		return
-	}
-
-	for i, frame := range frames {
-		if session.send(frame) {
-			continue
+	for number, batch := range batches {
+		// The config system iterates the top level of this argument and
+		// reads every key as a config name. Run 48 wrapped the names in the
+		// reply envelope this server uses everywhere else, and the client
+		// named all three wrapper keys back as configs it had never heard
+		// of:
+		//
+		//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: error
+		//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: list
+		//	[ConfigSystem.OnWebS_ocketCallback] Unknown configId: None, Key: result
+		//
+		// The gate still opened, so the push looked healthy in this
+		// server's log while not one document was ingested. A push is not a
+		// reply: nothing correlates it, so it carries no req_id and no
+		// envelope.
+		frames, err := encodeEncryptedConfigPush(codec, namespace, sioConfigPushEvent, batch.entries, batch.documents)
+		if err != nil {
+			s.log.Event("socket.config_push_unencodable", map[string]any{
+				"sid":     session.sid,
+				"event":   sioConfigPushEvent,
+				"batch":   number,
+				"batches": len(batches),
+				"err":     err.Error(),
+			})
+			return
 		}
-		s.log.Event("socket.config_push_undelivered", map[string]any{
-			"sid":    session.sid,
-			"event":  sioConfigPushEvent,
-			"frame":  i,
-			"frames": len(frames),
-			"note":   "the session send queue is full; the push is incomplete",
-		})
-		return
-	}
 
-	s.log.Event("socket.config_pushed", map[string]any{
-		"sid":         session.sid,
-		"event":       sioConfigPushEvent,
-		"transport":   transport,
-		"documents":   len(documents),
-		"attachments": len(documents) + sioReplyAttachments,
-		"names":       len(entries),
-		"note":        "bodies travel as attachments 0..n-3; the name and argument are the last two",
-	})
+		for i, frame := range frames {
+			if session.send(frame) {
+				continue
+			}
+			s.log.Event("socket.config_push_undelivered", map[string]any{
+				"sid":     session.sid,
+				"event":   sioConfigPushEvent,
+				"batch":   number,
+				"batches": len(batches),
+				"frame":   i,
+				"frames":  len(frames),
+				"note":    "the session send queue is full; the push is incomplete",
+			})
+			return
+		}
+
+		s.log.Event("socket.config_pushed", map[string]any{
+			"sid":         session.sid,
+			"event":       sioConfigPushEvent,
+			"transport":   transport,
+			"batch":       number,
+			"batches":     len(batches),
+			"documents":   len(batch.documents),
+			"attachments": len(batch.documents) + sioReplyAttachments,
+			"names":       len(batch.entries),
+			"note":        "bodies travel as attachments 0..n-3; the name and argument are the last two",
+		})
+	}
 }
