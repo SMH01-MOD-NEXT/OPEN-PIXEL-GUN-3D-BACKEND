@@ -3015,3 +3015,394 @@ make the handler write.
 The two flags this batch added stay off by default. They cost nothing when
 unset and they are the controls that proved the fingerprint and the record
 vocabulary are not the barrier.
+
+## Runs 69-75 — uncommitted working tree, recorded 2026-08-30
+
+Session restart. Before any new run, the working tree of both repositories was
+diffed and is recorded here, because runs 69-75 were measured but never written
+down and their code is still unstaged.
+
+### Backend working tree (`OPEN-PIXEL-GUN-3D-BACKEND`)
+
+`git status` at the start of this session, against `382ca89`:
+
+	M  content/sio-configs/Boosters.json
+	M  content/sio-configs/ConfrontationEvent.json
+	M  content/sio-configs/ManualOffers.json
+	M  content/sio-configs/TopUp.json
+	M  content/sio-configs/TrophyRoad.json
+	M  internal/api/socketio_events.go
+	M  internal/api/socketio_slots.go
+	M  internal/api/socketio_slots_test.go
+	?? content/sio-configs/AdsGun.json
+	?? content/sio-configs/ClanChests.json
+	?? content/sio-configs/ClanCommon.json
+	?? content/sio-configs/GameModeEvents.json
+	?? content/sio-configs/OffersModules.json
+	?? internal/api/socketio_player_version_test.go
+
+104 insertions, 32 deletions across 8 tracked files, plus 6 new files.
+
+**1. `get_player_version` gained a dedicated answer** (`socketio_events.go`,
++32). A new event constant `sioPlayerVersionEvent = "get_player_version"`, a
+dispatch arm, and `answerPlayerVersion`, which writes a single member `version`
+carrying a `System.String`. The member name and its type are not guesses: run 72
+traced the live `FriendsController` callback's `ContainsKey` call at
+`FriendsController+0x1D8F740` and the paired `get_Item` at `0x1D8F76C`, and the
+callback returns early when that key is absent. The value prefers the client's
+own `version_slot` out of the profile stored by `init_progress` and falls back
+to `sioClientVersion` (`23.1.3`) for a fresh account.
+
+**2. `get_progress_slots` now serves a non-empty stored set** (`socketio_slots.go`,
++50/-32, a rewrite of the run-58 policy). Previously the reply was a bare
+acknowledgement in every case, because run 58 measured that an *empty* `slots`
+dictionary suppressed `create_slots` and pushed the bar from 90% back to 87%.
+Run 75 located the live callback at RVA `0x33F145C`: it reads the same
+top-level `slots` member, casts it to the `Dictionary<string, object>` shape
+`create_slots` uploads, and turns its keys into the remote-slot set
+`AuthSceneController` waits on. The new policy splits the two cases — no stored
+slots still omits the member (so the client uploads), a non-empty stored set is
+served back. The log line gained `served=` beside `held=`.
+
+**3. Five seed documents were filled with real members** (`Boosters`,
+`ConfrontationEvent`, `ManualOffers`, `TopUp`, `TrophyRoad`). Each went from the
+one-key stub `{"configId": "X"}` to a populated body — `Boosters` gained
+`bs/e/l/s/sd/ed`, `TopUp` gained `cu/cg/d/ss/r` and the date pairs,
+`TrophyRoad` gained `crs/ss/ur/sr/rrs`, `ConfrontationEvent` gained the
+prize/date members, `ManualOffers` gained `ms/ts`.
+
+**4. Five new stub documents were added** for the names the client polls with an
+empty hash and this server never hosted: `AdsGun`, `ClanChests`, `ClanCommon`,
+`GameModeEvents`, `OffersModules`. All five are still the one-key form.
+
+**5. Tests.** `socketio_slots_test.go` renamed the run-58 pin to
+`TestProgressSlotsWithoutStoredSlotsOmitsTheMember` and added
+`TestProgressSlotsServesTheStoredNonEmptyDictionary` for the second-boot path.
+New file `socketio_player_version_test.go` pins three things about the
+`get_player_version` reply: the member is a `string`, it echoes the stored
+`version_slot`, and the event has a dedicated builder rather than falling
+through to the generic acknowledgement.
+
+### Frontend working tree (`OLD-PIXEL-GUN-3D-ONLINE-PROJECT`)
+
+Trace-only, as the repository is restricted to logging and traces. 542
+insertions, 12 deletions across five files, all uncommitted against `3d37955`:
+
+	M  opg3d/src/main/cpp/auth_scene_sweep_2313.h    +149
+	M  opg3d/src/main/cpp/config_system_trace_2313.h +318
+	M  opg3d/src/main/cpp/debug_log_trace_2313.h      +42
+	M  opg3d/src/main/cpp/hook.cpp                    +38
+	M  opg3d/src/main/cpp/hook.h                       +7
+
+- `auth_scene_sweep_2313.h`: two compiler-generated iterators hooked by RVA,
+  `kAuthorizedSyncMoveNextRva = 0x3DC8574` and `kFinalStartupMoveNextRva =
+  0x3DC9320`, reporting state, current, owner and the delegate array. Helper
+  readers for managed fields, arrays, class names and RVA resolution.
+- `config_system_trace_2313.h`: the read side. `get-text` (`0x24981B0`) and
+  `get-bytes` (`0x24A0F34`) resolved onto the config-system class itself
+  (TypeDefIndex 11094) rather than the storage class run 64 armed by mistake; a
+  return-address filter over the shared `TryGetValue` body at `0x468C2E0`; the
+  `get_inapps` integer reader at `0x468BAA0`; and the `23.1.3-replykey` pair
+  over `ContainsKey` `0x3B5F914` / `get_Item` `0x3B5F68C`, filtered to the
+  `get_player_version`, `get_progress_slots` and `refund_get` call sites.
+- `hook.cpp` / `hook.h`: `hook::install_address`, needed because these targets
+  are compiler-generated bodies with no metadata name to install against.
+
+### What the runs actually measured
+
+Runs 69-75 produced `logs/front-run69.log` … `front-run75.log` and
+`backend-run74.log`, `backend-run75.log`. Reading them back:
+
+- The stall is unchanged at 90%. The highest bar value in run 75 is `bar=0.750`
+  from the loader's own scale, and the session ends in `get_inapps` heartbeats
+  every 30s until the socket is reset 241s in.
+- The final `AuthSceneController` iterator does complete. Run 75 walks
+  `step#1` through `step#71 state 1 -> -1 more=0`, over a delegate array of 70.
+  The iterator is not blocked; it runs to the end and the screen still does not
+  advance. That is a change of picture from every run before 70, where the stop
+  was assumed to be a coroutine waiting on a document.
+- **`23.1.3-replykey` never fired — not once in runs 72, 73, 74 or 75.** The
+  hook is written, the RVAs are in the file, and the tag is absent from every
+  log. Either `install_address` is not arming those two shared generic bodies or
+  the filter rejects every call. This is the first thing to fix, because the
+  `get_player_version` and `get_progress_slots` member names in the backend diff
+  above rest on run-72 evidence that this trace was supposed to re-confirm.
+- **`get_player_version` is not on the wire in runs 74 or 75.** The backend saw
+  17 distinct events (`subscribe` ×24, `get_inapps` ×14, `update_progress` ×8,
+  `config_info_versions` ×4, `check_binded_gc` ×4, and single pairs of
+  `init_progress`, `get_progress_slots`, `create_slots`, `refund_get`,
+  `progress_status`, `player_prefs`, `mmc_get_room`, `get_last_command`,
+  `get_binded_ids`, `update_player_online`, `unsubscribe`, `auth_v2`) and
+  `get_player_version` is not among them. The tag `23.1.3-playerversion` appears
+  once in run 72 and disappears from 73 onward. So the handler added in the
+  backend diff has never been exercised by the device.
+
+- [x] Diff both working trees and record them before starting new runs
+- [ ] Find why `23.1.3-replykey` never arms, and re-confirm the two member
+      names against the live client rather than the run-72 note
+- [ ] Establish why `get_player_version` stopped being sent after run 72; a
+      handler for an event the client no longer emits cannot move the bar
+- [ ] Given the final iterator completes, look past the coroutine: find what
+      consumes its completion and what the loading screen is still waiting for
+
+## Run 76 — the cache-record push, voided by a dead network path (2026-08-30 08:57)
+
+### Backend change (working tree, not yet committed)
+
+- `internal/config/config.go` — new flag `ConfigPushWrapper`, read from
+  `OPG3D_CONFIG_PUSH_WRAPPER`, default `false`.
+- `internal/api/socketio_configpush.go` — new `wrapPushedConfigDocument`;
+  `configPushBatches` now appends `{h: <hash>, c: <document text>}` in place of
+  the bare document while the flag is on.
+- `internal/api/socketio_configpush_wrapper_test.go` — new file with
+  `TestConfigPushWrapperStatesTheDocumentUnderTheCacheKey` (the wrapped body
+  parses, states the document text under `c`, and repeats the entry's hash under
+  `h`) and `TestConfigPushCarriesTheBareDocumentByDefault` (the default push is
+  still the bare document, so runs 57-75 stay comparable).
+- `go build ./...` BUILD_OK, `go vet ./...` VET_OK, `go test ./...` all `ok`.
+
+### Frontend change
+
+None. The device kept run 75's library (`libopg3d.so`, 524224 B, 08:01), so the
+push shape was the only variable in the run.
+
+### Why the change was made
+
+Run 75 hooked both dictionary lookups the client's config reader performs and
+printed the entry every pushed name resolves to. The entry exists, holds exactly
+two members, and both are the cache vocabulary rather than the push vocabulary:
+
+    TopUp    -> {c: '', h: '5181351cf6887c00'}
+    Boosters -> {c: '', h: 'c5078ace838a9a63'}
+
+Both fingerprints are this server's own, so the handler read the record and took
+the branch that writes an entry, and the text is `String.Empty` — the same
+object `0x6ea34adf40` for every pushed name. An embedded name read through the
+same two lookups answers with its document (`MainStore` resolves to a 163
+character JSON string under `c`). That rules out the reader and leaves the
+record: the handler does not store the attachment bytes under `c`, it parses
+those bytes as the `h_<16 hex>_c_<object>` cache plaintext and copies the members
+across. A bare document has no `c` member, which is the empty string every
+consumer has read since run 57.
+
+### Result: the run is void
+
+The bar fell to 77%, but not because of the push. The client never reached the
+backend at all:
+
+    08:57:49.805  23.1.3-client: req#1 -> GET (anon) http://192.168.0.106:8080/api/v1/ping
+    08:57:55.858  23.1.3-client: req#1 got no answer in 6053ms
+    08:57:55.858  23.1.3-client: 192.168.0.106:8080 did not answer /api/v1/ping. The game
+                  will keep running, every redirected request will fail
+
+Corroboration:
+
+- the backend logged its three boot lines (`05:57:43.277Z boot`,
+  `discovery.listen`, `listening on :8080`) and nothing else for the whole run —
+  no `auth_v2`, no `subscribe`, no `config_info_versions`;
+- `23.1.3-cfgdict` fired 101 times but not once for key `c`, because no pushed
+  name ever entered the dictionary;
+- `23.1.3-await` produced 1 line against run 75's 13.
+
+So **77% is this build's offline baseline, not a regression caused by the
+wrapper.** The wrapper was never exercised. The loading trace is otherwise
+identical to run 75 — skip state 35 at `bar=0.450`, blocked at state 40 for
+5419 ms, `InitializeSwitcher finished on its own at state=45`, `LoadMainMenu tail
+completed (state 0 -> 2, result=1)` at `bar=0.750`.
+
+### Ruled out as the cause of the outage
+
+The backend was alive throughout (pid 51370) and `ss` shows it bound on
+`*:8080`. Both `http://127.0.0.1:8080/api/v1/ping` and
+`http://192.168.0.106:8080/api/v1/ping` answer `200` from the host. There is no
+packet filter — `iptables -S`, `nft list ruleset` and `ufw` are all empty or
+absent. The default route is the LAN (`192.168.0.1 dev wlan0 src 192.168.0.106`),
+the host holds the expected `192.168.0.106/24`, the device holds
+`192.168.0.100/24`, and the host pings the device. The `awg0` VPN interface is up
+but holds a `/32` with no default route, so it does not divert the LAN.
+
+Wi-Fi was weak for the whole run — `rssi = -73..-75 dBm` on 5180 MHz, with LAN
+round trips of 85-175 ms — which is the leading suspect for the six-second
+silence on the first ping.
+
+### Next
+
+Repeat the run unchanged once the client can reach the backend, so the wrapper
+finally gets measured.
+
+## Runs 77-78 — the cache-record push measured, and disproved (2026-08-30 09:04-09:09)
+
+### Run 77 — void, same network fault as run 76
+
+Relaunched with `OPG3D_CONFIG_PUSH_WRAPPER=true` unchanged. The client again got
+nothing back (`req#1 got no answer in 6208ms`, three further `did not answer`
+lines) and the backend logged no socket events. Cause found: the operator's VPN
+client on the phone had no LAN bypass, so `tun0` (`172.19.0.1/30`) swallowed the
+route to `192.168.0.106`. The host was never at fault — `ping_via_lan=200`
+throughout. No code changed for this run.
+
+### Run 78 — the first clean measurement of the wrapper
+
+No code change from run 76. LAN bypass enabled on the phone, so the client
+reached the backend on the first try:
+
+    23.1.3-client: req#1 <- status=200 ms=120 bytes=84
+        body={"maintenance":false,"name":"open-pixel-gun-3d-backend","ok":true,...}
+
+The backend pushed cleanly — `socket.config_pushed documents=7 names=7` at
+`06:07:02.152Z`, no `config.document_unwrappable`, no
+`socket.config_push_unencodable`.
+
+**Result: 87%, down from 90%. The wrapper is a regression and is being turned
+back off.**
+
+### What the run proves
+
+A correction first: the `cfgdict` trace prints the key as
+`key=0x... class=String text='c'`, not `key='c'`. Runs 76 and 77 were grepped
+with the wrong pattern and looked empty when they were not. The corrected read of
+run 78 is unambiguous.
+
+**Embedded names read their text back through the very same two lookups:**
+
+    caller=0x24a0ec4 dict=0x6ec69a0de0 count@0x20=85 text='AssetBundlesAndroid' hit=1
+        value=0x6e00cb3cc0 class=Dictionary`2
+    caller=0x24a0f08 dict=0x6e00cb3cc0 count@0x20=2 text='c' hit=1
+        value=0x6d68d45000 class=String text='{"b":[{"n":"altars",...'
+
+**Hosted names, 16 seconds after the push landed, still do not:**
+
+    09:07:18.345 name=Boosters hit=1               -> c = 0x6ea35c5f40 String ''
+    09:07:18.347 name=ClanCommon hit=1             -> c = 0x6ea35c5f40 String ''
+    09:07:18.347 name=CommandsWithFullSlots hit=1  -> c = 0x6ea35c5f40 String ''
+
+One shared `String.Empty` pointer for all of them, and
+`config 'ClanCommon' is null or empty` fires a second time at `09:07:18.347` —
+**after** the push, so this is not the known read-before-push ordering.
+
+Immediately before those writes, the parser reads `h` exactly seven times and
+gets exactly this server's seven fingerprints:
+
+    09:07:18.340 caller=0x24a2af0 -> c5078ace838a9a63  (Boosters)
+    09:07:18.341 caller=0x24a2af0 -> d4e8ff48956c518e  (ClanCommon)
+    09:07:18.342 caller=0x24a2af0 -> 574622668ac01548  (CommandsWithFullSlots)
+    09:07:18.343 caller=0x24a2af0 -> b2cce38eae46fa54  (ConfrontationEvent)
+    09:07:18.343 caller=0x24a2af0 -> d408b9c50beae45a  (ManualOffers)
+    09:07:18.344 caller=0x24a2af0 -> 5181351cf6887c00  (TopUp)
+    09:07:18.345 caller=0x24a2af0 -> dfe85e46b697d7e3  (TrophyRoad)
+
+So the handler receives the push, reads the fingerprint, takes the update branch
+and writes a record — and the text it puts in that record is empty.
+
+### The hypothesis this kills, and the one it leaves
+
+The document **shape** has now been varied three ways with no effect on the
+result:
+
+| run | body sent | `c` read back |
+|-----|-----------|---------------|
+| 57-64 | bare document | `String.Empty` |
+| 67 | bare document, `c`/`h`/`v` aliases added to the entry | `String.Empty` |
+| 78 | `{h: <hash>, c: <document text>}` cache record | `String.Empty` |
+
+The shape is not the barrier. What every one of those runs shares is the
+**delivery channel**: the body travels as a binary attachment and the entry
+names it by integer index (`socketio_configpush.go:197`,
+`sioPushBodyKey = "val"`). The handler signature recorded at the head of that
+file is `(Dictionary<string, object>, Dictionary<object, object>,
+List<byte[]>)`. If that index is never resolved against the attachment list, the
+handler has no text to copy and writes `String.Empty` — which is exactly and only
+what has been observed, in every run, for every name.
+
+### Next
+
+Add `OPG3D_CONFIG_PUSH_INLINE`: state the document text directly in the entry as
+a string instead of sending an attachment and an index. It costs nothing against
+the attachment cap and separates the two remaining possibilities in one run — a
+handler that reads the member as text finds the document, and a handler that
+wants an index finds what it already finds today, which is nothing. The wrapper
+goes back off at the same time so the 90% baseline is restored.
+
+## Run 79 — the barrier falls: the body belongs in the entry, not in an attachment (2026-08-30 09:14)
+
+### The change
+
+`OPG3D_CONFIG_PUSH_INLINE` (`internal/config/config.go`,
+`internal/api/socketio_configpush.go`). With the flag on, the pushed entry states
+the document text under `val` as a string and **no attachment is sent at all**:
+
+```go
+if s.cfg.ConfigPushInline {
+	entry[sioPushBodyKey] = string(body)
+}
+current.entries[name] = entry
+if !s.cfg.ConfigPushInline {
+	current.documents = append(current.documents, body)
+}
+```
+
+Batching and the final flush now count `current.entries` rather than
+`current.documents`, because an inline push has no documents to count.
+`OPG3D_CONFIG_PUSH_WRAPPER` went back to `false` at the same time.
+
+Tests: `TestConfigPushInlineStatesTheDocumentInTheEntry`,
+`TestConfigPushSendsAnAttachmentByDefault`. `go build`, `go vet`, `go test ./...`
+all clean.
+
+### The result
+
+**The client reads the hosted documents. This is the first run out of the last
+twenty-two in which it does.**
+
+    09:14:44.780 NAME=Boosters hit=1
+        -> String 0x6e1bf616e0 '{"bs":{"bp":{},"id":"none","lt":0,"mi":"","s...'
+    09:14:44.803 NAME=ClanCommon hit=1
+        -> String 0x6bec2a7eb0 '{"configId":"ClanCommon"}'
+    09:14:44.829 NAME=CommandsWithFullSlots hit=1
+        -> String 0x6bec2c7a80 '{"15.99.2":{"slots":[2],"commands":{}},"16.0...'
+
+Corroborated on both sides of the wire:
+
+* backend — `socket.config_pushed documents=0 names=7`, an entirely
+  attachment-free push;
+* client — `get-text id=69 null=0 chars=25`, and 25 is exactly the length of
+  `{"configId":"ClanCommon"}`. Config id 69 has read back empty in every run
+  since 57.
+
+The count of reads answering `String.Empty` fell from every hosted name to three.
+The two `config 'ClanCommon' is null or empty` lines both land at `09:14:26.449`,
+before the push at `09:14:28.585Z` — the known pre-push ordering, not a failure to
+ingest.
+
+### What this settles
+
+The entry member `val` is the document **text**, not an index into the
+`List<byte[]>` the handler is declared to take. The comment at the head of
+`socketio_configpush.go` — *"the bodies travel as binary attachments and each
+entry references one by index, which is what the parser's `c` key has meant all
+along"* — was the wrong reading, and it cost runs 57 through 78. Every one of
+those runs varied the document while the channel stayed broken:
+
+| runs | what was varied | `c` read back |
+|------|-----------------|---------------|
+| 57-64 | bare document as attachment | `String.Empty` |
+| 65 | hash nonce | `String.Empty` |
+| 66 | always-serve + salt | `String.Empty` |
+| 67 | `c`/`h`/`v` aliases on the entry, body still an attachment | `String.Empty` |
+| 78 | `{h, c}` cache record as attachment | `String.Empty` |
+| **79** | **document text stated in the entry, no attachment** | **the document** |
+
+### Where the boot still stops
+
+Unchanged: `bar=0.750`, `InitializeSwitcher finished on its own at state=45
+(1 step(s) skipped)` at `09:15:04.787`, then `LoadMainMenu tail completed
+(state 0 -> 2, result=1)`. Backend traffic is the same shape as run 78 — no
+`create_slots`, `get_inapps` still re-polled.
+
+So the config channel is no longer the barrier, but it was also not the only one.
+The next question is content rather than transport: five of the hosted documents
+are still the stubs added in run 64 (`{"configId":"NAME"}`), and a consumer that
+finally receives a document and finds none of the members it expects can fail in
+ways that an absent document never triggered. `ClanCommon` reading back 25
+characters of nothing is now the most likely next fault, where before it was
+reading back nothing at all.

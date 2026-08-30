@@ -119,6 +119,36 @@ const (
 	sioPushHashKey = "hash"
 )
 
+// wrapPushedConfigDocument renders one body in the cache spelling the client's
+// reader consults, instead of as the bare document.
+//
+// Run 75 hooked the two dictionary lookups the reader performs and printed the
+// entry every pushed name resolves to. The entry exists, it holds exactly two
+// members, and both of them are the cache vocabulary rather than the push
+// vocabulary:
+//
+//	TopUp    -> {c: "", h: "5181351cf6887c00"}
+//	Boosters -> {c: "", h: "c5078ace838a9a63"}
+//
+// Both fingerprints are this server's own, so the handler read the record and
+// took the branch that writes an entry. The text is String.Empty - literally
+// the same object for every pushed name - so the handler had no text to write.
+// An embedded name read through the same two lookups answers with its document
+// (MainStore resolves to a 163 character JSON string under c), which rules out
+// the reader and leaves the record.
+//
+// So the handler does not store the attachment bytes under c. It parses those
+// bytes as the cache record itself - the h_<16 hex>_c_<object> plaintext the
+// client's own cache writes - and copies the members across. A bare document
+// has no c member, which is exactly the empty string every consumer has been
+// reading since run 57.
+func wrapPushedConfigDocument(hosted hostedConfig) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		sioConfigHashKey: hosted.hash,
+		sioConfigBodyKey: string(hosted.body),
+	})
+}
+
 // configPushBatch is one push: the map the client iterates, and the bodies its
 // entries index by position.
 type configPushBatch struct {
@@ -178,14 +208,40 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 			entry[sioConfigBodyKey] = len(current.documents)
 			entry[sioConfigVersionKey] = hostedConfigVersion
 		}
+		body := hosted.body
+		if s.cfg.ConfigPushWrapper {
+			wrapped, err := wrapPushedConfigDocument(hosted)
+			if err != nil {
+				s.log.Event("config.document_unwrappable", map[string]any{
+					"config": name,
+					"error":  err.Error(),
+					"note":   "the push carries the cache record the reader parses, so a body that cannot be wrapped cannot be pushed",
+				})
+				continue
+			}
+			body = wrapped
+		}
+		if s.cfg.ConfigPushInline {
+			// The handler takes its bodies as List<byte[]> and each entry
+			// names one by index, so every run so far has sent an integer
+			// here. The reader has answered String.Empty for every one of
+			// them. Stating the text in the entry costs the attachment cap
+			// nothing to try and tells us whether the index is resolved at
+			// all: a handler that reads the member as a string finds the
+			// document, and one that wants an index finds what it already
+			// found, which is nothing.
+			entry[sioPushBodyKey] = string(body)
+		}
 		current.entries[name] = entry
-		current.documents = append(current.documents, hosted.body)
-		if len(current.documents) == configPushDocumentLimit {
+		if !s.cfg.ConfigPushInline {
+			current.documents = append(current.documents, body)
+		}
+		if len(current.entries) == configPushDocumentLimit {
 			batches = append(batches, current)
 			current = configPushBatch{}
 		}
 	}
-	if len(current.documents) > 0 {
+	if len(current.entries) > 0 {
 		batches = append(batches, current)
 	}
 	return batches

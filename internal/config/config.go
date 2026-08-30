@@ -131,6 +131,34 @@ type Config struct {
 	// vocabulary the client uses in its own poll as well.
 	ConfigPushAliases bool
 
+	// ConfigPushWrapper sends every pushed body as the cache record the
+	// client's reader consults, rather than as the bare document.
+	//
+	// DIAGNOSTIC, off by default. Run 75 read the reader's own dictionary
+	// while a pushed name was looked up. The entry the push handler leaves
+	// behind holds two members and both are spelled in the cache vocabulary:
+	// TopUp is {c: "", h: "5181351cf6887c00"} and Boosters is
+	// {c: "", h: "c5078ace838a9a63"}. Those fingerprints are this server's
+	// own, so the handler did read the record and did write an entry - and
+	// the text is String.Empty, the same object for every pushed name. An
+	// embedded name read through that very same code answers with its
+	// document, so the handler does not put the attachment bytes under c: it
+	// parses those bytes as the h_<16 hex>_c_<object> plaintext the client's
+	// cache stores and copies the members across. A bare document has no c
+	// member, which is the empty string every reader has returned since run
+	// 57.
+	ConfigPushWrapper bool
+	// ConfigPushInline states the document text inside the pushed entry
+	// rather than sending it as a binary attachment the entry indexes.
+	//
+	// Runs 57 to 78 all delivered the body as an attachment, and the
+	// client's reader answered String.Empty for every hosted name in every
+	// one of them, while embedded names read back their text through the
+	// same two lookups. The document shape was varied three times over
+	// those runs and never moved the result, which leaves the attachment
+	// itself as the thing the handler does not resolve.
+	ConfigPushInline bool
+
 	Update Update
 }
 
@@ -153,6 +181,8 @@ func Load() (*Config, error) {
 		ConfigPush:        envBool("OPG3D_CONFIG_PUSH", true),
 		ConfigHashNonce:   envBool("OPG3D_CONFIG_HASH_NONCE", false),
 		ConfigPushAliases: envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
+		ConfigPushWrapper: envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
+		ConfigPushInline:  envBool("OPG3D_CONFIG_PUSH_INLINE", false),
 		PhotonAppIDs:      map[string]string{},
 		PhotonRegion:      env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{
