@@ -102,7 +102,7 @@ func TestAdminSettingsRequiresToken(t *testing.T) {
 func TestProgressEnabledFollowsMaintenance(t *testing.T) {
 	s, _ := newTestServer(t)
 
-	if got := s.progressEnabled(); got != sioProgressOpen {
+	if got := s.progressStatusCode(); got != sioProgressOpen {
 		t.Fatalf("open server answers %d, want %d", got, sioProgressOpen)
 	}
 
@@ -110,7 +110,7 @@ func TestProgressEnabledFollowsMaintenance(t *testing.T) {
 	if _, err := s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
 		t.Fatalf("apply maintenance: %v", err)
 	}
-	if got := s.progressEnabled(); got != sioProgressMaintenance {
+	if got := s.progressStatusCode(); got != sioProgressMaintenance {
 		t.Fatalf("server in maintenance answers %d, want %d", got, sioProgressMaintenance)
 	}
 	if !s.settings.snapshot().Maintenance {
@@ -121,7 +121,7 @@ func TestProgressEnabledFollowsMaintenance(t *testing.T) {
 	if _, err := s.settings.apply(settingsPatch{Maintenance: &off}); err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	if got := s.progressEnabled(); got != sioProgressOpen {
+	if got := s.progressStatusCode(); got != sioProgressOpen {
 		t.Fatalf("reopened server answers %d, want %d", got, sioProgressOpen)
 	}
 }

@@ -40,6 +40,22 @@ type Config struct {
 	AdminToken    string
 	Maintenance   bool
 
+	// BundleDir is the directory under ContentDir holding the asset bundles the
+	// client downloads, laid out as <name>/<md5>/<name>. Those files are the
+	// game's content, not this project's, so they are never committed:
+	// tools/fetch-bundles.sh builds the directory from a client's own manifest.
+	BundleDir string
+
+	// BundleUpstream is the vendor CDN a bundle may be fetched from when it is
+	// missing locally. Set it empty to keep the server strictly offline.
+	BundleUpstream string
+
+	// BundleFetchOnMiss lets the server fill a gap in its bundle tree on demand
+	// rather than failing the download, which keeps a partially filled install
+	// playable. Fetched bytes are only stored once they hash to the md5 the
+	// request asked for.
+	BundleFetchOnMiss bool
+
 	// StableSessions derives each account's session token from its device id
 	// instead of minting random bytes, and pins the socket.io session id to a
 	// fixed value.
@@ -158,6 +174,64 @@ type Config struct {
 	// those runs and never moved the result, which leaves the attachment
 	// itself as the thing the handler does not resolve.
 	ConfigPushInline bool
+	// ProgressSlotsAlwaysCreate omits the slots member from every
+	// get_progress_slots answer, including for an account that already has
+	// a stored set.
+	//
+	// Run 75 reached 90% against an account with nothing stored: the answer
+	// carried no slots member, the client uploaded its own 63 slots through
+	// create_slots, and the boot went on to update_progress, refund_get and
+	// unsubscribe. Runs 78 to 80 served those 63 slots back and stopped at
+	// 87% with that entire branch missing - six subscribes instead of
+	// twelve and no update_progress at all. Serving the set the client is
+	// about to send anyway costs the boot the work that follows it.
+	ProgressSlotsAlwaysCreate bool
+	// TutorialSectionSeed publishes progress-document section 56 with tutorial
+	// 1100 marked completed for accounts that carry no tutorials section of
+	// their own.
+	//
+	// The client gates two boot steps on that one answer, and an account this
+	// server created has never played the tutorial, so the section it uploads
+	// is an empty list and the answer is always no. Runs 89 to 107 only got
+	// past it because a temporary frontend hook lied about it; owning the
+	// section here is what lets that hook be deleted. A stored section always
+	// wins, so a player's real history is never rewritten.
+	TutorialSectionSeed bool
+	// TutorialSectionIDs are the completed tutorial ids the seed publishes.
+	//
+	// 1100 is the id both boot gates ask about. 1500 is there because the
+	// client replaces its local tutorial history with whatever arrives: run 107
+	// saw the device answer yes for 1500 out of its own history, and after a
+	// section carrying only 1100 landed, run 113 saw that turn into a no and the
+	// boot wall itself at 90%. A full set is measured to be wrong too - run 102
+	// marked every id and the boot left the ladder for 75 seconds - so the set
+	// is exactly the ids the boot is known to need, and it stays an operator
+	// switch so a run can widen it without a rebuild.
+	TutorialSectionIDs []int
+	// TutorialSectionViaProgressDocument also publishes the section in the
+	// init_progress document. Run 108 measured that this channel never reaches
+	// the tutorial manager, so it is off unless a run asks for it again.
+	TutorialSectionViaProgressDocument bool
+	// TutorialSectionViaSlots publishes the same tutorials section through the
+	// get_progress_slots answer instead of the init_progress document.
+	//
+	// Run 108 proved the two channels are not interchangeable: the section went
+	// out with the init_progress document, the client applied that document,
+	// and its tutorial manager still answered no 1200 times while the bar sat
+	// at 75%. The client's own copy of section 56 arrives in create_slots, in
+	// the 25..91 range, so the slot document is where it belongs.
+	TutorialSectionViaSlots bool
+	// TutorialSectionViaCreateSlots returns the tutorials section in the
+	// acknowledgement of create_slots instead of in get_progress_slots.
+	//
+	// Run 110 measured why this channel exists. Serving the section in
+	// get_progress_slots did answer the boot's tutorial question - the client
+	// reported the tutorial completed for the first time without any frontend
+	// hook - but a non-empty slots member also tells the client its slots are
+	// already on the server, so it skipped its create_slots upload and the
+	// ladder stopped at 87%, the same signature runs 58 and 78-80 produced.
+	// Answering the upload itself keeps that branch intact.
+	TutorialSectionViaCreateSlots bool
 
 	Update Update
 }
@@ -165,26 +239,35 @@ type Config struct {
 // Load resolves configuration from the environment.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerName:        env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
-		Addr:              env("OPG3D_ADDR", ":8080"),
-		DataDir:           env("OPG3D_DATA_DIR", "data"),
-		LogDir:            env("OPG3D_LOG_DIR", "logs"),
-		ContentDir:        env("OPG3D_CONTENT_DIR", "content"),
-		TraceBodies:       envBool("OPG3D_TRACE_BODIES", true),
-		MaxBodyLog:        envInt("OPG3D_MAX_BODY_LOG", 8192),
-		DiscoveryPort:     envInt("OPG3D_DISCOVERY_PORT", 47318),
-		AdminToken:        env("OPG3D_ADMIN_TOKEN", ""),
-		Maintenance:       envBool("OPG3D_MAINTENANCE", false),
-		StableSessions:    envBool("OPG3D_STABLE_SESSIONS", false),
-		SioReply:          envBool("OPG3D_SIO_REPLY", true),
-		ConfigAlwaysServe: envBool("OPG3D_CONFIG_ALWAYS_SERVE", false),
-		ConfigPush:        envBool("OPG3D_CONFIG_PUSH", true),
-		ConfigHashNonce:   envBool("OPG3D_CONFIG_HASH_NONCE", false),
-		ConfigPushAliases: envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
-		ConfigPushWrapper: envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
-		ConfigPushInline:  envBool("OPG3D_CONFIG_PUSH_INLINE", false),
-		PhotonAppIDs:      map[string]string{},
-		PhotonRegion:      env("OPG3D_PHOTON_REGION", "eu"),
+		ServerName:                         env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
+		Addr:                               env("OPG3D_ADDR", ":8080"),
+		DataDir:                            env("OPG3D_DATA_DIR", "data"),
+		LogDir:                             env("OPG3D_LOG_DIR", "logs"),
+		ContentDir:                         env("OPG3D_CONTENT_DIR", "content"),
+		BundleDir:                          env("OPG3D_BUNDLE_DIR", "bundles"),
+		BundleUpstream:                     env("OPG3D_BUNDLE_UPSTREAM", "https://pixelgun3d.akamaized.net"),
+		BundleFetchOnMiss:                  envBool("OPG3D_BUNDLE_FETCH_ON_MISS", true),
+		TraceBodies:                        envBool("OPG3D_TRACE_BODIES", true),
+		MaxBodyLog:                         envInt("OPG3D_MAX_BODY_LOG", 8192),
+		DiscoveryPort:                      envInt("OPG3D_DISCOVERY_PORT", 47318),
+		AdminToken:                         env("OPG3D_ADMIN_TOKEN", ""),
+		Maintenance:                        envBool("OPG3D_MAINTENANCE", false),
+		StableSessions:                     envBool("OPG3D_STABLE_SESSIONS", false),
+		SioReply:                           envBool("OPG3D_SIO_REPLY", true),
+		ConfigAlwaysServe:                  envBool("OPG3D_CONFIG_ALWAYS_SERVE", false),
+		ConfigPush:                         envBool("OPG3D_CONFIG_PUSH", true),
+		ConfigHashNonce:                    envBool("OPG3D_CONFIG_HASH_NONCE", false),
+		ConfigPushAliases:                  envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
+		ConfigPushWrapper:                  envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
+		ConfigPushInline:                   envBool("OPG3D_CONFIG_PUSH_INLINE", false),
+		ProgressSlotsAlwaysCreate:          envBool("OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE", true),
+		TutorialSectionSeed:                envBool("OPG3D_TUTORIAL_SECTION_SEED", true),
+		TutorialSectionIDs:                 envInts("OPG3D_TUTORIAL_SECTION_IDS", []int{1100, 1500}),
+		TutorialSectionViaProgressDocument: envBool("OPG3D_TUTORIAL_SECTION_VIA_PROGRESS_DOCUMENT", false),
+		TutorialSectionViaSlots:            envBool("OPG3D_TUTORIAL_SECTION_VIA_SLOTS", false),
+		TutorialSectionViaCreateSlots:      envBool("OPG3D_TUTORIAL_SECTION_VIA_CREATE_SLOTS", true),
+		PhotonAppIDs:                       map[string]string{},
+		PhotonRegion:                       env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{
 			Version:   env("OPG3D_UPDATE_VERSION", ""),
 			APKURL:    env("OPG3D_UPDATE_APK_URL", ""),
@@ -305,6 +388,32 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+// envInts reads a comma-separated list of integers. A malformed entry is
+// skipped rather than fatal, and an entirely unusable value falls back, so a
+// typo in a run's environment cannot silently empty a measured default.
+func envInts(key string, fallback []int) []int {
+	value := env(key, "")
+	if value == "" {
+		return fallback
+	}
+	parsedAll := make([]int, 0, len(fallback))
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		parsed, err := strconv.Atoi(part)
+		if err != nil {
+			continue
+		}
+		parsedAll = append(parsedAll, parsed)
+	}
+	if len(parsedAll) == 0 {
+		return fallback
+	}
+	return parsedAll
 }
 
 func envInt(key string, fallback int) int {

@@ -138,9 +138,30 @@ func (s *Server) hostedConfigReply(name, cachedHash string) (map[string]any, boo
 	}
 	return map[string]any{
 		sioConfigHashKey:    hosted.hash,
-		sioConfigBodyKey:    hosted.document,
+		sioConfigBodyKey:    hostedConfigBody(name, hosted),
 		sioConfigVersionKey: hostedConfigVersion,
 	}, true
+}
+
+// hostedConfigBody spells the body of a poll entry the way the reader for that
+// document expects to find it.
+//
+// Measured in runs 128 and 129: the document the boot waits on, GameModeEvents,
+// is read back as text by the coroutine that reports it parsed, and that read
+// stayed empty while this reply carried the body as a nested object, so the
+// coroutine never finished and the boot stopped at 90 percent. A document the
+// client had cached on its own, RatingConfig, holds two members at that point,
+// the fingerprint and the body, and its body is a string holding the document
+// text. Text is therefore the spelling every hosted document uses here.
+//
+// The full slots document is the one exception, measured on 2026-08-29 to be
+// read as a nested object and discarded when it arrives as text. See
+// fullSlotsObject for that measurement.
+func hostedConfigBody(name string, hosted hostedConfig) any {
+	if name == sioFullSlotsConfig {
+		return hosted.document
+	}
+	return string(hosted.body)
 }
 
 // fullSlotsObject re-reads the rendered document so the reply can carry it as a

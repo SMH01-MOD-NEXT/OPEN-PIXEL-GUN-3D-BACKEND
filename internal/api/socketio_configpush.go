@@ -142,11 +142,28 @@ const (
 // client's own cache writes - and copies the members across. A bare document
 // has no c member, which is exactly the empty string every consumer has been
 // reading since run 57.
+//
+// Runs 128 to 130 settled which spelling of that record the handler accepts.
+// The reader is a two step lookup, name to record and then the body member of
+// it, and the JSON object form this function used to send left that second
+// lookup answering the same empty string. The plaintext the cipher run watched
+// the client's own cache decrypt 312 times is not an object at all: it is the
+// literal text h_<16 hex>_c_<json>. That is the form this function renders, so
+// the members the handler copies across are the ones its own cache writer
+// produced.
+const (
+	// cacheRecordHashPrefix opens the cache plaintext.
+	cacheRecordHashPrefix = "h_"
+	// cacheRecordBodySeparator sits between the fingerprint and the document.
+	cacheRecordBodySeparator = "_c_"
+)
+
 func wrapPushedConfigDocument(hosted hostedConfig) ([]byte, error) {
-	return json.Marshal(map[string]any{
-		sioConfigHashKey: hosted.hash,
-		sioConfigBodyKey: string(hosted.body),
-	})
+	if hosted.hash == "" || len(hosted.body) == 0 {
+		return nil, fmt.Errorf("a cache record needs a fingerprint and a body, got %q and %d byte(s)",
+			hosted.hash, len(hosted.body))
+	}
+	return []byte(cacheRecordHashPrefix + hosted.hash + cacheRecordBodySeparator + string(hosted.body)), nil
 }
 
 // configPushBatch is one push: the map the client iterates, and the bodies its

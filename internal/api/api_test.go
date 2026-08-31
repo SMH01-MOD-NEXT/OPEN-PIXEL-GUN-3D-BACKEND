@@ -29,6 +29,11 @@ func newTestServer(t *testing.T) (*Server, *config.Config) {
 		PhotonRegion: "eu",
 		AppIDKey:     key,
 		AdminToken:   "admin-secret",
+		// Mirrors the shipping default: the tutorials section is published by
+		// the server, which is what replaced the frontend force.
+		TutorialSectionSeed:           true,
+		TutorialSectionIDs:            []int{sioRanchoTutorialID, sioIntroTutorialID},
+		TutorialSectionViaCreateSlots: true,
 		Update: config.Update{
 			Version: "23.1.3-1",
 			APKURL:  "http://example.invalid/opg3d.apk",

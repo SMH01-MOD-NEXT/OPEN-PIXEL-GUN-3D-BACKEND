@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -29,31 +30,28 @@ func TestConfigPushWrapperStatesTheDocumentUnderTheCacheKey(t *testing.T) {
 		t.Fatalf("pushed %d bodies, want one", len(batches[0].documents))
 	}
 
-	var record map[string]any
-	if err := json.Unmarshal(batches[0].documents[0], &record); err != nil {
-		t.Fatalf("the pushed body is not the JSON record the handler parses: %v", err)
-	}
-
-	text, stated := record[sioConfigBodyKey].(string)
-	if !stated {
-		t.Fatalf("the record states %T under %q, want the document text the reader hands back",
-			record[sioConfigBodyKey], sioConfigBodyKey)
-	}
-	if text == "" {
-		t.Fatalf("the record states an empty text under %q, which is the String.Empty run 75 read back", sioConfigBodyKey)
-	}
-	var document map[string]any
-	if err := json.Unmarshal([]byte(text), &document); err != nil {
-		t.Fatalf("the text under %q is not the document itself: %v", sioConfigBodyKey, err)
-	}
+	record := string(batches[0].documents[0])
 
 	entry, named := batches[0].entries[sioFullSlotsConfig].(map[string]any)
 	if !named {
 		t.Fatalf("%s is not named at the top level: %v", sioFullSlotsConfig, batches[0].entries)
 	}
-	if record[sioConfigHashKey] != entry[sioPushHashKey] {
-		t.Fatalf("the record states hash %v while the entry states %v; the handler compares the two",
-			record[sioConfigHashKey], entry[sioPushHashKey])
+	hash, _ := entry[sioPushHashKey].(string)
+	if hash == "" {
+		t.Fatal("the entry states no fingerprint; the handler compares it before it takes the text")
+	}
+
+	opening := cacheRecordHashPrefix + hash + cacheRecordBodySeparator
+	if !strings.HasPrefix(record, opening) {
+		t.Fatalf("the record reads %.48q, want the cache plaintext opening %q", record, opening)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(record, opening)), &document); err != nil {
+		t.Fatalf("the text after %q is not the document itself: %v", opening, err)
+	}
+	if len(document) == 0 {
+		t.Fatal("the wrapped document is empty, which is the String.Empty run 75 read back")
 	}
 }
 

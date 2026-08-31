@@ -41,6 +41,9 @@ func TestInitProgressAnswersWithADictionaryDocument(t *testing.T) {
 	if !ok {
 		t.Fatalf("%s is %T, want the dictionary the client casts it to", sioProgressDocumentKey, body[sioProgressDocumentKey])
 	}
+	// The document comes back exactly as it was sent up: the tutorials section
+	// this server authors rides the create_slots acknowledgement instead, since
+	// run 108 measured that a section in this document is never applied.
 	if len(document) != len(clientInitProgressSnapshot()) {
 		t.Fatalf("answered %d slots, want the %d that were sent up", len(document), len(clientInitProgressSnapshot()))
 	}

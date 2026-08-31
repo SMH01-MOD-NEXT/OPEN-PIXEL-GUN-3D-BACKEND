@@ -52,6 +52,7 @@ const (
 	sioCheckBindedGCEvent = "check_binded_gc"
 	sioSocialIDKey        = "social_id"
 	sioCheckVersionEvent  = "full_check_version"
+	sioPlayerVersionEvent = "get_player_version"
 	sioRegisterPushEvent  = "register_push"
 	sioInitProgressEvent  = "init_progress"
 )
@@ -118,6 +119,8 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerCheckBindedGC
 	case sioCheckVersionEvent:
 		return (*Server).answerCheckVersion
+	case sioPlayerVersionEvent:
+		return (*Server).answerPlayerVersion
 	case sioRegisterPushEvent:
 		return (*Server).answerRegisterPush
 	case sioInitProgressEvent:
@@ -340,27 +343,43 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 	return body
 }
 
-// sioProgressEnabledKey names the single integer the auth scene waits for in
-// this answer. The name was read out of the live client; the meaning was read
-// off the screen: the client stores "true" when the value is zero and raises
-// its technical works screen, so zero is how a live server announces downtime
-// and one says it is open. Either value satisfies the waiting scene, which only
-// needs the field to be present.
+// sioProgressEnabledKey names the single integer the auth scene reads out of
+// this answer. Both the key and its meaning were measured on a rooted device
+// rather than inferred, because the guesses went both ways and one of them cost
+// a run.
+//
+// The reply handler at libil2cpp.so+0x17A9980 does this with the value:
+//
+//	ContainsKey(answer, "err_code")  -> present means failure, so it stays out
+//	ContainsKey(answer, "enabled")   -> absent leaves the flag unset
+//	Convert.ToInt32(answer["enabled"])
+//	flag = (value == 0)              -> cset w1, eq at 0x17A9B40
+//
+// and stores that flag into a static Nullable<bool>. Run 97 sent zero to see
+// what a true flag buys. The static did turn true, and the client answered by
+// clearing it again at its 80% step, opening an information window and
+// abandoning the rest of the loading ladder: the true flag is how this build
+// says "technical works", not "carry on". Sending one keeps the ladder intact
+// all the way to its last step, so one is what an open server sends.
+//
+// Note for whoever reads the startup state machine at 0x3DC9854 and sees it
+// require a true flag before starting a coroutine: that branch is shared with
+// the local-multiplayer shortcut, and it is the offline path, not the way into
+// the main menu. Do not flip this constant to reach it.
 const (
 	sioProgressEnabledKey = "enabled"
 
-	// sioProgressOpen and sioProgressMaintenance are the only two values this
-	// field is allowed to carry. Neither is hardcoded into an answer: the one
-	// that goes out is whatever the operator's switch says, so downtime stays
-	// a server decision and the client needs no knowledge of it.
+	// The two codes this server sends. Neither is hardcoded into an answer:
+	// the one that goes out is whatever the operator's switch says, so downtime
+	// stays a server decision and the client needs no knowledge of it.
 	sioProgressOpen        = 1
 	sioProgressMaintenance = 0
 )
 
-// progressEnabled maps the operator's maintenance switch onto the integer the
+// progressStatusCode maps the operator's maintenance switch onto the code the
 // auth scene reads. It is the socket half of the flag the liveness endpoint
 // already reports over HTTP: one switch, announced on both channels.
-func (s *Server) progressEnabled() int {
+func (s *Server) progressStatusCode() int {
 	if s.settings.snapshot().Maintenance {
 		return sioProgressMaintenance
 	}
@@ -373,7 +392,7 @@ func (s *Server) progressEnabled() int {
 func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["progress"] = map[string]any{}
-	body[sioProgressEnabledKey] = s.progressEnabled()
+	body[sioProgressEnabledKey] = s.progressStatusCode()
 
 	profile, ok := s.sessionProfile(session)
 	if !ok {
@@ -603,6 +622,35 @@ func (s *Server) answerRegisterPush(session *sioSession, head sioHead, reqID int
 	return sioOK(reqID)
 }
 
+// sioPlayerVersionKey is the only event-specific member the live 23.1.3
+// callback reads from get_player_version. Run72 traced its exact ContainsKey
+// call at FriendsController+0x1D8F740; when absent the callback returns before
+// applying anything. The following cast and consumer both take System.String,
+// so this member must remain a string rather than a numeric protocol version.
+const sioPlayerVersionKey = "version"
+
+// answerPlayerVersion returns the version belonging to the authorised profile.
+// init_progress arrives earlier in the same boot and carries the client's own
+// version_slot, so that stored value is preferred. A fresh or incomplete
+// profile falls back to the one client build this backend currently serves.
+func (s *Server) answerPlayerVersion(session *sioSession, head sioHead, reqID int) map[string]any {
+	body := sioOK(reqID)
+	version := sioClientVersion
+	if profile, ok := s.sessionProfile(session); ok {
+		if stored, ok := profile.ProgressDocument["version_slot"].(string); ok && stored != "" {
+			version = stored
+		}
+	}
+	body[sioPlayerVersionKey] = version
+	s.log.Event("socket.player_version_answered", map[string]any{
+		"sid":     session.sid,
+		"req_id":  reqID,
+		"version": version,
+		"note":    "version is a string because the stock FriendsController callback casts it to System.String",
+	})
+	return body
+}
+
 // answerGenericAck is the fallback for an event that has no handler of its own.
 // It is logged under its own kind so it stays visible which events are running
 // on the fallback instead of a real answer.
@@ -777,13 +825,25 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 	}
 
 	document, _ := body[sioProgressDocumentKey].(map[string]any)
+	// Section 56 is the tutorials section the boot gates on. It travels with
+	// the rest of the document because the applier enumerates every member and
+	// parses its key as a section id, so an authored section needs no separate
+	// channel. See socketio_tutorial_section.go for why this server authors it.
+	// Run 108 measured that a tutorials section in this document never reaches
+	// the client's tutorial manager, so this channel stays behind a switch and
+	// the create_slots acknowledgement carries it instead.
+	tutorialSeeded := false
+	if s.cfg.TutorialSectionViaProgressDocument {
+		tutorialSeeded = s.applyTutorialSection(document)
+	}
 	s.log.Event("socket.progress_initialised", map[string]any{
-		"sid":       session.sid,
-		"player_id": playerID,
-		"received":  len(snapshot),
-		"answered":  len(document),
-		"hash":      head.text("hash"),
-		"note":      "the document travels in progress, the member the reply reader casts to a dictionary before the boot coroutine applies it",
+		"sid":                     session.sid,
+		"player_id":               playerID,
+		"received":                len(snapshot),
+		"answered":                len(document),
+		"tutorial_section_seeded": tutorialSeeded,
+		"hash":                    head.text("hash"),
+		"note":                    "the document travels in progress, the member the reply reader casts to a dictionary before the boot coroutine applies it",
 	})
 	return body
 }

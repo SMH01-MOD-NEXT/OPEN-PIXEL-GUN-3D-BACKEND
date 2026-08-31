@@ -3406,3 +3406,1700 @@ finally receives a document and finds none of the members it expects can fail in
 ways that an absent document never triggered. `ClanCommon` reading back 25
 characters of nothing is now the most likely next fault, where before it was
 reading back nothing at all.
+
+## Runs 80-81 - the 87% detour, and what actually holds the bar at 90% (2026-08-30 09:22-09:28)
+
+### Run 80 - the stub documents were not the cause
+
+Run 79 delivered the hosted documents for the first time and cost three points,
+so the obvious suspect was their content: five of the eleven were still the
+run-64 stubs `{"configId":"NAME"}`, harmless while unread and possibly fatal
+once ingested. Run 80 tested that directly by moving all ten hand-written files
+out of `content/sio-configs/` into `content/sio-configs-parked/`, leaving only
+`CommandsWithFullSlots`, which is generated in code from measured data.
+
+The push shrank to `documents=0 names=1` and the client read it cleanly:
+**zero** `String.Empty` reads, and the `config 'ClanCommon' is null or empty`
+line that fired twice in run 79 did not appear at all. The content theory was
+sound and the delivery is clean.
+
+It made no difference. The event census was identical to run 79, and the bar
+stayed where it was.
+
+### Run 81 - the real cause of 90 -> 87 was the stored slot set
+
+Comparing the two censuses against run 75, the 90% reference, the gap was not in
+the config channel at all (each event is two log lines, decoded and answered):
+
+| event | run 75 (90%) | runs 79-80 (87%) | run 81 |
+|---|---|---|---|
+| `subscribe` | 24 | 12 | 24 |
+| `update_progress` | 8 | 0 | 10 |
+| `create_slots` | 2 | 0 | 2 |
+| `refund_get` | 2 | 0 | 2 |
+| `unsubscribe` | 2 | 0 | 2 |
+
+The answers to `get_progress_slots` explain it. In run 75 the account had
+nothing stored, so the answer carried no `slots` member and the client uploaded
+its own set: `progress_slots_stored received=63 stored=63`. From run 78 on, that
+stored set was served back, the client had nothing to upload, and the whole
+branch behind `create_slots` - four `update_progress` calls, `refund_get`,
+`unsubscribe`, and six further subscribes - never ran.
+
+So the three points were never the wrapper and never the inline push. They were
+the slots that run 75 itself had stored. Serving a client the set it is about to
+send costs the boot everything that follows the upload.
+
+Run 81 cleared `progress_slots` for player 918930694 and reproduced run 75's
+census exactly, with ten `update_progress` rather than eight. Because a wiped
+state file is not a fix, `OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE` now omits the
+member unconditionally, defaulting to on; `answerProgressSlots` distinguishes
+"nothing held" from "held and deliberately withheld" in its log note. Build, vet
+and the full `internal/...` suite are green.
+
+### What actually holds the bar at 90%
+
+With the detour closed, the switcher trace says plainly that the boot sequence
+is not what stalls:
+
+```
+InitSwitcher state=42 bar=0.730
+InitSwitcher state=44 bar=0.740
+InitSwitcher state=45 bar=0.750 result=0
+LoadMainMenu entering state=0 bar=0.750
+LoadMainMenu state=0  bar=0.750 result=1
+```
+
+`result=0` is `MoveNext` returning false: `InitializeSwitcher` runs to
+completion. `LoadMainMenu` then runs and its tail completes, `state 0 -> 2`,
+and the main-menu scene load is requested. The watchdog disarms itself.
+
+The missing state 43 and the `blocked ... entered at state=40 has not returned
+for 5550 ms` warning are both red herrings. The skip list holds exactly one
+entry, 35, and that is the only step ever skipped; 43 is simply a state the
+machine never occupies. The 5550 ms block at 40 resolved on its own - states
+41, 42, 44 and 45 all follow it in the log.
+
+The dump closes the question. Both iterators are tiny:
+
+- `Switcher.<LoadMainMenu>` (TypeDefIndex 6034, RVA `0x2179DB0`) has four
+  fields: `<>1__state`, `<>2__current`, `<>l__initialThreadId`, `<>4__this`.
+  It holds no enumerator, no async operation and no coroutine, so it has
+  nothing to wait on and cannot be the thing that hangs.
+- `Switcher.<InitializeSwitcher>` (TypeDefIndex 6031) adds only
+  `<ranchoComplete>5__2`, `<wm>5__3`, `<>7__wrap3`, `<i>5__5`, `<startWait>5__6`,
+  and it too reaches its end.
+
+Both are declared `IEnumerable<float>`: the floats they yield are the progress
+values, and the highest either ever yields is `0.750`. The 90% on screen is
+therefore drawn by something downstream of the Switcher, after the scene load
+has already been requested.
+
+One await in the entire boot never completes:
+
+```
+coroutine 0x3DC4758 waits on class=Coroutine object=0x6e1c8d86a0 (via 0x3DC7C94) call#3
+```
+
+`0x3DC4758` sits in the final-startup range, alongside
+`kAuthorizedSyncMoveNextRva 0x3DC8574` and `kFinalStartupMoveNextRva 0x3DC9320`,
+not in the Switcher. Its first two waits complete; the third, on a nested
+`Coroutine`, never does, and no `call#4` is ever logged. That single unfinished
+await is the 90% wall.
+
+### Next
+
+The awaited object is opaque as a bare pointer. The next trace resolves it:
+record the enumerator type behind each started coroutine and correlate it with
+`0x6e1c8d86a0`, which names the class that never finishes. Trace-only, so it
+stays inside the frontend's permitted scope.
+
+## Runs 82-84 — the 90% wall is named
+
+The 87% detour is closed and the stall itself is now identified. Every run and
+every change below is recorded as required.
+
+### Backend change: the create_slots branch is held by configuration, not by hand
+
+Runs 78-80 lost the 90% branch because the server started serving the stored
+slot dictionary back to the client. With `slots` present the client has nothing
+to upload, so `create_slots`, `update_progress`, `refund_get` and `unsubscribe`
+never run. Run 81 restored the branch by wiping `progress_slots` out of
+`data/state.json`, which is not a fix - the client re-stored all 63 entries at
+the end of the same run.
+
+`internal/api/socketio_slots.go` and `internal/config/config.go` now carry
+`ProgressSlotsAlwaysCreate`, read from `OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE`
+and defaulting to true:
+
+```go
+if held > 0 && !s.cfg.ProgressSlotsAlwaysCreate {
+    body[sioSlotsKey] = slots
+}
+```
+
+`go build ./...` and `go test ./internal/...` both pass. Run 82 confirmed it on
+the device with the stored set left intact:
+
+```
+06:42:43.929Z socket.progress_slots_asked held=63 served=0
+    note="held a stored set but omitted it; serving it back skips the
+          create_slots branch the boot needs"
+06:42:44.022Z socket.progress_slots_stored received=63 stored=63
+```
+
+So the boot keeps the run-75 event profile permanently, and `state.json` no
+longer has to be emptied before a run.
+
+### The boot sequence is not what stalls
+
+Runs 82, 83 and 84 all end the loading sequence cleanly:
+
+```
+23.1.3-stall: InitializeSwitcher finished on its own at state=45 (1 step(s) skipped)
+23.1.3-stall: LoadMainMenu is running (1 skipped step(s))
+23.1.3-stall: LoadMainMenu tail completed (state 0 -> 2, result=1)
+23.1.3-swt:   InitSwitcher state=45 bar=0.750 result=0
+```
+
+The dump closes the question. Both Switcher iterators are declared
+`IEnumerable<float>`, so the floats they yield *are* the progress values, and
+the highest either yields is `0.750`. `Switcher.<LoadMainMenu>` (TypeDefIndex
+6034, line 260050) holds only `<>1__state`, `<>2__current`,
+`<>l__initialThreadId` and `<>4__this` - no enumerator, no `AsyncOperation`, no
+coroutine. It has nothing to wait on and cannot be the thing that hangs.
+
+Two earlier claims in this plan were wrong and are corrected here: the guard's
+skip list is exactly `{35}`, state 43 is never occupied, and the 5.5 s block
+reported at state 40 resolves on its own - states 41, 42, 44 and 45 all follow
+it in the log.
+
+### Finding the entry point took three attempts
+
+The one unfinished await in the whole boot is
+
+```
+23.1.3-await: coroutine 0x3DC4758 waits on class=Coroutine object=0x... (via 0x3DC7C94) call#3
+```
+
+from `AuthSceneController.<iterator>` (TypeDefIndex 2028). Its call#1 and call#2
+complete; call#4 is never logged. A bare `Coroutine` handle names nothing, so
+`coroutine_name_trace_2313.h` was added to record the `IEnumerator` type behind
+every started coroutine. Trace-only, passive passthrough.
+
+| run | entry point tried | result |
+|---|---|---|
+| 82 | `MonoBehaviour.StartCoroutine` by name, 1 arg | wrong overload - metadata picked `StartCoroutine(string)`; one `UICamera` line and nothing else |
+| 83 | `MonoBehaviour.StartCoroutineManaged2` | armed 2/2 but never called once; the enumerator overload does not route through it |
+| 84 | `StartCoroutine(IEnumerator)` hooked by address at RVA `0x4436094` | 132 starts recorded; the dead handle matched |
+
+### Run 84 — the wall has a name
+
+```
+0x3DC4758 call#1 waits on Coroutine  <== AuthSceneController started 且下七丟上三丌世专
+0x3DC4758 call#2 waits on WaitUntil
+0x3DC4758 call#3 waits on Coroutine  <== AuthSceneController started 业丐上丈世丟东丕下   <-- never returns
+```
+
+The coroutine that never completes is
+
+- `AuthSceneController.丘不世丝三丗丁丌丘()`, RVA `0x3DC6C48`
+- state machine `AuthSceneController.业丐上丈世丟东丕下`, TypeDefIndex 2044,
+  declared at dump2313.cs line 92272
+- `MoveNext` RVA `0x3DCAB8C`, `get_Current` RVA `0x3DCACDC` (generic) and
+  `0x3DCAD24` (non-generic)
+
+Its sibling `且下七丟上三丌世专` (TypeDefIndex 2045, `MoveNext` `0x3DCAD30`) is awaited
+at call#1 and finishes normally, so the two make a clean control pair.
+
+The hung machine holds only `<>1__state` and `<>2__current`. It captures no
+`this`, so it cannot be blocked on owner state - it is parked on whatever it
+yielded. None of its RVAs had ever been hooked before run 85.
+
+While it is parked the client idles in a visible loop: `get_inapps` is
+re-dispatched indefinitely (#37 by 132 s in run 81) and `WeaponManager` /
+`ShopNGUIController` coroutines restart in pairs to the end of the log.
+
+### Next
+
+Run 85 adds two address hooks on the hung machine itself - `MoveNext`
+(`0x3DCAB8C`) reporting the state entered and left, and `get_Current`
+(`0x3DCAD24`) reporting the managed class of the yielded object. Between them
+they name the exact wait that never ends, which is what a backend-side fix has
+to satisfy.
+
+## Runs 85-87 — the coroutine theory dies, the client names its own bug
+
+### Run 85 — the "hung" coroutine is not hung
+
+Two address hooks were added to `coroutine_name_trace_2313.h` on the machine run
+84 accused (TypeDefIndex 2044): `MoveNext` at `0x3DCAB8C` reporting the state
+entered and left, and `IEnumerator.get_Current` at `0x3DCAD24` reporting the
+class of the yielded object. Armed 4/4. The verdict was immediate:
+
+```
+MoveNext #1 entered state=0 left state=1 more=1
+yielded class=WaitUntil object=0x6ea35d3d80 at state=1 call#1
+MoveNext #2 entered state=1 left state=-1 more=0
+```
+
+`state=-1, more=0` is normal completion. The coroutine finishes in 29 ms.
+
+This retires the whole line of reasoning behind runs 82-84: **the last await in
+the log is not the stuck await.** The parent iterator stops asking what to wait
+for because it reached its end, not because it is blocked. Confirmed on every
+other iterator in the boot - `finalauth` walks all 70 delegates and ends at
+`step#71 state 1 -> -1 more=0`, `authsync` ends at `step#3 state 2 -> -1`, and
+the binded-account gate reports `the WaitUntil condition just became true`. The
+79% gate is open and the boot sequence is complete.
+
+What the client actually does at 90% is idle: `ShopNGUIController` and
+`WeaponManager` restart a coroutine each, once per second, indefinitely, and
+`get_inapps` is re-polled every 30 s.
+
+### Run 85 — the client's own log names the bug
+
+The `dbglog` passthrough carries the client's own `Debug.LogError`, and it is
+unambiguous:
+
+```
+[Boosters] ---- _config == null
+JsonSerializationException: Cannot deserialize the current JSON object into type
+  'System.Collections.Generic.List`1[Boosters.\u4e08\u4e1a\u4e0e\u4e16\u4e12\u4e02\u4e1c\u4e07\u4e1a]'
+  because the type requires a JSON array
+Path 'bs.bp', line 1, position 12.
+deserialization fail, string:
+  '{"bs":{"bp":{},"id":"none","lt":0,"mi":"","st":"","t":""},"configId":"Boosters",...}'
+```
+
+The document that fails is ours - `content/sio-configs/Boosters.json`, one of
+the ten stubs written by hand in an earlier session. Parking the stubs in run 80
+proved nothing because the client had already saved this one and re-read its own
+copy every boot.
+
+### Runs 86-87 — the fix, guided by the type
+
+The misleading part is the path. The client re-serialises with sorted keys, so
+`bp` is simply the first member inside `bs`, and `bs.bp` is where the reader
+stops - not what is wrong. Run 86 changed the inner `bp` to `[]` and failed
+identically, which is what sent me to the dump:
+
+```
+internal sealed class \u4e1f\u4e16\u4e07\u4e11\u4e10\u4e1b\u4e07\u4e09\u4e03 // TypeDefIndex: 7495
+    [JsonProperty("bs")]  List<\u4e08\u4e1a\u4e0e\u4e16\u4e12\u4e02\u4e1c\u4e07\u4e1a> BoosterSettings;
+    [JsonProperty("gm")]  List<...> GameModes;
+    [JsonProperty("ms")]  ... MigrationSettings;
+    [JsonProperty("bes")] ... BoosterEventSettings;
+
+internal sealed class \u4e08\u4e1a\u4e0e\u4e16\u4e12\u4e02\u4e1c\u4e07\u4e1a // TypeDefIndex: 7496
+    id string, lt int, t string, st string, mi string,
+    [JsonProperty("bp")] Dictionary<enum, int> BuffProperties;
+```
+
+`bs` is a **list**, and the stub sent an object. The inner `bp` is a
+**dictionary**, so the original `{}` there was right and run 86's `[]` was a
+regression. The document now reads
+
+```json
+{"configId":"Boosters","e":false,"l":1,"s":1,
+ "sd":"2026-01-01T00:00:00","ed":"2027-01-01T00:00:00",
+ "bs":[],"gm":[],"ms":{},"bes":{}}
+```
+
+with `gm`, `ms` and `bes` filled in as empty rather than omitted, so no list or
+sub-object deserialises to null.
+
+Run 87 result:
+
+| | run 85 | run 86 | run 87 |
+|---|---|---|---|
+| `[Boosters] ---- _config == null` | 2 | 4 | **0** |
+| deserialization failures | 5 | 10 | **1** |
+
+The single remaining failure is the client re-reading its own cached copy from
+run 86 before our document arrives; once it arrives the config parses and
+`_config` is never null again. Delivery was confirmed independently in run 86,
+where 9 of 10 failures already quoted the corrected text - the client does
+accept and re-save what we push.
+
+### Honest status
+
+The Boosters config was a real bug and is fixed, but it was **not** the wall:
+the loading bar still stops and the once-per-second `ShopNGUIController` /
+`WeaponManager` retry loop is unchanged (41 restarts in run 87). What run 87
+bought is a clean log - the only client-side error left in the boot is gone, so
+the next error to appear is the real one rather than noise.
+
+Next: resolve the two managed callers that drive the idle loop,
+`libil2cpp.so+0x2f7692c` (ShopNGUIController) and `libil2cpp.so+0x16a1b38`
+(WeaponManager), against dump2313.cs to find the condition they retry on.
+
+## Run 88 — the Photon credential closes, and the last managed log moves (2026-08-30 11:46)
+
+### What changed
+
+Frontend, logging only. `debug_log_trace_2313.h` no longer filters
+`Debug.Log(object)` / `Debug.LogError(object)` through a needle list. Every
+*distinct* managed line now prints exactly once — an FNV-1a dedup table with
+8192 slots and a 4000-distinct-message budget — and the per-line truncation
+limit went from 256 to 512 characters.
+
+Build flag, not game logic. The library was finally built with the key the
+thin-client document has always specified:
+
+```bash
+./gradlew :opg3d:assembleRelease \
+  -POPG3D_APPID_KEY="$(grep '^OPG3D_APPID_KEY=' ../OPEN-PIXEL-GUN-3D-BACKEND/.env | cut -d= -f2)"
+```
+
+Backend: **unchanged**, PID 73353, the same binary that served run 87.
+
+### Result 1 — the Photon credential is no longer a failure path
+
+Every Photon line in run 87 ended in `the backend served no credential`. Run 88:
+
+```
+req#4 <- status=200 ... {"envelope":{"alg":"AES-256-GCM","nonce":"6QXNF7GINMaban9q",...
+opened the pun AppID envelope (36 chars, alg=AES-256-GCM)
+req#5 <- status=200 ...
+opened the realtime AppID envelope (36 chars, alg=AES-256-GCM)
+mapped Switcher AppID selector -> the credential served by the backend (chars=36 fnv=1f9056ce)
+[Switcher.SetUpPhoton/end]: apply#1 sdk=1 host=1 region=0 appChars=36 appFNV=1f9056ce ready=1
+[Switcher.SetUpPhoton/end]: apply#2 sdk=1 host=1 region=0 appChars=36 appFNV=1f9056ce ready=1
+```
+
+Zero Photon failure lines in the entire run. `handlePhotonAppID`, `secrets.Seal`,
+`data/settings.json` and `OPG3D_APPID_KEY` were all correct on the server the
+whole time; the previous library simply had no key to open the envelope with.
+**The hypothesis "the backend never delivers the Photon AppID" is closed, and it
+was not the wall.**
+
+### Result 2 — the boot is 3.4x faster to the auth scene
+
+| | run 87 | run 88 |
+|---|---|---|
+| auth scene `Start` | +42 s | **+12.231 s** |
+| `23.1.3-stall` lines | 7 | 5 |
+| `not pumped ... for 5628 ms` | present | **absent** |
+| `InitializeSwitcher` | blocked 5415 ms at state=40 | finished on its own at state=45 |
+| `LoadMainMenu` tail | state 0 -> 2 | state 1 -> 2 |
+| deserialization failures | 1 | **0** |
+| `[Boosters] ---- _config == null` | 0 | **0** |
+
+The Boosters fix holds: run 88 has no client-side deserialization error at all.
+
+### Result 3 — the whole auth chain completes, and the bar still stops
+
+Every instrumented auth iterator runs to `state -1 more=0`:
+
+```
+infowin   coroutine 0x3DC6CD0 step #2 state 1 -> -1 more=0     (+12.413 s)
+infowin   coroutine 0x3DC4758 step #4 state 4 -> -1 more=0     (+12.488 s)
+authsync  step#3 state 2 -> -1 more=0                          (+12.653 s)
+finalauth step#71 state 1 -> -1 more=0, 70 delegates walked    (+15.257 s)
+```
+
+`0x3DC5F54` again returns false (no update banner, not version-blocked — the
+healthy outcome), and `23.1.3-gate` again reports `the awaited field is filled
+(0x7bb96ab9b0) and its sibling is still null (0x0)`. The bar is still at 90% and
+the once-per-second `ShopNGUIController` / `WeaponManager` restart loop is
+unchanged (268 restarts by +90 s).
+
+### Result 4 — what the unfiltered log actually revealed
+
+Only **17 distinct** managed `Debug.Log(object)` lines exist in the whole boot.
+The two that matter are new:
+
+```
+11:46:56.036  [BRV] MigrateFromLegacyData. Slot =-=-= System.Collections.Generic.Dictionary`2[System.String,System.Object]
+              stack: \u4e08\u4e04\u4e12\u4e14\u4e0f\u4e07\u4e1d\u4e01\u4e06:MoveNext()
+                  -> Progress.\u4e0e\u4e05\u4e1f\u4e08\u4e15\u4e0a\u4e1c\u4e1f\u4e01:\u4e1d\u4e07\u4e03\u4e11\u4e13\u4e06\u4e1b\u4e11\u4e10(HashSet`1)
+                  -> Progress.\u4e17\u4e1b\u4e14\u4e19\u4e12\u4e14\u4e05\u4e15\u4e0c:\u4e01\u4e0e\u4e19\u4e1a\u4e14\u4e09\u4e0c\u4e08\u4e01()
+
+11:46:57.703  [PROD-32809] OnResetData          <- the LAST managed log of the boot
+              pc=libil2cpp.so+0x2f63518 = TDI 12114 . method RVA 0x2F63448 (+0xD0)
+```
+
+Also resolved:
+
+* `'End wait info about Game Center'` **does** fire (pc `0x3DC7A20`,
+  `AuthSceneController.\u4e06\u4e1e\u4e1a\u4e14\u4e16\u4e0c\u4e1f\u4e13\u4e15.MoveNext +0x304`).
+  Its absence in earlier runs was a needle-filter artifact, as suspected.
+* The state machine that logs the slot migration is
+  `AuthSceneController.\u4e08\u4e04\u4e12\u4e14\u4e0f\u4e07\u4e1d\u4e01\u4e06`,
+  **TDI 2031**, `MoveNext` = **0x3DC8574** (the address already hooked as
+  `kAuthorizedSyncMoveNextRva`), driven by `0x3DC5EB8`. It carries one field:
+  `private Task<HashSet<string>> <getRemoteSlotsTask>5__2` — the client awaits a
+  **remote slot set** from the server there, and the task completes.
+* Its sibling **TDI 2032** carries the same `Task<HashSet<string>> <task>5__2`.
+* The migration converter pair lives on **TDI 6690**
+  (`\u4e17\u4e1b\u4e14\u4e19\u4e12\u4e14\u4e05\u4e15\u4e0c`), nested types
+  TDI 6688 / TDI 6689, with
+  `Dictionary<string,object> <- nested` and `nested <- Dictionary<string,object>`.
+  The slot the client logs is still a raw `Dictionary<string,object>`, i.e. it
+  takes the *legacy* migration path on every boot.
+* `23.1.3-slottrace` shows the slot document the client parses twice:
+  641 chars, `{"15.99.2":{"slots":[2],"commands":{}},"16.0.0":{"slots":[2],...`
+
+### Honest status
+
+Run 88 removed the last two known client-side faults (Boosters deserialization,
+Photon credential) and cut the boot time by a factor of three, but **the bar
+still stops at 90%**. What it bought is a clean, complete picture: the auth
+chain finishes, the Photon route is armed, and the only anomalies left are the
+never-filled sibling static, the null `update_banner_version` / `hub_version`,
+and the legacy slot-migration path.
+
+Next: name what `[PROD-32809] OnResetData` (TDI 12114, RVA 0x2F63448) resets and
+who calls it, and find who owns the 90% bar after the auth scene completes.
+
+## Run 89 - the 90% is a UILabel, and ActivityIndicator writes it (2026-08-30 12:21)
+
+**Change under test.** Frontend, logging only: new `ui_progress_trace_2313.h`
+hooks `UIProgressBar.set_value(float)` (RVA 0x4FEB4B0) and
+`UILabel.set_text(string)` (RVA 0x4E4F7E0). Both call straight through to the
+original setter; output is deduped per distinct (widget, value) and budgeted.
+Wired into main.cpp as `feature_config::startup::ui_progress_trace`. Backend
+unchanged (PID 73353, no code change). Library md5
+`bd91fdd094274b31045b7df06f52910a` (536816 B), verified on device. Hooks armed
+2/2. Game PID 29364, managed tid 29438, boot start 08-30 12:21:57.
+
+**Outcome: still stuck, but the widget is finally named.**
+
+1. **`UIProgressBar.set_value` was never called - not once, in the whole boot.**
+   The 23.1.3 loading bar is not an NGUI progress bar at all. Every previous
+   hunt for a bar widget was looking for something that does not exist in this
+   scene, which is why `allowSceneActivation`, Google Play `LoadingBar` and
+   `LoadingNGUIController` each had to be refuted in turn.
+
+2. **The percentage is one text label**, `UILabel@0x7bb90d3d20`, counting up and
+   then stopping dead:
+
+   | time | text |
+   |---|---|
+   | 12:22:07.638 | 75 |
+   | 12:22:09.780 | 76 |
+   | 12:22:09.883 | 79 |
+   | 12:22:10.029 | 80 |
+   | 12:22:10.036 | 81 |
+   | 12:22:10.068 | 87 |
+   | 12:22:10.124 | 88 |
+   | 12:22:11.909 | **90 - last write, never changes again** |
+
+3. **Writer named.** Every one of those texts is set from `ActivityIndicator.丒业丗丛业丗上丈丕`
+   @ **0x1E18DC0**; the hook caught the `set_text` call inside it at
+   `libil2cpp.so+0x1e19038` (that method +0x278).
+
+4. **This settles the Switcher question.** `Switcher+0x138` caps at 0.750 and
+   the label passes through exactly 75 at that moment, so the Switcher does own
+   the bar up to 75 via its two call sites `Switcher.Start.MoveNext +0x27C`
+   (0x217ABB4) and `+0x3DC` (0x217AD14). It is simply not the owner afterwards.
+   The 76-90 segment comes from elsewhere.
+
+5. **25 call sites drive the indicator**, and the post-75 ones are all auth scene:
+   - `Switcher.Start.MoveNext` +0x27C, +0x3DC
+   - `GameController.Awake` +0xC8, and its iterator MoveNext +0x3F0/+0x6A8/+0x7B8
+   - `AuthSceneController.Start` +0xEC, `.Update` +0x1F4, and eleven more inside
+     its iterators, including the final-startup SM `0x3DC9320` at **+0x400
+     (0x3DC9720)** - the same MoveNext that carries the `0x3DC5F54` version gate
+     and the false branch at 0x3DC9508.
+   - `MainMenuController` iterator MoveNext +0x834/+0xF54/+0x2528/+0x2FA4
+
+6. **The indicator is fed through a range object, not a raw percentage.** Every
+   call site has the same shape: load a float constant, call
+   `0x35AD0A4` on the object at `[self+0x58]`, then call the indicator with the
+   result. `0x35AD0A4` belongs to TDI 9318, whose only fields are two floats at
+   0x10 and 0x14 - a progress segment (start, end). So each site advances the
+   bar within its own segment, and 90 is a segment boundary rather than an
+   arbitrary number.
+
+7. **Boot health unchanged and good.** Photon credential opens, zero
+   deserialization failures, `finalauth step#71 state 1 -> -1 more=0` at
+   +014007 ms, last managed log `[PROD-32809] OnResetData` at +013349 ms. The 90
+   write lands at +013967 ms, immediately before the final-auth delegate walk
+   ends - not after some later failure.
+
+8. Idle loop continues as before (`ConnectionLostChecker.Update` skip #5400 at
+   +173694 ms), so the process is alive and pumping, just never advancing.
+
+**Next.** Hook `ActivityIndicator.丒业丗丛业丗上丈丕` itself and log its caller PC plus the
+value, so the exact call site that emits 0.90 is named rather than inferred;
+then find what that code path waits on.
+
+---
+
+## Run 90 — the wall is named: the auth scene parks at Authorized (2) and the main menu never awakes
+
+**Change (frontend, logging only)** — new `opg3d/src/main/cpp/activity_indicator_trace_2313.h`, registered in
+`main.cpp` (include, `feature_config::startup::activity_indicator_trace = true`, `install_component`). It hooks
+`ActivityIndicator.丒业丗丛业丗上丈丕(float)` at RVA `0x1E18DC0` — the single method that writes the loading
+percentage — and logs each value together with the caller PC:
+`23.1.3-indicator: #%d value=%.4f caller=libil2cpp.so+0x%llx`. Nothing is altered; the stock body always runs.
+
+**Change (tooling)** — `/tmp/opg3d_build_front_key.sh` replaces the old keyless build script. It reads
+`OPG3D_APPID_KEY` from the backend `.env`, passes `-POPG3D_APPID_KEY=...` to `:opg3d:assembleRelease`, and then
+verifies with `strings` that the key actually landed in the binary (`BAKED_KEY=yes`). Run 88 proved a keyless
+library cannot open the Photon AppID envelope; this makes that regression impossible to repeat by accident.
+
+**Build / push** — `BUILD SUCCESSFUL in 2s`, `GRADLE_EXIT=0`, size 537832, md5
+`2efc80d0f2dae027f0ea4fa08256df67`, `BAKED_KEY=yes`; pushed with matching sha1 `45339de9…`, `PUSH_OK`.
+Backend untouched: pid 73353, `ping_via_lan=200`, `OPG3D_CONFIG_PUSH_INLINE=true`. Game pid 11990/12076.
+
+**Result: still 90%** — but the trace closes the question of who writes that number and what happens after it.
+
+### The percentage ladder, complete and attributed
+
+54 indicator writes. Everything below 0.75 comes from one place — `Switcher.下三上东专业丕三与.MoveNext +0x280`
+(`0x217ABB8`) — which walks 0.33 → 0.75 in small steps and hands over at `+0x3E0` (`0x217AD18`). Everything
+above 0.75 belongs to the authorization scene, across eight distinct sites:
+
+| value | caller PC | resolved |
+|---|---|---|
+| 0.76 | `0x3DC1CBC` | `AuthSceneController.Start +0xF0` |
+| 0.79 | `0x3DC784C` | `AuthSceneController.丆丞业且世丌丟专丕.MoveNext +0x130` |
+| 0.80 | `0x3DC7A44` | `AuthSceneController.丆丞业且世丌丟专丕.MoveNext +0x328` |
+| 0.81 | `0x3DC4BF8` | `AuthSceneController.丟丕万丝七专万丄丙 +0x60` |
+| 0.87 | `0x3DC42EC` | `AuthSceneController.丄上丗丑丙东丈丘丁 +0x160` |
+| 0.88 | `0x3DC890C` | `AuthSceneController.丈丄丒且丏万丝丁丆.MoveNext +0x398` |
+| **0.90** | **`0x3DC9724`** | **`AuthSceneController.七且丌丑丁世丛三且.MoveNext +0x404`** (the call sits at `+0x400`) |
+
+This confirms run 89's inference exactly. The label agrees end to end: `UILabel@0x728727fd20` reads
+73% 74% 75% 76% 79% 80% 81% 87% 88% **90%**, and `UIProgressBar.set_value` is still never called even once.
+
+### After the 0.90 write nothing fails
+
+At +015385 ms the final startup state machine writes 0.90, and 23 ms later it **completes normally**:
+`23.1.3-finalauth: step#71 state 1 -> -1 more=0`. The socket keeps working afterwards — `update_progress` is
+emitted and answered `{"error":0,"req_id":24,"result":"ok"}`, `refund_get` answered `req_id:25`, the config
+dictionary still resolves at 85 entries. No exception, no timeout, no denied reply. The boot does not hang at
+90%: it finishes its last scheduled step and then has nothing left to run.
+
+### The two facts that name the wall
+
+1. **`MainMenuController.Awake` never fires — 0 occurrences.** The hook is installed
+   (`hook: installed MainMenuController.Awake/0 @ 0x72a5abfdd0`) and would print
+   `23.1.3-trace: MainMenuController.Awake ENTER` (`version_2313.h:173`). It never does. `MainMenuController`
+   is likewise absent from the coroutine-starter census, while its scene siblings are busy: `WeaponManager`
+   148 starts, `ShopNGUIController` 147, `CoroutineRunner` 55, `FriendsController` 10, `AuthSceneController` 5.
+   `MainMenuController` owns 15 iterator state machines (TDI 1060–1079; `Start()` `0x444AD98`, its MoveNext
+   `0x4459E3C`) and, per run 89, every indicator call site above 0.90. None of them ever run. The stale comment
+   at `auth_scene_trace_2313.h:13` was right all along.
+2. **The auth scene dispatches exactly one state: `2 (Authorized)`.**
+   `23.1.3-authscene: state dispatch ENTER 2 (Authorized)` / `RETURN 2` — once each, never again.
+   `3 (FullySynchronized)` is never dispatched. Alongside it: `23.1.3-authstate: dispatcher gate now returns
+   false`.
+
+`Switcher.LoadMainMenu` does request the scene (`state 1 -> 2, result=1` at +012483 ms, "the Switcher is about
+to be destroyed"), but what actually comes up 23 ms later is `AuthSceneController.Awake` — the authorization
+scene, not the menu. The auth scene then runs its whole chain to completion within three seconds and parks.
+
+**Conclusion: the 90% wall is neither a hang nor a missing reply. It is a missing state transition. The client
+reaches `Authorized (2)` and never advances to `FullySynchronized (3)`, so the auth scene is never torn down,
+`MainMenuController` never awakes, and the segment that would carry the bar from 0.90 to 1.00 never gets an
+owner.**
+
+### Next
+
+Establish what drives `Authorized (2) -> FullySynchronized (3)`: what the "dispatcher gate" actually is, why it
+reports false, and which predicate the client evaluates before raising the state. That predicate is the first
+candidate in roughly fifteen runs that is both precisely located and plausibly backend-fed.
+
+---
+
+## Run 91 — the gate has a name: `localMultyKey`, stored 0, and it only passes on 1
+
+**Change (frontend, logging only)** — new `opg3d/src/main/cpp/gate_key_trace_2313.h`, registered in `main.cpp`
+(`:21` include, `:88` `constexpr bool gate_key_trace = true;`, `:279-282` `install_component`). It hooks the
+three `Storager` members the dispatcher gate uses, by address:
+`HasKey` `0x4573800`, `GetInt` `0x4573458`, `SetInt` `0x4572DF0`. Calls made from inside the gate itself
+(`0x2B71728`–`0x2B717E0`) are always reported; every other caller is reported once per distinct key through an
+FNV dedup table, so a whole boot's persisted-state traffic is visible without flooding. Passive: each hook logs
+and then calls the stock body.
+
+**Static finding that motivated it** — disassembling the gate at `0x2B71728` shows it is not a network answer
+at all. It is a persisted flag read against the game's own `Storager` (TypeDefIndex 4790, the class that owns
+`"Storager.STORED_ITEMS_12_1_0_KEY"`):
+
+```
+if (Storager.HasKey(KEY)) return Storager.GetInt(KEY, false, false, false) == 1;
+Storager.SetInt(KEY, 0, false, false);   // key absent -> create it as zero
+return false;
+```
+
+**Build / push** — `BUILD SUCCESSFUL in 2s`, `GRADLE_EXIT=0`, size 540808, md5
+`d2a9e3f68a1555b2c7df95c280373e11`, `BAKED_KEY=yes`; pushed with matching sha1
+`b62638ed6c1dd203f24f20ce67736dd74ffb07f0`, `PUSH_OK`. Launched 15:41:07, game pid 15557. Backend untouched:
+pid 73353, `ping_via_lan=200`, `OPG3D_CONFIG_PUSH_INLINE=true`, `content/sio-configs/` still only the corrected
+`Boosters.json`.
+
+**Result: still 90%**, and the run reproduces run 90 exactly — last indicator write `#232 value=0.9000
+caller=libil2cpp.so+0x3dc9724`, state dispatch only `2 (Authorized)` (ENTER and RETURN once each),
+`MainMenuController.Awake` count 0.
+
+### The gate key
+
+```
+23.1.3-gatekey: 3/3 Storager hooks installed; the dispatcher gate lives at libil2cpp.so+0x2b71728
+23.1.3-gatekey: THE GATE asks HasKey('localMultyKey') -> 1
+23.1.3-gatekey: THE GATE reads GetInt('localMultyKey') -> 0 (gate passes only on 1)
+```
+
+The key is **`localMultyKey`**. It already exists (`HasKey` = 1), so the gate never takes its
+create-as-zero branch; it simply reads **0** and returns false. The pair repeats **10132 times** in a single
+boot, so the flag is polled continuously — the shared helper is called from all over the game, exactly as the
+`auth_state_trace_2313.h` header supposed.
+
+`localMultyKey` is **not** in any `shared_prefs` XML on the device (`grep` across all nine files finds nothing),
+so `Storager` keeps it in its own store rather than in Unity `PlayerPrefs`. That store is what would have to
+change for the flag to read 1.
+
+### Everything the boot persists (13 distinct integer writes)
+
+| key | value | caller |
+|---|---|---|
+| `skip-account-blocked-window-and-unban-automatically` | 0 | `0x410180C` |
+| `curComIndxKey` | 1296 | `0x1B43928` |
+| `Analytics.Inhouse.NextId` | 547 | `0x4106338` |
+| `gfts` | 0 | `0x217E2EC` |
+| `MenuPanelEnableCount` | 0 | `0x217CEFC` |
+| `MessagePackTestController_disabled` | 0 | `0x1D903E8` |
+| `DivisionsTournament.LastPhaseKey_v3` | 0 | `0x49975F8` |
+| `easy` | 0 | `0x3C15058` |
+| `_last-visited-time-in-seconds` | 1788093673 | `0x3D5ECDC` |
+| `sniperArenaSetMigratedFromSniperKey_march_2018` | 1 | `0x1437778` |
+| `keyGameTotalKills` | 0 | `0x4D88D00` |
+| `keyGameDeath` | 0 | `0x4D88698` |
+| `character-is-new-player-v2-918930694` | 0 | `0x4C9DC70` |
+
+Nothing writes `localMultyKey` during the boot, so its 0 is inherited state, not something this run produced.
+
+### The open question, stated honestly
+
+The name reads as "local multiplayer". That raises a polarity question that must be answered before treating 1
+as the wanted value: the state-2 branch may start its iterator when the flag is **true** because that is the
+local/LAN path, in which case the normal online path is the false branch and the real defect is further along
+it. `auth_scene_trace_2313.h` asserts the iterator starts when the gate passes, but that assertion has not been
+re-derived since the gate was named.
+
+### Next
+
+Recover every call site of `0x2B71728` with `tools/find_callers.py` (exact A64 BL/B decoding over the image),
+find the one inside the state-2 dispatcher, and disassemble both branches. That settles the polarity and shows
+what the false branch is supposed to do instead.
+
+## Runs 92-94 — the 90% wall has a name: `progress_status` answers the client with a non-null `false`
+
+**Goal of the series.** Run 91 named the Storager key the auth-scene gate reads and the follow-up
+disassembly overturned my own conclusion about it (see the correction at the end of this note). The
+real fork is the last decision of `AuthSceneController.<final startup>.MoveNext`, at
+`libil2cpp.so+0x3DC9854`. It starts the coroutine that carries the boot past 90% only when a static
+`Nullable<bool>` owned by `Progress.<TypeDefIndex 6640>` is non-null and true. Runs 92-94 existed to
+read that flag on the live device and to find who writes it.
+
+### New instrumentation (frontend, logging only)
+
+- `opg3d/src/main/cpp/progress_flag_trace_2313.h` (new, mine, tag `23.1.3-pflag:`) — eight address
+  hooks: getter `0x17A8F38`, setter `0x17A8F90`, server-event handler `0x17A9980`, internal writer
+  `0x17A9F90`, notify `0x17A9880`, static-init writer `0x17A9784`, reset writer `0x17A9934`, and the
+  continuation factory `0x3DC6214` that only runs if the fork is passed. Plus a guarded snapshot of
+  the static fields, logged whenever the picture changes.
+- `main.cpp`: include line 22, feature flag line 97, install block lines 292-296.
+
+### Run 92 — SIGSEGV, and the lesson about metadata slots
+
+Build `545928` / `2623c683c714d191db1ab614b4bfc417`, `BAKED_KEY=yes`, pushed sha1 `60c261cc…`.
+The process died one second after launch:
+
+```
+E CRASH : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x2001622f
+        x8 000000002001622f   x9 0000000006778288
+        #00 pc 0000000000045d5c  libopg3d.so
+```
+
+`x9` is exactly the metadata slot I read and `x8` is what I found in it. An il2cpp metadata slot
+holds a small encoded token until the runtime resolves it, so it must never be dereferenced early.
+Fixed by disarming the snapshot until a hooked member of the class has actually executed.
+
+### Run 93 — no crash, handler confirmed, snapshot still silent
+
+Build `545768` / `f3d4e9a67d442eea77c516fed85bf7a0`, pushed sha1 `082190c9…`. Zero crash lines,
+8/8 hooks armed. The class's own methods ran (`static-init writer` twice, `notify` once) and, most
+importantly, the **server-event handler `0x17A9980` fired**, called from
+`Rilisoft.WebSocket.<..>.<..> (+0x108)` at `libil2cpp.so+0x35BA6E8` — the socket.io delivery path.
+
+The snapshot printed nothing because the slot holds a **pointer to the cell** that holds the class
+pointer: the scene does `ldr x20, [x, #0x288]` and only then `ldr x0, [x20]`. Run 93 also settled the
+timing question — the handler runs at `+005881ms` while the fork is evaluated at `+015250ms`, so
+there is no race: the answer arrives nine seconds early and the fork still refuses.
+
+### Run 94 — the flag is read, and it is the backend that sets it to false
+
+Build `545032` / `adbeacd8b9cb2d085e28703e489162a1`, pushed sha1 `a773d77b…`. Class pointer now taken
+from the `MethodInfo` of the hooked methods (`klass` at `+0x18`), with the double-dereferenced slot as
+fallback:
+
+```
+23.1.3-pflag: flag owner resolved: 丛丏丅专丑丈丗丆七 statics=0x715888cfa0
+23.1.3-pflag: flag=0 hasValue=0 second=0 number=0 numberHasValue=0 after static-init writer
+23.1.3-sio[dispatch] #4 event='progress_status'
+23.1.3-pflag: server payload handler ENTER data=0x710… attachments=0x711… binaries=0x711…
+23.1.3-pflag: flag=1 hasValue=0 second=0 number=1 numberHasValue=1 after after server payload
+```
+
+The two printed bytes are the raw `Nullable<bool>` in Mono layout, where `has_value` sits at offset 0
+and `value` at offset 1. So the transition caused by the server answer is:
+
+| moment | has_value | value | meaning |
+| --- | --- | --- | --- |
+| after static init | 0 | 0 | the nullable is `null` |
+| after `progress_status` | 1 | 0 | the nullable is **non-null and `false`** |
+
+And the neighbouring `Nullable<int>` becomes `1`. This matches the disassembly of the fork exactly:
+`ldrh` loads both bytes, `tst w8,#0xff` tests `has_value` and jumps to the plain `return` when it is
+zero, and when it is one the value still has to satisfy the comparison at `0x13C3F60`, which a
+`false` cannot.
+
+**Therefore the 90% wall is our own answer.** The dispatcher log names the event and the payload
+handler runs on the very next line, so the writer is the reply to `progress_status`, which the backend
+currently answers with:
+
+```json
+{"enabled":1,"error":0,"experience":0,"level":0,"progress":{"coins":0,"gems":0,"level":1},"req_id":3,"result":"ok"}
+```
+
+Immediately after entering the handler the client also probes the Storager key
+`SelfClearedProgress.IdsKey`, which is a strong hint about what the missing member of the reply means.
+
+### State of the boot in runs 93 and 94
+
+Unchanged and consistent: indicator ladder ends at `#234 value=0.9000` from `0x3DC9724`, exactly one
+`state dispatch ENTER 2 (Authorized)`, `MainMenuController.Awake` count `0`, `finalauth step#71
+state 1 -> -1`. Backend event census identical to run 90, `ping` 200, no errors.
+
+### Correction to the run 91 note above
+
+The run 91 section leaves the polarity of the `localMultyKey` gate open. It is now settled and the
+key is **not** the wall: at `0x3DC9858` the branch is `tbnz w0,#0`, so a *true* gate takes the
+local-multiplayer shortcut, and the ordinary online boot is supposed to fall through to the progress
+flag check. `localMultyKey == 0` is correct behaviour. The same claim in the header comment of
+`auth_state_trace_2313.h` is wrong for the same reason and still needs fixing.
+
+### Next
+
+Identify which member of the `progress_status` reply the handler turns into that `false`, then change
+the backend answer so the client stores a non-null `true`, and re-run.
+
+## Runs 95-98 - the `progress_status` contract, read out of the client and then disproved
+
+These four runs settle what the `enabled` member of the `progress_status` reply does. Runs 95 and 96
+name it, run 97 changes it and watches the consequence, run 98 puts it back. The headline is that the
+change had to be reverted: the reading that motivated it was wrong, and the run that proved it wrong
+is worth more than the fourteen runs of inference that preceded it.
+
+### Run 95 - the reply-key tracer was armed on the wrong addresses
+
+The `23.1.3-replykey` tracer compares `__builtin_return_address(0)`, but the `progress_status` entries
+added to `config_system_trace_2313.h` carried **call-site** addresses (`0x17A9A6C`, `0x17A9AE0`,
+`0x17A9B0C`). The trace stayed silent for a whole run. The correct values are the return addresses
+`0x17A9A70`, `0x17A9AE4`, `0x17A9B10`, exactly as the pre-existing `get_player_version` flow already
+does it with `kPlayerVersionContainsKeyReturnRva = 0x1D8F740`. Library `545144` /
+`16829615b7477da0e20d73e9a264c4cb`. No behaviour change, no crash, boot identical to run 94.
+
+### Run 96 - the key, named on the device
+
+Library `545144` / `d1b84c8990b6c1856f02c07efa0d78d8` / sha1 `3f23f3ed7ea8d0fb6e82fdb2ba69cf6d2623259e`,
+`BAKED_KEY=yes`, host and device hashes equal. The tracer answered on the first try:
+
+```
+23.1.3-replykey: flow=progress_status op=ContainsKey caller=0x17a9a70 key='err_code' present=0
+23.1.3-replykey: flow=progress_status op=ContainsKey caller=0x17a9ae4 key='enabled'  present=1
+23.1.3-replykey: flow=progress_status op=get_Item    caller=0x17a9b10 key='enabled'  class=Double
+```
+
+Together with the disassembly of the handler at `0x17A9980` the contract is complete:
+
+```
+17a9a70  ContainsKey(answer, "err_code")   ; present means failure, so it must stay absent
+17a9ae4  ContainsKey(answer, "enabled")    ; absent leaves the flag unset
+17a9b10  get_Item(answer, "enabled")       ; arrives as a boxed Double
+17a9b30  bl 0x48AF7E4  System.Convert.ToInt32
+17a9b38  cmp w0, #0
+17a9b40  cset w1, eq                       ; FLAG = (value == 0)
+17a9b4c  bl 0x13C3F44  Nullable<bool>..ctor ; has_value = 1
+17a9ba0  cmp w19, #2 ; cset w22, eq        ; a second byte = (value == 2)
+17a9ba4  strh w22, [x8]                    ; store into the static the fork reads
+```
+
+### Run 97 - sending `enabled: 0`, and what the client did with it
+
+Backend change: `sioProgressOpen` `1 -> 0`, `sioProgressMaintenance` `0 -> 1`, `progressEnabled`
+renamed `progressStatusCode`, `settings_test.go` updated with it. `gofmt` clean, `go build ./...` and
+`go test ./internal/api/` both green, backend restarted as pid `124136`, `ping` 200. The answer that
+went out:
+
+```json
+{"enabled":0,"error":0,"experience":0,"level":0,"progress":{"coins":0,"gems":0,"level":1},"req_id":3,"result":"ok"}
+```
+
+The static did exactly what the disassembly predicted, and the boot then did the opposite of what was
+expected:
+
+```
++005395ms  server payload handler ENTER
++005395ms  flag=1 hasValue=1 second=0        <- non-null TRUE for the first time in the project
++011479ms  23.1.3-stall: LoadMainMenu tail completed (state 1 -> 2)
++011611ms  indicator #230 value=0.7600
++011612ms  state dispatch ENTER 2 (Authorized)
++011700ms  indicator #231 value=0.7900
++011956ms  indicator #232 value=0.8000       <- last rung of the ladder
++011993ms  reset writer 0x17A9934 ENTER      -> flag=0 hasValue=0
++011996ms  sweep 0x3DC1758 / 0x3DC4964 / 0x3DC4890 RETURN
++011996ms  infowin 0x28F8498 ENTER, iterator 0x28F84E8 requested
++011996ms  infowin coroutine 0x3DC4758 step #4 state 4 -> -1 more=0
+```
+
+`23.1.3-finalauth` produced **no lines at all**, the ladder never reached `0.81`, `0.87`, `0.88` or
+`0.90`, `MainMenuController.Awake` stayed `0`, crash count `0`, and the information-window trace grew
+from 11 lines in run 96 to 14 in run 97 - a popup was opened. The boot ended at **0.80**, one rung
+worse than the wall we are trying to break.
+
+**Conclusion.** The true flag is consumed by a consumer *earlier* than the fork: at the 0.80 step it
+is read, cleared by the reset writer at `0x17A9934`, an information window is raised and the rest of
+the ladder is abandoned. A true flag is how this build says *technical works*. The branch at
+`0x3DC9854` that requires it is the same branch the local-multiplayer shortcut jumps to: it is the
+offline path, not the way into the main menu.
+
+### Run 98 - baseline restored
+
+`sioProgressOpen` back to `1`, with the measurement written into the comment in place of the old
+guess, plus an explicit warning not to flip the constant to reach the `0x3DC9854` branch. `gofmt`
+clean, build and tests green. The boot returned to its familiar shape and nothing was lost:
+
+```
+indicator #232 0.8100 -> #233 0.8700 -> #234 0.8800 -> #235 0.9000
+finalauth step#71 state 1 -> -1
+state dispatch ENTER 2 (Authorized)   x1
+MainMenuController.Awake              0
+crash                                  0
+```
+
+Screenshots of the stuck screen were finally captured as well: `logs/screen-run95.png` and
+`logs/screen-run97.png`.
+
+### What these runs close
+
+- The progress flag is **not** the wall. Hypothesis: "make the flag true and the boot continues" -
+  dead, killed by measurement rather than argument.
+- `sioProgressOpen = 1` is correct and must stay. The misleading comment that claimed either value
+  satisfies the waiting scene is replaced with the disassembly and the run-97 result.
+- The reply is fully understood: `err_code` absent, `enabled` present, everything else optional.
+
+### Next
+
+The scene reaches `Authorized` (state 2) and never dispatches `FullySynchronized` (state 3). The
+dispatcher is `AuthSceneController.<CJK>(AuthSceneState)` at **`0x3DC1F38`** (escapes
+`\u4e0e\u4e1b\u4e00\u4e02\u4e0d\u4e04\u4e0a\u4e0a\u4e07`). The next step is its call sites and the
+constant each one passes: the caller that would pass `3` is the code that never runs, and that is the
+real wall.
+
+### Run 99 - the state watcher: the scene does not stop at Authorized
+
+`auth_state_watch_2313.h` (frontend, logging only, tag `23.1.3-statewatch`) hooks the state applier
+`0x3DC2458`, attempts the inlined static setter `0x3DC0968`, and runs a 25 ms poller for about four
+minutes so that stores made through other metadata slots are still observed. Build `548024` bytes,
+md5 `dc4280704be29df31cb4e012c7c82a27`, launched 16:41:44 MSK, crash count `0`,
+`logs/front-run99.log` 31232 lines. Installed hooks: `1/2` - the static setter is fully inlined, so
+only the applier could be hooked and the poller covers the remainder.
+
+The measured timeline:
+
+```
++002305ms  state -> 0  (Initial)      poll
++011724ms  APPLY 2  (Authorized)      caller=libil2cpp.so+0x143db7dc  (outside libil2cpp)
++011939ms  APPLY 5  (CheckBindedId)   caller=libil2cpp.so+0x3dc4bd0   (call site 0x3DC4BCC)
++011980ms  APPLY 13 (SendProgress)    caller=libil2cpp.so+0x3dc42c4   (call site 0x3DC42C0)
++013961ms  indicator #255 0.9000
+(no further state change for the remaining four minutes of polling)
+```
+
+**Correction.** Every earlier note claiming the scene "stops at Authorized (state 2)" is wrong,
+including the closing paragraph of the runs 95-98 section. State 2 is only a stop on the way: the
+boot continues to `CheckBindedId` and settles in **`13 (SendProgress)`**. The by-name `state
+dispatch` trace reported only `ENTER 2` because it is armed on the dispatcher, while states 5 and 13
+are applied directly through `0x3DC2458` and bypass it.
+
+The caller that applies state 2 lies outside `libil2cpp`, so it arrives through a delegate or thunk.
+That explains why the static call-site table never showed a site passing 2 or 3: those constants come
+from callback code, not from the scene body. Static enumeration of the call sites was the wrong tool.
+
+What happens after the scene settles in SendProgress:
+
+```
+init_progress       emitted, answered (error 0 plus a 25 member progress document) and applied
+get_progress_slots  answered without a slots member (by design) -> the create_slots path runs
+authsync            step#1 0->1, step#2 1->2, step#3 2->-1 more=0   (the sync task completes)
+update_progress     4 emits at 16:41:58, all answered by the generic ack, never repeated
+get_inapps          emitted every 30 s and never satisfied: 16:41:56, 16:42:26 ... 16:48:27
+```
+
+Nothing is deadlocked: the remote slots task completes and the synchronisation state machine
+finishes. What remains running is a single unanswered retry loop.
+
+**`get_inapps` has no handler.** `sioAnswerFor` has no case for it, so it falls through to
+`answerGenericAck`, which replies `{"error":0,"req_id":N,"result":"ok"}`. The client parser at
+`0x294DF50` reads exactly three integers from the head at `+0xDC`, `+0xF0` and `+0x104` -
+`err_code`, `clan_timeout`, `clan_war_timeout` - substitutes `120` for a zero timeout, and then
+branches on `err_code` values `0x960` (2400), `0x961` (2401) and `0x6B8` (1720). Our answer carries
+`error` rather than `err_code`, and no timeouts at all. `update_progress` has no handler either and
+is answered by the same fallback.
+
+Lesson recorded: the run script writes the client log into the **backend** `logs/` directory, not
+into the frontend project. Two collection attempts failed on the frontend path before this was seen.
+
+### Next
+
+Give `get_inapps` a real handler carrying the three measured members, and make `update_progress`
+acknowledge the uploaded command instead of returning a bare ack, then re-measure the state timeline:
+the question is whether `13 (SendProgress)` finally advances towards `9 (SynchronizeProgress)` and
+`3 (FullySynchronized)`.
+
+
+## Run 100 prep - the tutorial gate is progress-document section 56 (2026-08-30 17:40)
+
+1. Progress.SECTION_TUT (TypeDefIndex 6844) is the tutorials section object.
+   Field:  private List<int> LIST_FIELD; // offset 0x10  -- the completed tutorial ids
+   Methods: IsCompleted(enum) 0x2A00D24, MarkCompleted(enum) 0x2A00DCC,
+            Deserialize(object) 0x2A00E84, Serialize() 0x2A011B8,
+            GetSectionId() 0x2A01288, GetName() 0x2A01290, .cctor 0x2A01404
+
+2. GetSectionId() is exactly two instructions:
+        2a01288: mov w0, #0x38   // = 56
+        2a0128c: ret
+   THE TUTORIALS SECTION NUMBER IN THE PROGRESS DOCUMENT IS 56.
+   Independent confirmation: the registry getter 0x26FEEDC does
+   mov w1, #0x38 -> bl 0x4624F94 (dictionary lookup) -> type-check against
+   [0x6810000+0xC78] with csel to null on mismatch.
+   The sibling section class TypeDefIndex 6843 returns 78 (0x4E) from the same
+   slot, which proves the slot really is the section id and not a coincidence.
+
+3. The stored progress_document for account 918930694 has top-level keys
+   1..24 plus version_slot. THERE IS NO KEY 56. A recursive scan of the whole
+   stored profile for tutorial ids 1100..2600 returns ZERO hits. That is the
+   direct cause of the freeze: RanchoTutorial (1100) can never read back as
+   completed, so Switcher.LoadMainMenu state 0 always takes the tutorial branch
+   and AuthSceneController never advances past the 0.90 write.
+
+4. Serialize() 0x2A011B8 allocates a Dictionary<object,object> and writes
+   exactly ONE entry: key = a static readonly string literal, value = the
+   List<int> loaded from [self+0x10]. Section 56 therefore serialises as
+   { "<key>": [ ...ids... ] }. The key literal is NOT yet known - il2cpp dumps
+   do not carry string values, so it has to be read at runtime.
+
+5. IsCompleted 0x2A00D24 loads [self+0x10]; when that list is null it branches
+   to the NRE thunk 0x1291FD8, otherwise it tail-calls List<int>.Contains via
+   0x222BAF4. MarkCompleted 0x2A00DCC calls IsCompleted first and returns early
+   when the id is already present.
+
+6. Backend side: answerInitProgress echoes back the client's own uploaded
+   document via MergeProfileProgressDocument and never injects sections of its
+   own. Section 56 can be added there with no protocol change.
+
+7. WSD (23.3.2 mitmproxy toolkit, ANALYSIS ONLY - never executed) confirms the
+   transport and the injection point:
+   - websocket payloads are AES-256-CFB; key and iv come from
+     PBKDF2(xor(const_A, invert(xor(hexdigits(sid), const_B))),
+            salt=4C82A118246415 96, dkLen=0x30, count=1)
+     with key = kv[:0x20] and iv = kv[0x20:0x30]
+   - socket.io frames are "452-/sio," plus a placeholder list, and each binary
+     attachment is 0x04 followed by the ciphertext with a PKCS7-style pad
+   - the HTTPS /auth body is a length-prefixed key/value blob whose per-request
+     byte shift lives at ct[-2], with every byte interleaved with 0x00
+   - WSD modifies progress by merging its own dict into ws["progress"] on
+     init_progress, which is exactly the reply this backend already owns
+   WSD ships no section-56 sample, so it does not reveal the key literal.
+
+8. Rules relaxed by the user this session: the frontend may TEMPORARILY host a
+   sandbox module with arbitrary hooks and workarounds for analysis. Any such
+   workaround still has to be replaced by a real backend implementation.
+
+NEXT: sandbox module to (a) log Serialize()'s dictionary and learn the key
+literal, and (b) force the PGCompany tutorial manager IsCompleted(1100) to true
+to confirm the gate end to end. Then implement the real fix in the backend
+progress document as section 56.
+
+## Run 100 - the sandbox answers both questions, and the run invalidates itself
+
+First run under the relaxed rule: the frontend may carry temporary hooks and
+workarounds during analysis, provided the real fix still lands in the backend.
+A new module, opg3d/src/main/cpp/sandbox_2313.h, was written for exactly two
+probes and wired into main.cpp behind feature_config::startup::sandbox.
+
+### What the sandbox was asked
+
+1. Read the tutorials-section key literals out of the live process. An il2cpp
+   dump carries no string values, so section 56 could be named but not
+   authored.
+2. Answer yes for tutorial 1100 and see whether the boot leaves the gate.
+
+### Result 1 - the section 56 keys, read on the device
+
+    23.1.3-sbx: tutorials section resolved; section id is 56
+    23.1.3-sbx: key@0x00 = 'Tutorial_Slot'
+    23.1.3-sbx: key@0x08 = 'Tutorial_Slot_Key_JUL_2020'
+    23.1.3-sbx: key@0x10 = 't'
+
+The first two fields are declared by the sibling section class as well, so they
+are the shared envelope keys. The third is unique to the tutorials class, which
+makes it the payload key: section 56 serialises as a one-entry dictionary
+'t' mapped to the completed-tutorial List<int>. That matches the
+disassembly of Serialize at 0x2A011B8, which allocates a Dictionary and writes
+exactly one entry whose value is the list at self+0x10.
+
+### Result 2 - the gate is confirmed end to end
+
+    23.1.3-sbx: IsCompleted(1100) -> 0
+    23.1.3-sbx: forcing RanchoTutorial(1100) to completed
+    23.1.3-swt: InitSwitcher state=38 bar=0.580 ranchoOk=1 result=1
+    ...
+    23.1.3-swt: InitSwitcher state=45 bar=0.750 ranchoOk=1 result=0
+    23.1.3-swt: LoadMainMenu entering state=0 bar=0.750
+    23.1.3-swt: LoadMainMenu state=0 bar=0.750 result=1
+
+ranchoOk is 1 for the first time in the whole session; every prior run reported
+0. LoadMainMenu state 0 returns result=1 instead of taking the tutorial branch.
+The diagnosis is therefore confirmed: the boot was gated on tutorial 1100, and
+tutorial 1100 is unreachable because the progress document has no section 56.
+
+### Why this run is not a valid backend test
+
+The on-screen account was 350713954, not 918930694. The backend was not
+running: logs/backend-2026-08-30.log ends at 14:28:55Z with "shutdown
+requested" and "stopped cleanly", and data/state.json was last written at
+16:41 local while the run started at 17:53 local.
+
+The client reported the consequence itself:
+
+    23.1.3-ws: the config socket address
+    https://server-v2.pixelgun3dserver.com/socket.io/ was built before any
+    backend was selected, so it stays pointed at the retired service
+
+52 pings to http://192.168.0.106:8080/api/v1/ping went unanswered, no backend
+was selected, the websocket redirect left the retired address in place, and the
+client authenticated against the live official server. Its auth_v2 answer is
+unmistakable: country NLD, continent EU, reg_time 1787851269, new_player false,
+progress_status 1. Nothing in that exchange came from this project.
+
+The two sandbox results survive this, because both are client-side: the key
+literals are read from the client's own metadata, and the gate was flipped by a
+local hook. Everything else about run 100 is discarded.
+
+### Secondary observations, to be re-checked against the real backend
+
+- The bar reached 79% and stopped there rather than 90%, so forcing the gate
+  moves the wall rather than removing it. With a different server answering,
+  this number carries no weight yet.
+- 22944 of the run's log lines are the localMultyKey poll, which is the same
+  symptom-level busy loop already recorded for the Shop/Weapon restart poll.
+
+### Rules learned
+
+- Verify the backend is listening before every run. A dead backend does not
+  fail the run, it silently redirects it to the official server, which both
+  invalidates the result and puts real traffic on a real account.
+- Worth considering: make the redirect fail closed, so a run without a selected
+  backend refuses to authenticate at all instead of falling back.
+
+## Run 101 - the first run our own backend answered, and the force budget that ran out
+
+Run 100 was invalid because the backend was not listening. Two things had to be
+fixed before a run could mean anything, and both are now standing rules.
+
+The backend does not read `.env` by itself. Started as a bare `./bin/opg3d-backend`
+it boots with `admin_enabled=false appid_sealing=false` and warns
+`Photon AppID delivery is disabled`. The environment has to be exported first:
+
+    set -a; . ./.env; set +a
+    setsid nohup ./bin/opg3d-backend >> logs/backend-run101.log 2>&1 < /dev/null &
+
+With that, boot reads `admin_enabled=true appid_sealing=true` and the Photon
+warning is gone. PID 142494 on `*:8080`, `/api/v1/ping` answers 200.
+
+Also: `pkill -f bin/opg3d-backend` matches the shell running the command and
+kills it. Use `pkill -x opg3d-backend`, which matches the process name only.
+
+New pre-flight, mandatory before every run: `ss -ltnp | grep 8080` must show a
+listener.
+
+### The run went through our backend
+
+Confirmed from both ends. Client: `23.1.3-ws: config socket redirected ... target
+192.168.0.106:8080` at +000901 ms, then `the config socket was pointed at the
+self-hosted backend (#1)` at +005376 ms. Backend: `init_progress`,
+`progress_status`, `subscribe` x12, `update_progress` x31, `get_inapps`,
+`check_binded_gc`, `player_prefs`, `register_push`, `refund_get`, `mmc_get_room`,
+`update_accessories` x8, all decrypted.
+
+The account is `350713954`, not `918930694`. The client kept the identity it was
+handed by the official server during run 100 and presented it to us; our backend
+accepted it and minted profile `Player3954`. It is not a degraded profile - it
+carries the same document keys `1..24` plus `version_slot` and the same 63
+progress slots as `918930694`, and like it, it has no key `56`. The run is
+therefore a valid backend test under a new account id.
+
+`socket.progress_initialised player_id=350713954 received=25 answered=25
+sid=7d6b609845d7ad21d551a835`.
+
+### The bar reached 90% again, and finalauth finished
+
+Bar: 74, 75, 76, 78, 79, 80, 81, 87, 88, then 90% at +009468 ms. Run 100 died at
+79% against the official server; against ours the boot walks the whole ladder.
+
+The Switcher gate is open: every `InitSwitcher` step from state 38 to 45 reports
+`ranchoOk=1`, `LoadMainMenu entering state=0 bar=0.750` then `state=0 ... result=1`.
+
+New, and it retires an old assumption: the finalauth delegate chain does not park.
+It runs all 70 delegates and ends, `step#71 state 1 -> -1 more=0 count=70
+index=70` at +009472 ms, three milliseconds after the 90% label. The last
+delegates are ordinary controllers - ExperienceController `0x1C7A46C` and
+`0x1C7A4F0`, InhouseAnalyticsController `0x410AD80`, PlayerLikeController
+`0x24EE014`, FriendsController `0x1D8DF38`, TournamentController `0x498F2C4`,
+GiftController `0x2E9A454`, LobbyItemsController `0x3F8E328`, plus index 67 with
+`target=0x0 targetClass=null method=0x1438B50`.
+
+The 90% label is written by the same coroutine that then emits `update_progress`
+(`{"id":67 ... "p":{"1":{"2":1}} ... "sid":"7d6b6098..."}`), and immediately after
+that comes the decisive line.
+
+### Why the run still stops: the sandbox force budget is 8
+
+`g_force_budget{8}` was spent on the eight early calls. The census:
+
+    15  IsCompleted(1100) -> 0
+     8  forcing RanchoTutorial(1100) to completed
+     6  IsCompleted(1900) -> 0
+     4  IsCompleted(2100) -> 0
+     4  IsCompleted(1800) -> 0
+     3  IsCompleted(1500) -> 0
+     2  IsCompleted(1700) -> 0
+     2  IsCompleted(1600) -> 0
+     2  IsCompleted(1200) -> 0
+
+The two calls that matter are the last two, and both ran after the budget was
+empty, so both answered honestly with 0:
+
+    +009411ms pc=libil2cpp.so+0x2ea22c4  IsCompleted(1100) -> 0
+    +009472ms pc=libil2cpp.so+0x3dc977c  IsCompleted(1100) -> 0
+
+`0x3dc977c` is inside `AuthSceneController.MoveNext 0x3DC9320` (+0x45c), the SM
+that owns the 0.90 write. So the tutorial gate is still a live candidate for the
+90% wall - it was simply never forced at the point where it is asked. Call sites
+seen, by frequency: `0x2bb42dc` x22, `0x2ea22c4` x2, `0x2c97690` x2, and one each
+at `0x3f9795c`, `0x3f8c628`, `0x3dc977c`, `0x3d5f658`, `0x26b5178`, `0x217eb20`,
+`0x217d63c`, `0x217cc70`, `0x217b700`, `0x1f21714`, `0x169da88`, `0x14371bc`.
+`g_observe_budget{48}` was also exhausted, so the real call count is higher.
+
+After that the boot falls into the known busy poll: 17981 `gatekey` lines of
+`HasKey('localMultyKey') -> 1` / `GetInt('localMultyKey') -> 0`, running to
++104911 ms with the process still alive (PID 21399).
+
+Artifacts: `logs/front-run101.log` (23983 lines), `logs/screen-run101.png`
+(1624844 B), `logs/backend-run101.log`. Launch epoch 1788102132, device boot
+08-30 18:02, game PID 21399, managed tid 21499, lib md5
+785aab2e2508858cdd97a3e02d9bd9b8. Tag census: gatekey 17981, sio 2983, cfgsys
+428, coro 405, inapps 214, cfgdict 168, finalauth 135, swt 102, uibar 57,
+indicator 57, sbx 51, gate 41, cfgtrace 30, sweep 25.
+
+### Next
+
+Run 102 removes the budget and forces every tutorial id, not only 1100, so the
+question "does a fully completed tutorial set open 90%" gets a yes or no in one
+run. If yes, the backend serves section 56 as `{"t": [1100, 1200, ... 2600]}` and
+run 103 repeats it with the sandbox disarmed.
+
+## Run 102 - forcing every tutorial makes the boot worse, which retires the gate
+
+Run 101 left one clean question: the sandbox force budget was 8 and ran out
+before the two call sites that decide the 90% write, so the tutorial gate had
+never actually been forced where it is asked. Run 102 removed the budget
+(`g_force_budget{1 << 30}`, `g_observe_budget{600}`) and answered every tutorial
+id as completed, not only 1100 (`kForceAllTutorials = true`).
+
+Setup: lib md5 `d84782bb24796f049c33bc9d15aabdb3` (549872 B) pushed and verified
+on device, backend PID 142494 confirmed listening before launch, launch epoch
+1788102823, device boot 08-30 18:13, game PID 24554, managed tid 24672.
+
+### The force reached everywhere it needed to
+
+37 forces across nine distinct ids: 1100 x15, 2100 x6, 1800 x5, 1900 x3,
+2300 x3, 1500 x2, 1200 x1, 1600 x1, 1700 x1. Note 2300 (PixelPass), which run
+101 never even reached. The call-site census is the same 15 addresses as run
+101, and it now includes the one that mattered, `0x3dc977c` inside
+`AuthSceneController.MoveNext 0x3DC9320`, the SM that owns the 0.90 write.
+
+### And the boot got worse, not better
+
+The bar stopped at 76%, reached at +006400 ms. Run 101, with only eight early
+forces on 1100 and honest zeros afterwards, walked 75, 76, 78, 79, 80, 81, 87,
+88, 90. Run 102 never left 76.
+
+The Switcher part is identical to run 101 - `InitSwitcher state=45 bar=0.750
+ranchoOk=1 result=0`, `LoadMainMenu entering state=0`, then `state=0 ...
+result=1` at +006279 ms - so the difference is entirely downstream of
+LoadMainMenu, in whatever drives 78 through 90.
+
+After that the run falls into the old restart poll, and this time it is the
+only thing left: `CoroutineRunner`, `ShopNGUIController` and `WeaponManager`
+restarting about once a second to +101317 ms, plus 8216 `gatekey` lines. No
+managed exception, no crash, process alive.
+
+### What this settles
+
+The tutorial gate is not the 90% wall, and section 56 is not the missing piece
+for it. Three runs now agree from different directions:
+
+- Run 89, no sandbox at all, `ranchoOk=0`, tutorials all incomplete: the bar
+  still reached 90%.
+- Run 101, 1100 forced early but honest 0 at both decisive call sites: the bar
+  reached 90% and the finalauth chain ran to completion, `step#71 state 1 -> -1
+  more=0 count=70 index=70`.
+- Run 102, every id forced including at `0x3dc977c`: the bar reached only 76%.
+
+So marking tutorials complete does not open the wall; it diverts the boot into a
+branch that needs something this server does not serve, and that branch stalls
+earlier. The likely culprits are the ids run 101 never reached - 2300 PixelPass
+above all, and 1800 MainStoreFreeReward - whose completed state sends a
+controller looking for lobby or store content.
+
+`kForceAllTutorials` is set back to false. The 1100-only force stays available
+because it is the only thing that flips `ranchoOk`, but it is now understood as
+cosmetic for the 75% Switcher gate rather than a fix.
+
+Artifacts: `logs/front-run102.log`, `logs/screen-run102.png` (962497 B).
+Backend: `socket.progress_initialised player_id=350713954 received=25
+answered=25 sid=2568ad9d73df553429d485d8`, so the document round trip is intact
+and unchanged.
+
+### Next
+
+The wall is downstream of a finalauth chain that completes. The question is no
+longer what the boot is missing before 90%, it is what should happen after the
+chain ends and the 0.90 label is written. Disassemble
+`AuthSceneController.MoveNext 0x3DC9320` past the 0.90 write at +0x400 and read
+what the SM awaits next, and what state it would move to. Secondary: identify
+which controller drives 78 through 90 in run 101 and is skipped in run 102, by
+diffing the two logs over that window.
+
+### Run 102 correction - the bar did reach 90%, and there is a 77 second hole before the socket
+
+The 76% ceiling written above was a measurement mistake, not a result. That
+snapshot was taken 50 seconds into the run, and the run was not finished. The
+full label timeline is:
+
+1% at +002948 ms, climbing steadily to 75% at +006221 ms, 76% at +006400 ms,
+then nothing for 75.7 seconds, then 77% at +082070 ms, 78, 79, 80, 81, 87, 88,
+and 90% at +086039 ms.
+
+So run 102 ends exactly where run 101 ends, at 90%. Forcing every tutorial did
+not lower the ceiling; it inserted a long stall on the way there. The reading
+that forcing tutorials is not the fix still stands, and the run 102 conclusion
+above is otherwise unchanged.
+
+### What the 75 second stall actually is
+
+The backend log for the same window is the more useful half. Between
+15:13:43 and 15:13:48 the client does its whole HTTP phase against us - ping,
+accounts/register, update, photon/appid twice, then four config documents,
+all 200. Then the backend records nothing at all until 15:15:05, when the
+client finally requests /socket.io/ and the session opens:
+
+  15:13:48  content.served BuffSettings1031/BuffSettings_android.json  200
+  ...  77 seconds of complete silence, no request of any kind  ...
+  15:15:05  http.request path=/socket.io/
+  15:15:05  socket.reaped / socket.ws_open / socket.auto_connect
+  15:15:06  socket.connect, auth_v decoded, identity_bound, auth_answered
+
+The managed side is just as quiet: across that window the only frontend lines
+are our own `skipped retired ConnectionLostChecker.Update` notices, roughly one
+per 600 frames. Nothing is being retried against us, and nothing is failing
+against us. The client simply does not open the socket for 77 seconds.
+
+So the bar sits at 76% because 76% is where the boot waits for the socket.io
+connection to come up, and the connection is late. The four percent steps that
+follow, 77 through 90, all land within four seconds of the socket answering,
+which confirms they are driven by socket replies rather than by local work.
+
+### The disconnect the user saw
+
+Exactly one `socket.disconnect` exists in the whole run:
+
+  2026-08-30T15:15:18.857Z socket.disconnect namespace=/sio sid=2568ad9d73df553429d485d8
+
+That is 13 seconds after that session opened and 9 seconds after the 90% label.
+The client then reconnects as sid 9cf52f1562c58583f36aaec4 and that third
+session stays up - the user confirmed no further drops from the third attempt
+on, and the backend agrees: three distinct sids for the whole run, one
+disconnect, none after.
+
+### Where the boot parks now
+
+With the socket stable the client settles into a steady state at 90% and stays
+there. To +312 seconds the only activity is:
+
+- `get_inapps` every 30 seconds, answered `{"error":0,"req_id":N,"result":"ok"}`,
+  and re-asked 30 seconds later. The client parser reads `err_code`,
+  `clan_timeout` and `clan_war_timeout` out of that reply and gets 0, 0, 0.
+- the `localMultyKey` gatekey poll.
+- our own `ConnectionLostChecker.Update` suppression, past #10200.
+
+A request that is answered ok and then repeated on a fixed 30 second cadence is
+a retry loop, not a subscription. That makes the shape of the `get_inapps`
+answer the strongest remaining candidate for the 90% wall, and it is squarely a
+backend question.
+
+### Standing rule added
+
+Once a run's logs are captured, force-stop the game before doing anything else:
+`adb shell am force-stop com.pixel.gun3d`. Leaving it running keeps the socket
+session alive, keeps appending to the capture, and pollutes the next run's
+backend log with a stale session that then has to be reaped.
+
+## Run 103 - the gate B static is dead metadata, and a force budget again went to the wrong callers
+
+Lib md5 `ed9f29448d0b6e4bc81ac05bf4617da4` (551144 B), launch epoch `1788104266`, game PID 30117,
+capture `logs/front-run103.log` (33219 lines). Backend PID 142494 verified LISTEN on 8080 and
+`http=200` on `/api/v1/ping` before launching, log marker `logs/backend-run101.log` at 1470 lines.
+
+Two probes were added to the sandbox: read the static behind gate B, and open gate A a bounded
+number of times.
+
+### Gate B is structurally impossible to pass in 23.1.3
+
+The probe named the owner class and printed the live bytes:
+
+```
++004377ms 23.1.3-sbx: gate B owner class='丛丏丅专丑丈丗丆七' statics=0x73e241ffa0 raw=0x0000 low=0 high=0 peer=0xb400007437ad47c8
+```
+
+The class is `Progress.丛丏丅专丑丈丗丆七`, TypeDefIndex 6640, `internal static`, and its layout matches the
+disassembly exactly:
+
+```
+private static Nullable<bool> <...>k__BackingField;  // 0x0  <- gate B reads this halfword
+private static bool           <...>k__BackingField;  // 0x2
+private static Nullable<int>  <...>k__BackingField;  // 0x4
+private static Action ...;                           // 0x10
+private static Action ...;                           // 0x18
+```
+
+`raw=0x0000` means `hasValue` is 0, so `tst w8, #0xff` at `+0x3DC98B0` fails and gate B always
+falls through to the terminating `mov w0, wzr; ret`.
+
+A whole-image scan for the class settled why. Every `adrp 0x6778000` + `ldr [x, #0x288]` pair was
+decoded, 128 sites, and each site was classified by whether it stores into `static_fields` or only
+loads from it. Result: 16 writers, 47 pure readers. Every writer of the halfword at offset 0 is
+either the compiler-generated setter at `0x17A8F90` or the reset method
+`Progress.丛丏丅专丑丈丗丆七.丄万三丛业丈丒世与()` at `0x17A9784`, and the reset only zeroes things:
+
+```
+17a9800: strh wzr, [x8]        ; Nullable<bool> @0x0 = 0
+17a983c: strb wzr, [x8, #0x2]  ; bool @0x2 = 0
+17a9870: stur xzr, [x8, #0x4]  ; Nullable<int> @0x4 = 0
+```
+
+And `find_callers.py` reports **0 call sites** for the setter `0x17A8F90`, plus 0 for the sibling
+setters `0x17A9148` and `0x17A91FC`. The setter is dead code. Nothing in this build ever assigns a
+value to gate B's Nullable, so gate B cannot open, and no backend reply can open it. The only exit
+from 90 per cent is gate A.
+
+Caller graph of the writers, for the record: `0x17A9784` is called from `0x17A964C` and `0x17A96B4`
+(both inside `.cctor` at `0x17A95C8`), from `0x17A98E8` (inside `0x17A9880`), and tail-branched from
+`0x17A997C`. The public query `0x17A8FEC` has 7 callers: `0x3057EF0`, `0x30580A8`, `0x3C47E10`,
+`0x3C490AC`, `0x3C4A860`, `0x3C4AE4C`, `0x3CC427C`.
+
+### The run itself was invalid, for the same reason run 101 was
+
+The three gate openings were all consumed at `+004377ms` by callers that have nothing to do with
+the auth scene, and the finalauth state machine only reaches its own gate at `+013504ms`. Percent
+timeline ended at `+013504 ms 90%`, unchanged. This is the third time an unconditional budget has
+been spent before the interesting caller arrives; a budget alone is not a filter.
+
+## Run 104 - gate A opened for the finalauth SM only, and the boot reaches state 16 (Login) for the first time
+
+Lib md5 `35f7b16dc6960e520c17f1145169f3b6`, launch epoch `1788104679`, game PID 31982, capture
+`logs/front-run104.log` (36664 lines).
+
+The fix was to filter by return address instead of by count. `__builtin_return_address(0)` is
+turned into an RVA and compared against the compiled body of
+`AuthSceneController.七且丌丑丁世丛三且.MoveNext`, `0x3DC9320` to `0x3DC99A8`. Gate A is answered honestly for
+everyone else, which matters because the caller census shows how busy that helper is:
+
+```
+98 caller=libil2cpp.so+0x1517110
+82 caller=libil2cpp.so+0x51139b0
+64 caller=libil2cpp.so+0x3babbfc
+47 caller=libil2cpp.so+0x217abb8
+35 caller=libil2cpp.so+0x3babc80
+22 caller=libil2cpp.so+0x45737b4
+ 5 caller=libil2cpp.so+0x3d825c8
+```
+
+The filter worked: exactly one forced open, in the right place.
+
+```
++009367ms  90%
++009373ms 23.1.3-sbx: opening the 90% gate for the finalauth SM only
++009373ms 23.1.3-pflag: THE CONTINUATION was requested -- the auth scene passed the fork self=0x7273b92f50
++009373ms 23.1.3-statewatch: APPLY 16 (Login) self=0x7273b92f50 caller=libil2cpp.so+0x3dc8d9c
++009374ms 23.1.3-statewatch: state -> 16 (Login) after apply caller=libil2cpp.so+0x3dc8d9c
++009374ms 23.1.3-sweep: 0x3DC2C04 ENTER self=0x7273b92f50 call#1
++009374ms 23.1.3-authscene: scene coroutine requested self=0x0
++009375ms 23.1.3-coro: #120 CoroutineRunner started 一一丂丛丐丄丑丏丐 -> Coroutine=0x7273f3c0c0
++009375ms 23.1.3-coro: #121 AuthSceneController started 上丂丑丛丙丏上丗一 -> Coroutine=0x0
++009375ms 23.1.3-finalauth: step#71 state 1 -> -1 more=0 count=70 index=70
+```
+
+State 16 is `Login`, the last value in the `AuthSceneState` enum, and no previous run has ever left
+state 10. So the 90 per cent wall is now proven to be exactly one boolean, and the continuation
+behind it does real work: it applies the final auth state and asks for the next scene coroutine.
+
+What still does not happen: the bar stays at 90 per cent, no further `statewatch` line appears, no
+`indicator` write follows, and `StartCoroutine` returned **0x0** for
+`AuthSceneController.上丂丑丛丙丏上丗一` (MoveNext `0x3DC8C08`, TypeDefIndex 2033), the same null return seen
+for `BalanceController`. The socket stayed healthy through all of it: `update_progress` was acked,
+the config system fetched `MainStore`, and `get_inapps` kept its 30 second retry loop.
+
+### Nobody ever writes localMultyKey
+
+The same scan technique was pointed at the key string slot `0x67EF258`. Four sites reference it in
+the entire image:
+
+```
+0x014C8FF8  FriendsController.万丝东不与丆丙丏三.MoveNext  (+0xC0)
+0x014C90C4  FriendsController.万丝东不与丆丙丏三.MoveNext  (+0x18C)
+0x02B71754  gate A itself                    (+0x2C)
+0x02B71770  gate A itself                    (+0x48)
+```
+
+And `FriendsController` only reads it: `0x14C9114 bl 0x4573458` is `GetInt`, followed by
+`cmp w0, #0x2`. The only write anywhere is the `SetInt(key, 0)` inside gate A when the key is
+missing. So `localMultyKey` is never set to 1 by any code path in 23.1.3, exactly like gate B's
+Nullable. Both branches of the 90 per cent fork are dead in this build, which is why nine runs of
+log reading found nothing waiting: there was never a request to answer.
+
+### What this means for the backend
+
+This retires the search for a server reply that opens the fork. There is none. The backend cannot
+unlock 90 per cent by answering an event, so the port needs a deliberate decision instead: either
+the client library keeps a permanent patch at this fork, or the pref is seeded so gate A passes on
+its own. The pref file is AEAD-encrypted, so seeding it means writing through the game's own
+Storager rather than editing XML.
+
+Next: find out what the Login-state coroutine `0x3DC8C08` waits for, and why `StartCoroutine`
+handed back a null Coroutine for it.
+
+## Run 105 - THE 90% WALL IS BROKEN: the boot reaches 100% and the main menu loads
+
+Library md5 `b93d21bf1bfaa2178b630c0f5538e0bb` (551736 B), launch epoch `1788105716`,
+game PID 7792, logcat capture id `12` (pid 153570) -> `logs/front-run105.log`,
+671259 lines. Backend PID 142494 verified listening on `*:8080` with `http=200`
+before launch, and the device library md5 was confirmed identical to the built one.
+
+### What changed in the library
+
+Run 104 proved that opening gate A only for the finalauth state machine gets the
+auth scene past the fork, applies `AuthSceneState = 16 (Login)` and hands off to
+`AuthSceneController.<nested TDI 2026>.MoveNext` at `0x3DC711C`. Static analysis of
+that iterator showed it is a pure wait loop:
+
+    3dc71c0: bl 0x2050e40            ; AssetBundles_v3 queue readiness -> bool
+    3dc71c4: tbz w0,#0 -> 0x3dc7288  ; false -> yield return null, state = 1
+    3dc72c4: mov w0, wzr; ret        ; true -> finish
+
+`0x2050E40` only returns a static bool at offset `0x30` of the class behind slot
+`0x67B41C8`. Writer classification of all 39 ADRP+LDR sites for that slot (7
+writers) named the owner: `PGCompany.GameModeHub.<hub>` and its iterator
+`<hub>.<queue SM>.MoveNext`, TypeDefIndex 13385, `MoveNext 0x1516F58`, body ending
+before `0x15171C8`. That iterator sets the ready flag only here:
+
+    151710c: bl 0x2b71728             ; the SAME gate A (localMultyKey == 1)
+    1517110: tbnz w0,#0 -> 0x151714c  ; true  -> ready = 1
+    1517144: ldrb w8,[x8,#0x10]       ; false -> a second static, class slot 0x6844888
+    1517148: cbz w8 -> 0x15171a4      ; zero  -> yield return null with state = 2
+    1517174: strb w9,[x8,#0x30]       ; READY = 1
+
+`0x15171A4` yields with state 2, and state 2 re-enters directly at the gate check,
+so the queue spins one poll per frame forever. That is exactly the
+`caller=libil2cpp.so+0x1517110` entry that topped run 104 gate-A census with 98
+calls. The second static is written only by `PGCompany.GameModeEvents.<events hub>`
+and its own iterator, so both branches of the queue depend on game-mode hub data.
+
+Conclusion: the same dead `localMultyKey` pref blocks two independent boot stages.
+The sandbox now opens gate A for both callers, filtered by return address, with
+`kQueueSmLo/Hi = 0x1516F58/0x15171D0` beside the existing finalauth range,
+`g_gate_open_budget` raised to 16, and a new `probe_queue_once()` that names both
+flag classes and prints their live values. sandbox_2313.h is now 17358 chars.
+
+### Result: the boot completes and the menu comes up
+
+    +004848ms  gate A -> 0 caller=libil2cpp.so+0x1517110 [bundle queue SM]
+    +004848ms  bundle queue ready class=<hub> flag@0x30=0 ; alt class=<events hub> flag@0x10=0
+    +004848ms  gate B owner class=<progress flag class> raw=0x0000 low=0 high=0
+    +004848ms  opening the gate for the bundle queue SM
+    +009542ms  opening the gate for the finalauth SM
+    +009542ms  THE CONTINUATION was requested -- the auth scene passed the fork
+    +011100ms  100%
+    +011196ms  dbglog started. / finished at 0.00
+    +011197ms  coro #185 GameServicesController started
+    +011197ms  coro #186/#187 and byname#3 MainMenuController started
+    +011197ms  sio[emit] event=subscribe accepted=1  (the menu re-subscribes)
+    +018439ms  coro #393..#395 CoroutineRunner / ShopNGUIController
+    +018454ms  coro #396..#400 SimpleTweenAlpha / SimpleTweenScale / SimpleTweenColor
+
+Percent timeline, first hit per value: 1% +3337 ... 88% +7218, 90% +9536, 95% +10896,
+96% +11055, 98% +11089, 100% +11100. A second wave of values that never appeared in
+any earlier run (37/39/43/44/46/47/49/50/53/57/59/63/64/67/77/84/91/94/97%) arrives
+between +45.1s and +54.4s, i.e. a second progress surface inside the menu.
+`topResumedActivity` stayed on the game activity, PID 7792 was alive until the
+force-stop, and the screenshot is saved as `logs/screen-run105.png` (798255 B).
+ShopNGUIController, the controller named in the very first resolve of this task,
+now simply animates menu tweens instead of self-restarting.
+
+Both runtime probes confirm the fork statics are dead metadata: gate B `raw=0x0000`,
+queue ready `flag@0x30=0`, queue alt `flag@0x10=0`.
+
+### The lead that makes a pure backend fix plausible
+
+The progress-flag trace fired only four times in the whole run, and the server is
+what raises the flag:
+
+    +003477  static-init writer 0x17A9784 ENTER            (the reset)
+    +006177  notify 0x17A9880 ENTER caller=libil2cpp.so+0x11ef5f0
+    +006177  static-init writer 0x17A9784 ENTER
+    +006177  flag=0 hasValue=0 second=0 number=0 numberHasValue=0
+    +006251  server payload handler ENTER
+    +006253  flag=1 hasValue=0 second=0 number=1 numberHasValue=1
+    +009542  THE CONTINUATION was requested
+
+A server payload at +006251 raises the gate-B value byte to 1 and fills the sibling
+Nullable<int> with 1, and nothing resets it before the fork at +009542. Gate B reads
+`ldrh` at offset 0 and tests the low byte, which is the value byte, so the backend
+can in principle drive that branch. Two follow-ups: compare this timeline against
+runs 101-104, which stalled, and disassemble the block between `0x3DC98B8` and
+`0x3DC991C`, because gate B clearly needs more than the value byte alone.
+
+### Standing rules honoured
+
+Backend proven listening before launch; the game was force-stopped immediately
+after the logs were harvested (`pid after force-stop: (none - stopped)`) and the
+logcat capture id `12` was closed.
+
+## Run 106 prep - gate B is fully decoded, and run 97 already closed the enabled=0 door
+
+The fork at `0x3DC9854` has two conditions, not one. Full decode of the tail:
+
+    3dc98a8: ldr x8,[x0,#0xb8]   ; gate B statics
+    3dc98ac: ldrh w8,[x8]        ; the Nullable<bool> raw halfword
+    3dc98b0: tst w8,#0xff        ; byte 0 must be non-zero
+    3dc98b8: b.eq  -> END
+    3dc98e4..3dc9904: load the peer static *(base+0x67AA010) into x1
+    3dc9914: bl 0x13c3f60        ; Nullable compare against that peer object
+    3dc9918: tbz w0,#0 -> END    ; not equal -> END
+    3dc991c: continuation 0x3DC6214 + StartCoroutine 0x4436094
+
+And the writer side, `progress_status` handler `Progress.<flag class>.<handler>` at
+`0x17A9980`, decoded around the reply keys:
+
+    17a9a6c: bl ContainsKey(answer, err_code)  ; present -> failure branch 0x17a9d6c
+    17a9ae0: bl ContainsKey(answer, enabled)   ; absent  -> 0x17a9c40, flag untouched
+    17a9b0c: bl get_Item(answer, enabled)
+    17a9b30: bl 0x48af7e4                      ; value -> int
+    17a9b38: cmp w0,#0 ; cset w1, eq           ; flag = (enabled == 0)
+    17a9b4c: bl 0x13c3f44                      ; Nullable<bool>..ctor(flag)
+
+Run 105 measured this live: our reply carries `enabled:1` and no `err_code`, so the
+handler builds `Nullable<bool>(false)` and the probe printed `flag=1 hasValue=0`,
+which means byte 0 of this build's Nullable is the has-value byte and byte 1 is the
+value. Gate B therefore needs has-value AND value equal to the peer object.
+
+The obvious backend move would be `enabled:0`, and it is wrong. The reasoning was
+already recorded next to `sioProgressEnabledKey` in `internal/api/socketio_events.go`:
+run 97 sent zero, the static did turn true, and the client cleared it again at its
+80% step, opened an information window and abandoned the rest of the ladder. A true
+flag is how this build says *technical works*. `progressStatusCode()` stays as it is,
+and `enabled` stays 1 for an open server.
+
+That leaves a sharper question about run 105, which forced gate A twice: once for the
+bundle queue at +004848ms and once for the fork at +009542ms. Since gate A can never
+be 1 on any client (`localMultyKey` is never written to 1 anywhere in the image) and
+gate B is the technical-works path, the fork is probably not the way into the menu at
+all - the queue readiness is. Run 106 tests exactly that:
+
+    sandbox_2313.h: new kOpenFinalAuthGate = false, gate A is now forced only for
+    callers inside the bundle queue state machine 0x1516F58..0x15171D0
+
+If the boot still reaches 100% and MainMenuController with the fork left closed, then
+the fork is a red herring, the single real blocker is
+`PGCompany.AssetBundles_v3.QueueManager` readiness, and the permanent fix belongs to
+whatever `GameModeHub` / `GameModeEvents` data the server is supposed to deliver.
+
+## Run 117 - numbering corrected, and the "maintenance" notice is this server's own enabled=0
+
+Two separate things, both mine to own.
+
+### The numbering was wrong
+
+The operator states the run recorded here as 107 was really run 117. The logs
+directory holds an unbroken `front-run59.log` .. `front-run139.log`, so the run
+counter is shared with work recorded outside this file, while the last header here
+was "Run 106 prep". Two consequences of my labels colliding with that series:
+
+    logs/front-run106.log   truncated by my capture (was 114 MB of someone else's run)
+    logs/front-run107.log   truncated by my capture
+    logs/backend-run107.log my server output appended to an existing file
+    logs/backend-run108.log my server output appended to an existing file
+
+Before claiming a number, run `ls logs/front-run*.log | tail` and take the next free
+one. Never point a capture at a name that already exists: the capture uses `>`.
+
+### Why the client announced technical works
+
+Not a client bug, not a cached preference, and not the operator's maintenance switch
+(`data/settings.json` has `"maintenance": false`). I put the server in that state
+myself. For this run I added an env switch `OPG3D_2313_PROGRESS_ENABLED` and started
+the server with it set to `0`, to test whether a server-sent flag could open the 90%
+fork with the asset-bundle queue already forced ready.
+
+The client's handler at `libil2cpp.so+0x17A9980` builds the flag inverted:
+
+    17a9a6c: ContainsKey(answer, "err_code")   ; present -> failure branch
+    17a9ae0: ContainsKey(answer, "enabled")    ; absent  -> flag untouched
+    17a9b0c: get_Item(answer, "enabled")
+    17a9b30: bl 0x48af7e4                      ; value -> int
+    17a9b38: cmp w0,#0 ; cset w1, eq           ; flag = (enabled == 0)
+    17a9b4c: bl 0x13c3f44                      ; Nullable<bool>..ctor(flag)
+
+so `enabled:0` hands the client a *true* flag, and a true flag is how this build says
+"technical works". Measured in this run:
+
+    +005631ms  sio[cipher] decrypt open bytes=115
+               text='{"enabled":0,"error":0,"experience":0,"level":0,"progres...
+    +005631ms  pflag flag=1 hasValue=1 second=0 number=1 after server payload
+               (every earlier run read flag=1 hasValue=0)
+    +005631ms  pflag THE CONTINUATION was requested -- the fork passed
+    percent     76% +6363 -> 80% +6508 -> 90% +8999 -> 100% +10416
+    statewatch  state 2 (Authorized) -> state 16 (Login)
+
+So the true flag does two things at once: it opens the fork legitimately from a server
+reply *and* it puts the client into its maintenance presentation. That is the same
+verdict run 97 reached with a queue that was not ready, now confirmed with one that
+is. `enabled` stays 1 for an open server, and the fork needs a different backend
+story.
+
+### Reverted
+
+    internal/api/progress_status_override.go   deleted
+    progressStatusCode()                       restored to the maintenance switch only
+    bin/opg3d-backend                          rebuilt, internal/api tests pass
+    server                                     restarted with no override in its env
+    7 stale "adb logcat -v time" readers       killed; they were still appending the
+                                               live device log into front-run133..139

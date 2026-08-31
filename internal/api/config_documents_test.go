@@ -3,10 +3,12 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -39,9 +41,13 @@ func TestUncachedConfigIsServedFromAFile(t *testing.T) {
 	if !changed {
 		t.Fatalf("the uncached document was not served: %v", reply)
 	}
-	document, ok := reply[sioConfigBodyKey].(map[string]any)
+	text, ok := reply[sioConfigBodyKey].(string)
 	if !ok {
-		t.Fatalf("the body is %T, want the nested object the client accepts", reply[sioConfigBodyKey])
+		t.Fatalf("the body is %T, want the document text the reader reads back", reply[sioConfigBodyKey])
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(text), &document); err != nil {
+		t.Fatalf("the served text is not a document: %v", err)
 	}
 	if document["configId"] != "TopUp" {
 		t.Fatalf("the document names itself %v, want TopUp", document["configId"])
@@ -190,5 +196,36 @@ func TestASaltedFingerprintCannotEqualTheOneTheClientHolds(t *testing.T) {
 	s.configNonce = "run-66"
 	if next := s.hostedConfigHash(body); next == salted {
 		t.Fatal("two runs stated the same fingerprint, so the second run would be skipped")
+	}
+}
+
+// TestFullSlotsKeepsTheNestedObjectBody pins which spelling each reader gets.
+//
+// Runs 128 and 129 measured the document the boot waits on, GameModeEvents,
+// being read back as text, and the full slots document was measured on
+// 2026-08-29 being read as a nested object and discarded as text.
+func TestFullSlotsKeepsTheNestedObjectBody(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = t.TempDir()
+
+	reply, changed := s.hostedConfigReply(sioFullSlotsConfig, "")
+	if !changed {
+		t.Fatalf("the built-in document was not served: %v", reply)
+	}
+	if _, ok := reply[sioConfigBodyKey].(map[string]any); !ok {
+		t.Fatalf("the full slots body is %T, want the nested object", reply[sioConfigBodyKey])
+	}
+
+	hostDocument(t, cfg.ContentDir, "GameModeEvents", `{"configId": "GameModeEvents"}`)
+	events, served := s.hostedConfigReply("GameModeEvents", "")
+	if !served {
+		t.Fatalf("the hosted document was not served: %v", events)
+	}
+	text, ok := events[sioConfigBodyKey].(string)
+	if !ok {
+		t.Fatalf("the document body is %T, want the text the reader reads back", events[sioConfigBodyKey])
+	}
+	if !strings.Contains(text, "GameModeEvents") {
+		t.Fatalf("the served text does not carry the document: %q", text)
 	}
 }

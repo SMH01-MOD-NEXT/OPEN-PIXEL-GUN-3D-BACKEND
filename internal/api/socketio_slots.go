@@ -10,32 +10,29 @@ package api
 //	req_id 18  get_progress_slots  {"player_id":"918930694"}
 //	req_id 19  create_slots        {"slots":{"25":{"v":{...}}, "26":{...}, ...}}
 //
-// Run 58 measured what happens when the reply carries the member the client
-// uploads its slots under. Answering get_progress_slots with an empty "slots"
-// dictionary made the boot worse rather than better: the client never sent
-// create_slots at all, none of the subscribe and update_progress traffic that
-// normally follows it appeared, and the bar fell back from 90% to 87%. The
-// bare acknowledgement of run 57 is what makes the client upload its slots and
-// carry on, so that is what this server sends.
+// Run 58 measured what happens when the reply carries an empty "slots"
+// dictionary: the client treated the query as answered, skipped create_slots,
+// and regressed from 90% to 87%. Run 75 then identified the live callback at
+// RVA 0x33F145C. It tests that same top-level member, casts it to the same
+// Dictionary<string, object> shape create_slots uploads, and turns its keys
+// into the remote-slot set awaited by AuthSceneController.
 //
-// The upload is still stored. The client cannot tell the difference - the
-// reply is byte for byte the fallback's - and it is state a real server owns.
-// Serving it back is a separate question, and run 58 answered "not as an empty
-// dictionary"; the shape that a client with slots expects has to be read out
-// of the client before it is put on the wire again.
+// Therefore an account with no stored slots still receives the bare
+// acknowledgement and uploads its local set. Once the server holds a non-empty
+// set, the next boot receives that actual set rather than the empty sentinel
+// that caused the run-58 regression.
 
 const (
 	sioProgressSlotsEvent = "get_progress_slots"
 	sioCreateSlotsEvent   = "create_slots"
 
-	// sioSlotsKey is the member the client uploads under. It is read here and
-	// deliberately not written back; see the note above.
+	// sioSlotsKey is both the member the client uploads under and the member
+	// the get_progress_slots callback reads back as Dictionary<string, object>.
 	sioSlotsKey = "slots"
 )
 
-// answerProgressSlots acknowledges the slot request and records what this
-// server holds for the account, so the gap between stored and served state
-// stays visible in the log.
+// answerProgressSlots returns the account's non-empty stored slot set. A new
+// account gets no slots member so it follows the measured create_slots path.
 //
 // SECURITY: the payload names the player itself, so the id it claims is
 // checked against the one this socket authenticated as.
@@ -58,17 +55,51 @@ func (s *Server) answerProgressSlots(session *sioSession, head sioHead, reqID in
 		return sioDenied(reqID)
 	}
 
+	body := sioOK(reqID)
 	held := 0
+	served := 0
 	if profile, ok := s.sessionProfile(session); ok {
 		held = len(profile.ProgressSlots)
+		if held > 0 && !s.cfg.ProgressSlotsAlwaysCreate {
+			slots := make(map[string]any, held)
+			for id, value := range profile.ProgressSlots {
+				slots[id] = value
+			}
+			body[sioSlotsKey] = slots
+			served = len(slots)
+		}
+	}
+	// Section 56, the tutorials section the boot gates on, travels here when the
+	// operator asks for it: the client uploads its own copy of that section in
+	// this same document, and run 108 showed the init_progress channel does not
+	// reach the tutorial manager. See socketio_tutorial_section.go.
+	tutorialSeeded := false
+	if s.cfg.TutorialSectionViaSlots {
+		slots, _ := body[sioSlotsKey].(map[string]any)
+		if slots == nil {
+			slots = map[string]any{}
+		}
+		if tutorialSeeded = s.applyTutorialSection(slots); tutorialSeeded {
+			body[sioSlotsKey] = slots
+		}
+	}
+
+	note := "no stored slots; omitted slots so the client uploads its local set"
+	switch {
+	case served > 0:
+		note = "returned the non-empty slot dictionary consumed by the run-75 callback"
+	case held > 0:
+		note = "held a stored set but omitted it; serving it back skips the create_slots branch the boot needs"
 	}
 	s.log.Event("socket.progress_slots_asked", map[string]any{
-		"sid":       session.sid,
-		"player_id": playerID,
-		"held":      held,
-		"note":      "acknowledged without a slots member; run 58 showed an empty one stops the client from uploading its own",
+		"sid":                     session.sid,
+		"player_id":               playerID,
+		"held":                    held,
+		"served":                  served,
+		"tutorial_section_seeded": tutorialSeeded,
+		"note":                    note,
 	})
-	return sioOK(reqID)
+	return body
 }
 
 // answerCreateSlots stores the slot document the client uploads and answers
@@ -110,11 +141,24 @@ func (s *Server) answerCreateSlots(session *sioSession, head sioHead, reqID int)
 			stored = len(profile.ProgressSlots)
 		}
 	}
+	// The tutorials section rides back on the acknowledgement of the upload,
+	// which is the one moment the client is reading a slot document without
+	// also deciding whether to upload one. See socketio_tutorial_section.go.
+	body := sioOK(reqID)
+	tutorialSeeded := false
+	if s.cfg.TutorialSectionViaCreateSlots {
+		slots := map[string]any{}
+		if tutorialSeeded = s.applyTutorialSection(slots); tutorialSeeded {
+			body[sioSlotsKey] = slots
+		}
+	}
+
 	s.log.Event("socket.progress_slots_stored", map[string]any{
-		"sid":       session.sid,
-		"player_id": playerID,
-		"received":  len(uploaded),
-		"stored":    stored,
+		"sid":                     session.sid,
+		"player_id":               playerID,
+		"received":                len(uploaded),
+		"stored":                  stored,
+		"tutorial_section_seeded": tutorialSeeded,
 	})
-	return sioOK(reqID)
+	return body
 }

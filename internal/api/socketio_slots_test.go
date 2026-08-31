@@ -15,13 +15,10 @@ func clientSlotUpload() map[string]any {
 	}
 }
 
-// TestProgressSlotsAnswersWithoutASlotsMember pins the run 58 regression.
-//
-// Answering with an empty slots dictionary stopped the client from uploading
-// its own slots at all and moved the stall from 90% back to 87%. Until the
-// shape a client with slots expects is read out of the client, the reply is
-// the acknowledgement and nothing else.
-func TestProgressSlotsAnswersWithoutASlotsMember(t *testing.T) {
+// TestProgressSlotsWithoutStoredSlotsOmitsTheMember pins the run-58
+// regression: an empty dictionary is not a substitute for having no remote
+// slots, because its presence suppresses the client's create_slots upload.
+func TestProgressSlotsWithoutStoredSlotsOmitsTheMember(t *testing.T) {
 	s, _ := newTestServer(t)
 	session := authorisedSession("0123456789abcdef01234567", "918930694")
 
@@ -31,13 +28,44 @@ func TestProgressSlotsAnswersWithoutASlotsMember(t *testing.T) {
 	}, 18)
 
 	if _, present := body[sioSlotsKey]; present {
-		t.Fatalf("the reply carries %s, and run 58 measured that as a regression to 87%%", sioSlotsKey)
+		t.Fatalf("the empty-profile reply carries %s, and run 58 measured that as a regression to 87%%", sioSlotsKey)
 	}
 	if body[sioRequestIDKey] != 18 {
 		t.Fatalf("req_id is %v, so nothing completes the client's pending request", body[sioRequestIDKey])
 	}
 	if body["error"] != sioErrNone {
 		t.Fatalf("error is %v, want the plain acknowledgement", body["error"])
+	}
+}
+
+// TestProgressSlotsServesTheStoredNonEmptyDictionary covers the second boot:
+// the client has already uploaded its slot set, and the run-75 callback can now
+// turn the returned dictionary keys into its remote-slot HashSet.
+func TestProgressSlotsServesTheStoredNonEmptyDictionary(t *testing.T) {
+	s, _ := newTestServer(t)
+	session := authorisedSession("0123456789abcdef01234567", "918930694")
+	uploaded := clientSlotUpload()
+
+	s.answerCreateSlots(session, sioHead{
+		sioRequestIDKey: float64(19),
+		sioSlotsKey:     uploaded,
+	}, 19)
+	body := s.answerProgressSlots(session, sioHead{
+		sioRequestIDKey: float64(18),
+		"player_id":     "918930694",
+	}, 18)
+
+	slots, ok := body[sioSlotsKey].(map[string]any)
+	if !ok {
+		t.Fatalf("%s is %T, want the Dictionary<string, object> wire shape", sioSlotsKey, body[sioSlotsKey])
+	}
+	if len(slots) != len(uploaded) {
+		t.Fatalf("served %d slots, want %d stored slots", len(slots), len(uploaded))
+	}
+	for id := range uploaded {
+		if _, present := slots[id]; !present {
+			t.Fatalf("stored slot %s was not served", id)
+		}
 	}
 }
 
@@ -51,8 +79,15 @@ func TestCreateSlotsStoresTheUploadWithoutEchoingIt(t *testing.T) {
 		sioRequestIDKey: float64(19),
 		sioSlotsKey:     clientSlotUpload(),
 	}, 19)
-	if _, present := body[sioSlotsKey]; present {
-		t.Fatalf("the reply carries %s; run 57's acknowledgement is what the client boots on", sioSlotsKey)
+	// The acknowledgement never echoes the upload back - run 57 measured that
+	// the client boots on the bare reply - but it does carry the one section
+	// this server authors, the tutorials section, and nothing else.
+	if slots, present := body[sioSlotsKey].(map[string]any); present {
+		for id := range slots {
+			if id != sioTutorialSectionID {
+				t.Fatalf("the reply echoes slot %s back; run 57's acknowledgement is what the client boots on", id)
+			}
+		}
 	}
 
 	profile, err := s.st.Profile("918930694")

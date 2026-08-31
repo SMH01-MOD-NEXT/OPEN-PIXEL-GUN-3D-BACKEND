@@ -95,6 +95,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /event_stat_add_pl.php", s.handleLegacyStat)
 	s.mux.HandleFunc("POST /log_stat_event.php", s.handleLegacyStat)
 	s.mux.HandleFunc("GET "+contentPrefix, s.handleRemoteConfig)
+	s.mux.HandleFunc("GET "+bundlePrefix, s.handleBundle)
 	s.mux.HandleFunc(sioPath, s.handleSocketIO)
 	s.mux.HandleFunc("/", s.handleUnknown)
 }
@@ -104,6 +105,9 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	body   bytes.Buffer
+	// skipBody keeps a response out of the trace buffer. Set it for payloads
+	// that are large and opaque, such as asset bundles.
+	skipBody bool
 }
 
 func (r *recorder) WriteHeader(status int) {
@@ -131,7 +135,9 @@ func (r *recorder) Write(p []byte) (int, error) {
 	if r.status == 0 {
 		r.status = http.StatusOK
 	}
-	r.body.Write(p)
+	if !r.skipBody {
+		r.body.Write(p)
+	}
 	return r.ResponseWriter.Write(p)
 }
 
@@ -144,6 +150,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rawPath := r.URL.Path
 	r.URL.Path = normalizePath(rawPath)
+	// Asset bundle downloads are the one rewritten family whose original host
+	// decides the route, so they are mapped onto the internal /bundles/
+	// namespace instead of being flattened into the shared path space.
+	if mapped, ok := bundleRequestPath(rawPath); ok {
+		r.URL.Path = mapped
+	}
 
 	var body []byte
 	if r.Body != nil {
@@ -189,6 +201,15 @@ func normalizePath(path string) string {
 		return path[idx+1:]
 	}
 	return "/"
+}
+
+// discardTraceBody stops the recorder from buffering the response body of the
+// current request. Megabytes of bundle bytes in the trace log would cost memory
+// and tell a reader nothing the served name and size do not already say.
+func discardTraceBody(w http.ResponseWriter) {
+	if rec, ok := w.(*recorder); ok {
+		rec.skipBody = true
+	}
 }
 
 func clientIP(r *http.Request) string {

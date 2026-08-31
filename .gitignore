@@ -18,3 +18,11 @@
 
 # the live logcat capture of the current run
 log_front.txt
+
+# Asset bundles pulled from the vendor CDN with tools/fetch-bundles.sh.
+# They are the game's copyrighted content, so only the recipe is committed.
+/content/bundles/
+
+# The vendor bundle manifest, recovered from a client. Same reason as above:
+# it is their content, not ours.
+/content/sio-configs/AssetBundlesAndroid.json
