@@ -5207,3 +5207,34 @@ What this run bought, which is the first real progress on the wall since 117:
   eighty percent step. Two are predicates at 0x3DC58AC and 0x3DC57E8, the
   third is a membership test on a static collection. Only when all three are
   false does the boot continue into the ninety percent step.
+
+## Session 2026-09-01 — server-owned accounts, support view, and remaining events
+
+- [x] Reproduce the duplicate-account defect from the live state and trace: the
+      native HTTP registration created `272653157`, then the stock `/sio`
+      handshake arrived seven seconds later without account query parameters
+      and `auth_v2` created `612672163` for the same handset. The two client
+      fingerprints differ, so device-id equality cannot join them.
+- [x] Reconcile the one native bootstrap account and one stock socket identity
+      entirely on the backend, with a short-lived, unique-IP correlation and a
+      conflict-safe alias/merge path. No frontend protocol change is required.
+- [x] Make profile counters authoritative and consistent: project incoming
+      level/experience/coins/gems into the typed profile, preserve every raw
+      progress section, and make admin edits reach the socket replies.
+- [x] Expand the support console to show aliases, both device fingerprints,
+      timestamps, all typed counters, prefs, flat progress, init-progress
+      document, progress slots and client state; allow validated editing of
+      counters and raw JSON without silently deleting unknown fields.
+- [x] Replace the current run's remaining fallback acknowledgements with named
+      handlers, prioritising the repeated `get_info_by_id` poll and
+      `update_character_target_ad_consent`, then the state-changing loadout,
+      accessory and player updates. Response shapes use the 23.1.3 artifacts;
+      the 23.3.2 WSD scripts remain only a read-only vocabulary reference.
+- [x] Add regression/API tests, run gofmt, `go test ./...`, `go vet ./...` and a
+      release build; inspect the final diff and commit the backend atomically.
+
+Final verification passed with `go test ./...`, race tests for `internal/api`
+and `internal/store`, `go vet ./...`, a clean release build, `node --check` for
+the embedded admin script, JSON parsing for every hosted document, `bash -n`
+for the bundle fetcher and `git diff --check`. The admin SSE regression now
+replays a log frame with HTTP 200 instead of the previous `no_flush` 500.
