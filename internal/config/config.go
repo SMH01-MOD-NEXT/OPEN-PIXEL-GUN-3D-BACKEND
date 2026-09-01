@@ -172,6 +172,24 @@ type Config struct {
 	// globally inlining unrelated documents caused their parsers to consume
 	// unverified JSON and must not be a production dependency.
 	ConfigPushInline bool
+	// ProgressSynchronizeMode escalates the progress_status "enabled" answer
+	// from the open code 1 to the synchronization code 2 whenever this server
+	// already holds progress for the account.
+	//
+	// Code 2 sets the static byte the outer auth iterator reads at 0x3DC78D4,
+	// which starts the stock SynchronizeProgress continuation. The 2026-09-01
+	// device run measured what that continuation does with a full answer: it
+	// asks get_progress_slots, receives the 87 stored slot ids, and then uploads
+	// its own local snapshot through replace_progress 62 ms later, which
+	// overwrites the operator edit with the client's blank values. The same run
+	// recorded init_progress never being emitted, so the progress document this
+	// server owns had no delivery channel on that path.
+	//
+	// Off answers the open code 1 instead, which is the path runs 95 to 97
+	// measured emitting init_progress. On by default because the synchronize
+	// code is what those earlier runs settled on; the flag exists so the two
+	// paths can be compared on a device without editing code.
+	ProgressSynchronizeMode bool
 	// ProgressSlotsAlwaysCreate omits the slots member from every
 	// get_progress_slots answer, including for an account that already has
 	// a stored set.
@@ -258,6 +276,7 @@ func Load() (*Config, error) {
 		ConfigPushAliases:                  envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
 		ConfigPushWrapper:                  envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
 		ConfigPushInline:                   envBool("OPG3D_CONFIG_PUSH_INLINE", false),
+		ProgressSynchronizeMode:            envBool("OPG3D_PROGRESS_SYNCHRONIZE_MODE", true),
 		ProgressSlotsAlwaysCreate:          envBool("OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE", false),
 		TutorialSectionSeed:                envBool("OPG3D_TUTORIAL_SECTION_SEED", true),
 		TutorialSectionIDs:                 envInts("OPG3D_TUTORIAL_SECTION_IDS", []int{1100, 1500}),

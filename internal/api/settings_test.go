@@ -177,3 +177,31 @@ func TestProgressStatusSelectsSynchronizationForStoredProfile(t *testing.T) {
 		t.Fatalf("maintenance with stored progress answers enabled=%v, want %d", got, sioProgressMaintenance)
 	}
 }
+
+// The comparison arm for the 2026-09-01 device measurement. With the escalation
+// switched off, a profile this server holds progress for still answers the open
+// code, so the two boot paths can be compared on a device without a code change.
+// Code 2 starts the stock SynchronizeProgress continuation, and that
+// continuation was measured uploading the client's blank snapshot over an
+// operator edit 62 ms after it received the stored slot ids.
+func TestProgressStatusKeepsOpenCodeWhenSynchronizeModeIsOff(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ProgressSynchronizeMode = false
+
+	const playerID = "918930694"
+	session := authorisedSession("0123456789abcdef01234567", playerID)
+	if _, err := s.st.EnsureProfile(playerID, "Player0694"); err != nil {
+		t.Fatalf("ensure profile: %v", err)
+	}
+	if _, err := s.st.MergeProfileProgress(playerID, map[string]any{"level": float64(32)}); err != nil {
+		t.Fatalf("store progress: %v", err)
+	}
+
+	answer := s.answerProgressStatus(session, sioHead{}, 3)
+	if got := answer[sioProgressEnabledKey]; got != sioProgressOpen {
+		t.Fatalf("synchronize mode off answers enabled=%v, want the open code %d", got, sioProgressOpen)
+	}
+	if got := answer["level"]; got != 32 {
+		t.Fatalf("the reconciled level is %v, want 32: the open path still answers the truth", got)
+	}
+}

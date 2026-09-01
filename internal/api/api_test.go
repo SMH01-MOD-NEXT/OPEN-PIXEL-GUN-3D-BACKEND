@@ -34,6 +34,9 @@ func newTestServer(t *testing.T) (*Server, *config.Config) {
 		TutorialSectionSeed:           true,
 		TutorialSectionIDs:            []int{sioRanchoTutorialID, sioIntroTutorialID},
 		TutorialSectionViaCreateSlots: true,
+		// Mirrors the shipping default so the wire-code tests keep measuring
+		// the escalation the earlier runs settled on.
+		ProgressSynchronizeMode: true,
 		Update: config.Update{
 			Version: "23.1.3-1",
 			APKURL:  "http://example.invalid/opg3d.apk",

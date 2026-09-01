@@ -541,7 +541,7 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 
 	profile, ok := s.sessionProfile(session)
 	status := s.progressStatusCode()
-	if status == sioProgressOpen && ok && profileNeedsSynchronization(profile) {
+	if status == sioProgressOpen && ok && s.cfg.ProgressSynchronizeMode && profileNeedsSynchronization(profile) {
 		status = sioProgressSynchronize
 	}
 	body[sioProgressEnabledKey] = status
