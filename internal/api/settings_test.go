@@ -125,3 +125,55 @@ func TestProgressEnabledFollowsMaintenance(t *testing.T) {
 		t.Fatalf("reopened server answers %d, want %d", got, sioProgressOpen)
 	}
 }
+
+// The numbers themselves are a client contract, not a taste. Run 142 sent zero
+// and the client answered by applying its TechnicalWorks state at eighty
+// percent, raising the information window and clearing the flag again. One is
+// the ordinary open/no-remote-progress mode. Two writes a separate static byte
+// that selects the stock SynchronizeProgress path; it does not invert the
+// maintenance flag. Pin all three so later work cannot conflate them.
+func TestProgressStatusWireCodes(t *testing.T) {
+	if sioProgressOpen != 1 {
+		t.Fatalf("an open server answers %d, want 1: zero is the technical works code", sioProgressOpen)
+	}
+	if sioProgressMaintenance != 0 {
+		t.Fatalf("maintenance answers %d, want 0: that is the code the client shows a window for", sioProgressMaintenance)
+	}
+	if sioProgressSynchronize != 2 {
+		t.Fatalf("stored remote progress answers %d, want 2: the client selects SynchronizeProgress only for that code", sioProgressSynchronize)
+	}
+}
+
+// A profile only enters SynchronizeProgress once the server owns something to
+// send back. This is the backend provenance of the byte the outer auth
+// iterator reads at 0x3DC78D4; no frontend branch force is involved.
+func TestProgressStatusSelectsSynchronizationForStoredProfile(t *testing.T) {
+	s, _ := newTestServer(t)
+	const playerID = "918930694"
+	session := authorisedSession("0123456789abcdef01234567", playerID)
+
+	if _, err := s.st.EnsureProfile(playerID, "Player0694"); err != nil {
+		t.Fatalf("ensure profile: %v", err)
+	}
+	empty := s.answerProgressStatus(session, sioHead{}, 3)
+	if got := empty[sioProgressEnabledKey]; got != sioProgressOpen {
+		t.Fatalf("empty profile answers enabled=%v, want ordinary open code %d", got, sioProgressOpen)
+	}
+
+	if _, err := s.st.MergeProfileProgress(playerID, map[string]any{"level": float64(1)}); err != nil {
+		t.Fatalf("store progress: %v", err)
+	}
+	stored := s.answerProgressStatus(session, sioHead{}, 4)
+	if got := stored[sioProgressEnabledKey]; got != sioProgressSynchronize {
+		t.Fatalf("stored profile answers enabled=%v, want synchronization code %d", got, sioProgressSynchronize)
+	}
+
+	on := true
+	if _, err := s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
+		t.Fatalf("enable maintenance: %v", err)
+	}
+	maintenance := s.answerProgressStatus(session, sioHead{}, 5)
+	if got := maintenance[sioProgressEnabledKey]; got != sioProgressMaintenance {
+		t.Fatalf("maintenance with stored progress answers enabled=%v, want %d", got, sioProgressMaintenance)
+	}
+}

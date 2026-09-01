@@ -164,15 +164,13 @@ type Config struct {
 	// member, which is the empty string every reader has returned since run
 	// 57.
 	ConfigPushWrapper bool
-	// ConfigPushInline states the document text inside the pushed entry
-	// rather than sending it as a binary attachment the entry indexes.
+	// ConfigPushInline forces every hosted document into the pushed entry
+	// as text instead of sending a binary attachment index.
 	//
-	// Runs 57 to 78 all delivered the body as an attachment, and the
-	// client's reader answered String.Empty for every hosted name in every
-	// one of them, while embedded names read back their text through the
-	// same two lookups. The document shape was varied three times over
-	// those runs and never moved the result, which leaves the attachment
-	// itself as the thing the handler does not resolve.
+	// DIAGNOSTIC, off by default. Production selects inline delivery only for
+	// the GameModeEvents family whose String branch was proved in runs 172-174;
+	// globally inlining unrelated documents caused their parsers to consume
+	// unverified JSON and must not be a production dependency.
 	ConfigPushInline bool
 	// ProgressSlotsAlwaysCreate omits the slots member from every
 	// get_progress_slots answer, including for an account that already has
@@ -260,7 +258,7 @@ func Load() (*Config, error) {
 		ConfigPushAliases:                  envBool("OPG3D_CONFIG_PUSH_ALIASES", false),
 		ConfigPushWrapper:                  envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
 		ConfigPushInline:                   envBool("OPG3D_CONFIG_PUSH_INLINE", false),
-		ProgressSlotsAlwaysCreate:          envBool("OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE", true),
+		ProgressSlotsAlwaysCreate:          envBool("OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE", false),
 		TutorialSectionSeed:                envBool("OPG3D_TUTORIAL_SECTION_SEED", true),
 		TutorialSectionIDs:                 envInts("OPG3D_TUTORIAL_SECTION_IDS", []int{1100, 1500}),
 		TutorialSectionViaProgressDocument: envBool("OPG3D_TUTORIAL_SECTION_VIA_PROGRESS_DOCUMENT", false),

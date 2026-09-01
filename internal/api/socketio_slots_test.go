@@ -2,7 +2,10 @@
 
 package api
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // clientSlotUpload is the shape run 57 captured on the wire: slots indexed by
 // number, each carrying the client's own compact encoding.
@@ -38,10 +41,11 @@ func TestProgressSlotsWithoutStoredSlotsOmitsTheMember(t *testing.T) {
 	}
 }
 
-// TestProgressSlotsServesTheStoredNonEmptyDictionary covers the second boot:
-// the client has already uploaded its slot set, and the run-75 callback can now
-// turn the returned dictionary keys into its remote-slot HashSet.
-func TestProgressSlotsServesTheStoredNonEmptyDictionary(t *testing.T) {
+// TestProgressSlotsServesTheStoredNonEmptyIDs covers the synchronization boot:
+// RVA 0x33F145C expects a JSON array, maps its objects to strings, and turns the
+// result into its remote-slot HashSet. A dictionary makes that cast null and
+// throws before the awaited task can finish.
+func TestProgressSlotsServesTheStoredNonEmptyIDs(t *testing.T) {
 	s, _ := newTestServer(t)
 	session := authorisedSession("0123456789abcdef01234567", "918930694")
 	uploaded := clientSlotUpload()
@@ -55,17 +59,13 @@ func TestProgressSlotsServesTheStoredNonEmptyDictionary(t *testing.T) {
 		"player_id":     "918930694",
 	}, 18)
 
-	slots, ok := body[sioSlotsKey].(map[string]any)
+	slotIDs, ok := body[sioSlotsKey].([]string)
 	if !ok {
-		t.Fatalf("%s is %T, want the Dictionary<string, object> wire shape", sioSlotsKey, body[sioSlotsKey])
+		t.Fatalf("%s is %T, want the string array consumed as List<object>", sioSlotsKey, body[sioSlotsKey])
 	}
-	if len(slots) != len(uploaded) {
-		t.Fatalf("served %d slots, want %d stored slots", len(slots), len(uploaded))
-	}
-	for id := range uploaded {
-		if _, present := slots[id]; !present {
-			t.Fatalf("stored slot %s was not served", id)
-		}
+	want := []string{"25", "26", "27", "35"}
+	if !reflect.DeepEqual(slotIDs, want) {
+		t.Fatalf("served slot ids %v, want sorted ids %v", slotIDs, want)
 	}
 }
 

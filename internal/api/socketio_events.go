@@ -42,19 +42,22 @@ import (
 
 // Event names the client emits after authorisation.
 const (
-	sioSubscribeEvent     = "subscribe"
-	sioProgressEvent      = "progress_status"
-	sioPrefsEvent         = "player_prefs"
-	sioLastCommandEvent   = "get_last_command"
-	sioRoomEvent          = "mmc_get_room"
-	sioOnlineEvent        = "update_player_online"
-	sioBindedIDsEvent     = "get_binded_ids"
-	sioCheckBindedGCEvent = "check_binded_gc"
-	sioSocialIDKey        = "social_id"
-	sioCheckVersionEvent  = "full_check_version"
-	sioPlayerVersionEvent = "get_player_version"
-	sioRegisterPushEvent  = "register_push"
-	sioInitProgressEvent  = "init_progress"
+	sioSubscribeEvent         = "subscribe"
+	sioProgressEvent          = "progress_status"
+	sioPrefsEvent             = "player_prefs"
+	sioLastCommandEvent       = "get_last_command"
+	sioRoomEvent              = "mmc_get_room"
+	sioOnlineEvent            = "update_player_online"
+	sioBindedIDsEvent         = "get_binded_ids"
+	sioCheckBindedGCEvent     = "check_binded_gc"
+	sioSocialIDKey            = "social_id"
+	sioCheckVersionEvent      = "full_check_version"
+	sioPlayerVersionEvent     = "get_player_version"
+	sioRegisterPushEvent      = "register_push"
+	sioInitProgressEvent      = "init_progress"
+	sioGetInappsEvent         = "get_inapps"
+	sioUpdateProgressEvent    = "update_progress"
+	sioPlayerSuccessInitEvent = "player_success_init"
 )
 
 // setIdentity records who authorised this session.
@@ -101,6 +104,8 @@ func sioAnswerFor(event string) sioAnswer {
 	switch event {
 	case sioAuthEvent:
 		return (*Server).answerAuth
+	case sioPlayerSuccessInitEvent:
+		return (*Server).answerPlayerSuccessInit
 	case sioSubscribeEvent:
 		return (*Server).answerSubscribe
 	case sioProgressEvent:
@@ -127,6 +132,12 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerInitProgress
 	case sioProgressSlotsEvent:
 		return (*Server).answerProgressSlots
+	case sioSyncFullEvent:
+		return (*Server).answerSyncFull
+	case sioUpdateProgressEvent:
+		return (*Server).answerUpdateProgress
+	case sioGetInappsEvent:
+		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
 		return (*Server).answerCreateSlots
 	default:
@@ -221,6 +232,24 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		body["error"] = sioErrNotAuthorized
 		body["reason"] = ban.Reason
 		return body
+	}
+
+	if repaired, err := s.repairLegacyGameModeHubSlot(account.PlayerID); err != nil {
+		s.log.Event("socket.progress_slot_repair_failed", map[string]any{
+			"sid":       session.sid,
+			"player_id": account.PlayerID,
+			"slot":      gameModeHubProgressSlotID,
+			"err":       err.Error(),
+		})
+	} else if repaired {
+		s.log.Event("socket.progress_slot_repaired", map[string]any{
+			"sid":       session.sid,
+			"player_id": account.PlayerID,
+			"slot":      gameModeHubProgressSlotID,
+			"from":      "c=null,d=0",
+			"to":        "c=[],d=20696",
+			"note":      "version-specific repair applied only to the account authenticated on this socket",
+		})
 	}
 
 	body := authReplyBody(session, head, reqID)
@@ -344,35 +373,54 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 }
 
 // sioProgressEnabledKey names the single integer the auth scene reads out of
-// this answer. Both the key and its meaning were measured on a rooted device
-// rather than inferred, because the guesses went both ways and one of them cost
-// a run.
+// this answer. Key, meaning and polarity were all measured on a rooted device,
+// and the polarity had to be measured in both directions, one run each, because
+// reading the disassembly alone got it wrong twice.
 //
 // The reply handler at libil2cpp.so+0x17A9980 does this with the value:
 //
 //	ContainsKey(answer, "err_code")  -> present means failure, so it stays out
 //	ContainsKey(answer, "enabled")   -> absent leaves the flag unset
 //	Convert.ToInt32(answer["enabled"])
-//	flag = (value == 0)              -> cset w1, eq at 0x17A9B40
+//	flag = (value == 0)             -> cset w1, eq at 0x17A9B40
+//	statics+0x00 = Nullable<bool>(flag)  strh at 0x17A9BA4
+//	statics+0x02 = (value == 2)          strb at 0x17A9BF0
+//	statics+0x04 = Nullable<int>(value)  stur at 0x17A9C3C
 //
-// and stores that flag into a static Nullable<bool>. Run 97 sent zero to see
-// what a true flag buys. The static did turn true, and the client answered by
-// clearing it again at its 80% step, opening an information window and
-// abandoning the rest of the loading ladder: the true flag is how this build
-// says "technical works", not "carry on". Sending one keeps the ladder intact
-// all the way to its last step, so one is what an open server sends.
+// Run 142 sent zero with the flag traced live on the device. The flag did turn
+// true, and eighty percent into the ladder the scene applied state 15,
+// TechnicalWorks, from 0x3DC49D4, raised the information window and cleared the
+// flag again through the reset writer at 0x17A9934. A true flag is how this
+// build says "technical works", and zero is the code that produces it. Run 141
+// sent one, the flag stayed false, and the ladder ran to its last step.
 //
-// Note for whoever reads the startup state machine at 0x3DC9854 and sees it
-// require a true flag before starting a coroutine: that branch is shared with
-// the local-multiplayer shortcut, and it is the offline path, not the way into
-// the main menu. Do not flip this constant to reach it.
+// The third code is not another polarity for that flag. Value two keeps the
+// maintenance Nullable false and sets the distinct byte at statics+0x02. The
+// outer auth iterator reads exactly that byte at 0x3DC78D4: false takes the
+// create-slots path, while true starts TypeDefIndex 2029, whose stock
+// continuation reaches SynchronizeProgress/state 9 and emits get_progress.
+// The server therefore sends two only when it already owns progress worth
+// synchronising; an empty profile remains the ordinary open code one.
+//
+// Two warnings for the next reader of the startup state machine:
+//
+//	0x3DC9854 does start the login coroutine when the flag is true, but that
+//	arm is shared with the local multiplayer shortcut and it is the technical
+//	works route. Reaching it is not reaching the main menu.
+//	0x17A9934 looks unreferenced to a scan for direct calls. It is reached
+//	through a delegate from 0x11EF5F0, and run 142 caught it running.
+//
+// The online route into Login is the other caller of the same coroutine factory
+// at 0x3DC6214: the small method at 0x3DC70F8 starts it without consulting this
+// flag at all. That is the path this server still has to earn.
 const (
 	sioProgressEnabledKey = "enabled"
 
-	// The two codes this server sends. Neither is hardcoded into an answer:
-	// the one that goes out is whatever the operator's switch says, so downtime
-	// stays a server decision and the client needs no knowledge of it.
+	// All three numbers are client wire codes, not booleans. Maintenance wins
+	// over the profile-derived mode so an account with stored progress still
+	// sees TechnicalWorks while the operator switch is on.
 	sioProgressOpen        = 1
+	sioProgressSynchronize = 2
 	sioProgressMaintenance = 0
 )
 
@@ -386,15 +434,29 @@ func (s *Server) progressStatusCode() int {
 	return sioProgressOpen
 }
 
+// profileNeedsSynchronization reports whether the server has any remote
+// progress for the client to reconcile. These documents are deliberately kept
+// separate in storage because they travel through different socket events, but
+// any one of them means this is no longer a blank server-side profile.
+func profileNeedsSynchronization(profile store.Profile) bool {
+	return len(profile.Progress) != 0 ||
+		len(profile.ProgressDocument) != 0 ||
+		len(profile.ProgressSlots) != 0
+}
+
 // answerProgressStatus hands back the progress this server holds for the
 // player. A fresh profile answers with an empty object, which is the truthful
 // answer for an account that has never synchronised.
 func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["progress"] = map[string]any{}
-	body[sioProgressEnabledKey] = s.progressStatusCode()
 
 	profile, ok := s.sessionProfile(session)
+	status := s.progressStatusCode()
+	if status == sioProgressOpen && ok && profileNeedsSynchronization(profile) {
+		status = sioProgressSynchronize
+	}
+	body[sioProgressEnabledKey] = status
 	if !ok {
 		return body
 	}
@@ -764,8 +826,9 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 // document back under it.
 const sioProgressDocumentKey = "progress"
 
-// sioProgressRejected is the client's own code for a refused progress sync. It
-// is written here only to name what this server deliberately never sends.
+// sioProgressRejected is the client's own SlotNotMatches code. The server does
+// not put it on the wire directly: the sync_full callback derives it from the
+// measured _unknown_slots marker before dispatching the reason to AuthScene.
 const sioProgressRejected = 1602
 
 // answerInitProgress stores the boot-time progress snapshot and answers with

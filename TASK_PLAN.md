@@ -5103,3 +5103,107 @@ story.
     server                                     restarted with no override in its env
     7 stale "adb logcat -v time" readers       killed; they were still appending the
                                                live device log into front-run133..139
+
+## Run 140 - baseline restored: the client no longer announces technical works
+
+A verification run with nothing forced on the client and no override on the server,
+which is what the maintenance notice needed to be proven gone.
+
+Setup, measured rather than assumed:
+
+    device lib      f9925f28a6b69aa4920e7d831b6fd7f7 (559168 B), same as the host tree
+    sandbox forces  kOpenMultyGate=false, kOpenFinalAuthGate=false,
+                    kForceRanchoComplete=false, kForceAllTutorials=false
+    server          rebuilt without progress_status_override.go, internal/api tests pass
+    settings        data/settings.json "maintenance": false
+    launch          epoch 1788160406, pid 8778, capture logs/front-run140.log (33623 lines)
+    screenshot      logs/screen-run140.png (1677657 B)
+
+What the client read and did:
+
+    +013950ms  sio[cipher] decrypt open bytes=115
+               text='{"enabled":1,"error":0,"experience":0,"level":0,...
+    +013950ms  pflag flag=1 hasValue=0 second=0 number=1 numberHasValue=1
+               after server payload   <-- the pre-incident reading is back
+    percent    79% +13285 -> 80% +14107 -> 87% +14194 -> 88% +14380 -> 90% +16877
+    statewatch state 1 (Authorizing) -> 5 (CheckBindedId) -> 13 (SendProgress)
+    no technical-works presentation anywhere in the run
+
+So the notice was never a client defect or a cached preference: it was the truthful
+rendering of the true progress flag that `enabled:0` produces, and it disappears the
+moment the server answers 1 again. The boot is back at the familiar 90% ceiling,
+which is the honest baseline to work from.
+
+### Numbering rule, learned the hard way
+
+Run numbers are shared with work recorded outside this file. `logs/` holds an
+unbroken `front-run59.log` .. `front-run139.log`, so the next number is whatever
+`ls logs/front-run*.log | tail -1` says, plus one. This run took 140 that way.
+Runs 106-139 belong to that other series and are not described here.
+
+## Run 141 - the first real handler ships, and the ladder still parks at ninety
+
+The generic acknowledgement for get_inapps was replaced by a real answer built
+from the three keys the client actually indexes out of it, measured at its
+reader 0x294DF50: err_code at +0xDC, clan_timeout at +0xF0 and clan_war_timeout
+at +0x104. The client accepted it and then asked for it again every thirty
+seconds for the rest of the run, which is what a heartbeat looks like. So
+get_inapps is refuted as the thing the boot waits for.
+
+Everything the client asked for was answered: sixty-one requests, sixty-one
+replies, only seven of them still generic acknowledgements. The ladder ran
+1 percent at +3728 up to 90 percent at +15478 and stopped there, with the
+scene in state 13, SendProgress. Bundles were refuted earlier and stay refuted;
+the local multiplayer key is polled about three times a frame for the whole run
+by FriendsController and is always zero.
+
+Analysis harvested from this run, all of it still standing:
+
+- The full client handler map: 183 registered events served by 41 readers. One
+  shared reader covers 139 of them and only ever indexes three keys.
+- The lambda cache of the auth scene, so every WaitUntil predicate in the boot
+  now has a name and an address. All five are hooked; none of them stalls.
+- The maintenance flag writer at 0x17A9980, decoded instruction by
+  instruction, including its early exit on a present err_code. That early exit
+  is the exact reason run 36 silenced the whole boot by adding err_code
+  everywhere.
+- A whole binary scan of the state setter 0x3DC2458: sixteen call sites, and
+  exactly one of them passes Login. State 14, WaitAsync, is never passed to the
+  setter at all, so it has to be written straight into the field.
+
+## Run 142 - the polarity experiment: zero opens the door and lights the sign
+
+The startup state machine at 0x3DC9320 writes the ninety percent step and then
+reaches a fork that starts the only coroutine which sets the Login state. The
+fork needs either the local multiplayer key, which is always zero here, or the
+maintenance flag to hold the value true. The flag is computed from this
+server answer as value == 0, so this run sent zero to see the door open.
+
+The flag did turn true, and the client did not go to the menu. Eighty percent
+into the ladder the scene applied state 15, TechnicalWorks, from 0x3DC49D4,
+raised the information window, and cleared the flag again through the reset
+writer at 0x17A9934. The ladder never reached ninety. So a true flag is how
+this build says technical works, and one is what an open server sends. The
+constant is back to one, with the measurement written next to it and a
+regression test pinning both wire values.
+
+Two corrections to earlier analysis, both of them mine:
+
+- A scan for direct calls said the reset writer had no callers at all. It is
+  reached through a delegate from 0x11EF5F0, and this run caught it running.
+  A call scan cannot prove a function is dead in this binary.
+- The fork at 0x3DC9854 is not the way in. It is the technical works route,
+  shared with the local multiplayer shortcut.
+
+What this run bought, which is the first real progress on the wall since 117:
+
+- The coroutine factory behind the Login state has a second caller, a small
+  private method at 0x3DC70F8 that starts it without consulting the flag at
+  all. That is the online route into the menu.
+- That method has zero direct callers, so it is started through a delegate,
+  exactly like the reset writer.
+- The decision to show the technical works screen is not one condition but
+  three, all of them inside 0x3DC4890, which the percent writer calls at the
+  eighty percent step. Two are predicates at 0x3DC58AC and 0x3DC57E8, the
+  third is a membership test on a static collection. Only when all three are
+  false does the boot continue into the ninety percent step.

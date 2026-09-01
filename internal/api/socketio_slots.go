@@ -2,6 +2,8 @@
 
 package api
 
+import "sort"
+
 // Answers for the slot half of the boot handshake.
 //
 // The two calls sit between AuthSceneState.Authorized (2) and
@@ -11,28 +13,29 @@ package api
 //	req_id 19  create_slots        {"slots":{"25":{"v":{...}}, "26":{...}, ...}}
 //
 // Run 58 measured what happens when the reply carries an empty "slots"
-// dictionary: the client treated the query as answered, skipped create_slots,
-// and regressed from 90% to 87%. Run 75 then identified the live callback at
-// RVA 0x33F145C. It tests that same top-level member, casts it to the same
-// Dictionary<string, object> shape create_slots uploads, and turns its keys
-// into the remote-slot set awaited by AuthSceneController.
+// member: the client treated the query as answered, skipped create_slots, and
+// regressed from 90% to 87%. Run 146 then corrected the member contract. The
+// callback at RVA 0x33F145C casts "slots" to List<object>, maps every item with
+// object.ToString(), and builds the HashSet<string> awaited by
+// AuthSceneController. Returning the stored slot document itself fails that cast
+// and throws ArgumentNullException in Enumerable.Select.
 //
 // Therefore an account with no stored slots still receives the bare
 // acknowledgement and uploads its local set. Once the server holds a non-empty
-// set, the next boot receives that actual set rather than the empty sentinel
-// that caused the run-58 regression.
+// set, the next boot receives the sorted list of stored slot ids.
 
 const (
 	sioProgressSlotsEvent = "get_progress_slots"
 	sioCreateSlotsEvent   = "create_slots"
 
-	// sioSlotsKey is both the member the client uploads under and the member
-	// the get_progress_slots callback reads back as Dictionary<string, object>.
+	// sioSlotsKey is the upload document on create_slots and the string-id
+	// array on get_progress_slots. The event determines the member's shape.
 	sioSlotsKey = "slots"
 )
 
-// answerProgressSlots returns the account's non-empty stored slot set. A new
-// account gets no slots member so it follows the measured create_slots path.
+// answerProgressSlots returns the ids of the account's non-empty stored slot
+// set. A new account gets no slots member so it follows the measured
+// create_slots path.
 //
 // SECURITY: the payload names the player itself, so the id it claims is
 // checked against the one this socket authenticated as.
@@ -61,12 +64,13 @@ func (s *Server) answerProgressSlots(session *sioSession, head sioHead, reqID in
 	if profile, ok := s.sessionProfile(session); ok {
 		held = len(profile.ProgressSlots)
 		if held > 0 && !s.cfg.ProgressSlotsAlwaysCreate {
-			slots := make(map[string]any, held)
-			for id, value := range profile.ProgressSlots {
-				slots[id] = value
+			slotIDs := make([]string, 0, held)
+			for id := range profile.ProgressSlots {
+				slotIDs = append(slotIDs, id)
 			}
-			body[sioSlotsKey] = slots
-			served = len(slots)
+			sort.Strings(slotIDs)
+			body[sioSlotsKey] = slotIDs
+			served = len(slotIDs)
 		}
 	}
 	// Section 56, the tutorials section the boot gates on, travels here when the
@@ -87,7 +91,7 @@ func (s *Server) answerProgressSlots(session *sioSession, head sioHead, reqID in
 	note := "no stored slots; omitted slots so the client uploads its local set"
 	switch {
 	case served > 0:
-		note = "returned the non-empty slot dictionary consumed by the run-75 callback"
+		note = "returned the non-empty slot-id list consumed by the synchronization callback"
 	case held > 0:
 		note = "held a stored set but omitted it; serving it back skips the create_slots branch the boot needs"
 	}

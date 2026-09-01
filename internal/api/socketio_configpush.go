@@ -35,6 +35,23 @@ import (
 // sioConfigPushEvent is the event the client's config system listens on.
 const sioConfigPushEvent = "config_info_versions"
 
+// configPushUsesInlineBody identifies the JSON/Newtonsoft documents whose
+// stock 23.1.3 parser was measured taking the String branch of `val`.
+//
+// Runs 172-174 separated delivery from schema: an attachment index left c
+// empty, while inline text populated c. With the exact `evs` root, all three
+// GameModeEvents coroutines reached their stock finalizer and ready write.
+// Keep this allow-list deliberately closed: other hosted documents retain the
+// binary attachment contract until their own parser is measured.
+func configPushUsesInlineBody(name string) bool {
+	switch name {
+	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents":
+		return true
+	default:
+		return false
+	}
+}
+
 // encodeEncryptedConfigPush renders one encrypted binary event that carries
 // document bodies as extra attachments.
 //
@@ -238,19 +255,16 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 			}
 			body = wrapped
 		}
-		if s.cfg.ConfigPushInline {
-			// The handler takes its bodies as List<byte[]> and each entry
-			// names one by index, so every run so far has sent an integer
-			// here. The reader has answered String.Empty for every one of
-			// them. Stating the text in the entry costs the attachment cap
-			// nothing to try and tells us whether the index is resolved at
-			// all: a handler that reads the member as a string finds the
-			// document, and one that wants an index finds what it already
-			// found, which is nothing.
+		inline := s.cfg.ConfigPushInline || configPushUsesInlineBody(name)
+		if inline {
+			// The GameModeEvents family takes the String branch and assigns
+			// this text to the cache entry's c member in the same process.
+			// ConfigPushInline remains a global diagnostic override; normal
+			// production uses only the measured allow-list above.
 			entry[sioPushBodyKey] = string(body)
 		}
 		current.entries[name] = entry
-		if !s.cfg.ConfigPushInline {
+		if !inline {
 			current.documents = append(current.documents, body)
 		}
 		if len(current.entries) == configPushDocumentLimit {
