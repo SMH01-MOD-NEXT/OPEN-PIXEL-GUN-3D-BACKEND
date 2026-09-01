@@ -5287,3 +5287,29 @@ runtime reported healthy as uid 10001 on a read-only root filesystem, served
 `/api/v1/ping`, registered an account and retained it after container recreation
 with the same named data volume. Host `go vet ./...`, `go test ./...`, Compose
 configuration validation and `git diff --check` also passed.
+
+## Session 2026-09-01 — first live Docker deployment
+
+- [x] Select the current public Linux host as the first deployment target. This
+      avoids Choreo's REST/WS same-port restriction: the 23.1.3 backend serves
+      HTTP, Socket.IO/WebSocket upgrades and polling together on TCP 8080.
+- [x] Build the production image and migrate the existing one-account
+      `state.json` plus all 274 verified local bundles into named volumes.
+- [x] Start the hardened `opg3d-backend` container with host networking,
+      read-only root, no Linux capabilities, uid 10001 and restart-on-failure;
+      the image health check reports healthy.
+- [x] Verify the persisted admin account, authored static content, local HTTP
+      API, direct Socket.IO upgrade and first Engine.IO open packet.
+- [x] Publish the service through an ngrok HTTPS tunnel after the host's direct
+      public-IP hairpin accepted TCP but did not return an HTTP response. Both
+      public `/api/v1/ping` and secure WebSocket upgrade were verified end to end.
+- [x] Keep credentials, player state, vendor bundles and captured logs outside
+      Git. The tunnel URL is runtime state rather than a stable DNS contract.
+
+Deployment note: Docker Compose network creation failed because the daemon's
+predefined address pools are exhausted, so this host uses the documented Linux
+`--network host` path instead. UDP discovery is listening on 47318 locally, but
+internet broadcasts are not routable; remote clients must use the public host.
+The Choreo form's `/Dockerfile` schema value was invalid (REST schemas must be
+OpenAPI JSON/YAML), and Choreo was not selected because its managed REST and
+WebSocket endpoints cannot share this backend's required port.
