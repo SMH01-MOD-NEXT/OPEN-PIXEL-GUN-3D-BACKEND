@@ -328,3 +328,87 @@ a null config. `"e":false` is the first thing to test as the cause.
 
 - [ ] Test `Boosters` with `"e":true` and a non-empty `bs`, and re-check whether
       `_config == null` disappears. Do this before moving any parked file.
+
+## Run 49: the operator edit survives a full boot
+
+The previous section ended with a measurement and no fix. On the working
+`enabled: 2` arm the client erased the edit 62 ms after the slot handshake; on
+the `enabled: 1` arm the edit survived only because the boot never finished.
+Neither arm is a working product. Both halves are addressed now.
+
+### What changed
+
+**The blank-upload guard** (`internal/api/socketio_replace_progress.go`,
+`4362f78`..`5ce41be`). `replace_progress` now compares the two core slots the
+store projects - slot 3 for the currencies, slot 4 for level and experience -
+against the stored profile before installing the snapshot. A slot 3 that
+projects to no currency at all and a slot 4 that projects to level one with no
+experience are refilled from what the server holds. Every other slot in the
+upload is installed exactly as it arrived, and the repaired ids are named in the
+`socket.progress_replaced` line so the log says when the guard acted.
+
+The guard sits in the API layer on purpose. `projectReplacementSlotState` is
+right to zero what it was handed; the bug is that the client should never have
+been the authority on those four numbers at that moment. Moving the zeroing into
+the store would have broken
+`TestReplaceProfileProgressSlotsTreatsEmptyCoreSlotsAsZeroState`, which pins
+behaviour worth keeping.
+
+`OPG3D_PROGRESS_BLANK_UPLOAD_GUARD` (default on) turns it off. The trade-off is
+narrow and deliberate: with the guard on, a genuine client-side reset to zero
+from a non-blank profile loses to the stored value. The server wins the four
+counters an operator can edit; the client keeps everything else.
+
+**The download channel** (`internal/api/socketio_get_progress.go`). `get_progress`
+and `get_progress_hashes_v2` both fell through to the generic acknowledgement.
+The first now serves the stored slot document, honours the optional numeric slot
+filter, checks the claimed `player_id` against the authenticated one, and always
+answers a dictionary under `progress` because the client casts that member
+unchecked. The second is logged under its own name and still answered bare: the
+digest form is unmeasured, and an invented cast there is exactly what killed the
+boot coroutine in run 48.
+
+### Measured on device, run 49
+
+| | run 48 (before) | run 49 (after) |
+|---|---|---|
+| `progress_status` | `enabled: 2`, counters correct | unchanged |
+| `get_progress_slots` | 87 ids served | 87 ids served |
+| `replace_progress` | blank slot 3 and 4 accepted | `repaired_slots="[3 4]"` |
+| stored coins after boot | `0` | `123123123` |
+| stored level after boot | `1` | `32` |
+| stored slot 3 | `{}` | `{"Coins":123123123,"GemsCurrency":123123123}` |
+| stored slot 4 | `{"l":1,"e":0}` | `{"cr":1,"cre":0,"e":20000,"l":32}` |
+| boot | completes, 45 events | completes, 44 events |
+
+```
+16:34:55.336Z socket.progress_slots_asked held=87 served=87 player_id=541028684
+16:34:55.457Z socket.progress_replaced coins=123123123 level=32 received=87
+              repaired_slots="[3 4]" stored=87
+```
+
+The slot document carries the repaired values too, not just the flat counters,
+so the next handshake serves the corrected snapshot rather than re-teaching the
+client its own blank.
+
+### What this does not fix
+
+The client still does not display the edited balance. `123123123` appears zero
+times in the 8015-line client log for run 49. The download handler was never
+asked: no `socket.progress_download_served` line exists for this boot, because
+the client still parks before the `SynchronizeProgress` continuation that emits
+`get_progress`. The handler is necessary and, on today's evidence, not yet
+sufficient.
+
+So the honest split is: **the edit is now durable server-side** - it survives a
+full boot instead of being erased by one - **and the client-facing display is
+still open.** The remaining lever is the continuation itself, not the value.
+
+- [ ] Catch the client emitting `get_progress` and measure what it does with the
+      answer. Until then the download channel is inert.
+- [ ] Trace why `SynchronizeProgress` (state 9) is never reached even though
+      `statics+0x02` is set by `enabled: 2`. Frontend trace switches
+      (`boot progress applier trace`, `slot document reader trace`) are the
+      cheapest next probe; hot-pushing the lib is authorised.
+- [ ] Decide the `update_progress` ownership model. The guard covers the boot
+      snapshot only; an in-session batch can still overwrite the same counters.
