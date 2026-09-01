@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -107,7 +108,9 @@ type recorder struct {
 	body   bytes.Buffer
 	// skipBody keeps a response out of the trace buffer. Set it for payloads
 	// that are large and opaque, such as asset bundles.
-	skipBody bool
+	skipBody   bool
+	redactBody bool
+	written    int
 }
 
 func (r *recorder) WriteHeader(status int) {
@@ -120,6 +123,12 @@ func (r *recorder) WriteHeader(status int) {
 // Hijack forwards the takeover the WebSocket upgrade of the config channel
 // needs. Without it the trace wrapper would hide net/http's own Hijacker and
 // no socket could ever be upgraded.
+// Unwrap lets capability-aware handlers reach optional interfaces such as
+// http.Flusher on the real network writer without bypassing trace capture.
+func (r *recorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func (r *recorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := r.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -138,7 +147,9 @@ func (r *recorder) Write(p []byte) (int, error) {
 	if !r.skipBody {
 		r.body.Write(p)
 	}
-	return r.ResponseWriter.Write(p)
+	n, err := r.ResponseWriter.Write(p)
+	r.written += n
+	return n, err
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -163,32 +174,52 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
+	redactBody := redactHTTPBodyTrace(r)
+	requestBodyTrace := s.log.Body(body)
+	if redactBody && len(body) > 0 {
+		requestBodyTrace = redactedHTTPBody(len(body))
+	}
 	s.log.Event("http.request", map[string]any{
 		"rid":      rid,
 		"method":   r.Method,
 		"path":     r.URL.Path,
 		"raw_path": rawPath,
-		"query":    r.URL.RawQuery,
+		"query":    redactedRawQuery(r),
 		"ip":       clientIP(r),
 		"ua":       r.UserAgent(),
 		"type":     r.Header.Get("Content-Type"),
 		"bytes":    len(body),
-		"body":     s.log.Body(body),
+		"body":     requestBodyTrace,
 	})
 
-	rec := &recorder{ResponseWriter: w}
+	rec := &recorder{ResponseWriter: w, skipBody: redactBody, redactBody: redactBody}
 	s.mux.ServeHTTP(rec, r)
 	if rec.status == 0 {
 		rec.status = http.StatusOK
 	}
 
+	responseBodyTrace := s.log.Body(rec.body.Bytes())
+	if rec.redactBody && rec.written > 0 {
+		responseBodyTrace = redactedHTTPBody(rec.written)
+	}
 	s.log.Event("http.response", map[string]any{
 		"rid":    rid,
 		"status": rec.status,
 		"ms":     time.Since(start).Milliseconds(),
-		"bytes":  rec.body.Len(),
-		"body":   s.log.Body(rec.body.Bytes()),
+		"bytes":  rec.written,
+		"body":   responseBodyTrace,
 	})
+}
+
+// redactHTTPBodyTrace keeps support-only state and credentials out of the
+// durable/live trace. The response is still sent in full to the authenticated
+// operator; only the diagnostic copy is omitted.
+func redactHTTPBodyTrace(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/api/v1/admin/")
+}
+
+func redactedHTTPBody(size int) string {
+	return fmt.Sprintf("<%d bytes; authenticated admin body redacted>", size)
 }
 
 // normalizePath strips the "/@original.host" prefix used by the client-side URL
@@ -210,6 +241,18 @@ func discardTraceBody(w http.ResponseWriter) {
 	if rec, ok := w.(*recorder); ok {
 		rec.skipBody = true
 	}
+}
+
+// redactedRawQuery keeps routable query context in diagnostics without writing
+// reusable account credentials to disk.
+func redactedRawQuery(r *http.Request) string {
+	query := r.URL.Query()
+	for _, key := range []string{"opg3d_session", "session", "token", "access_token", "socket_ticket"} {
+		if _, present := query[key]; present {
+			query.Set(key, "<redacted>")
+		}
+	}
+	return query.Encode()
 }
 
 func clientIP(r *http.Request) string {

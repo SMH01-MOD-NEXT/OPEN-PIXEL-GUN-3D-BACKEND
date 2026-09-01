@@ -170,6 +170,12 @@ type sioSession struct {
 	device   string
 	playerID string
 
+	// bootstrapPlayerID is authenticated once from the HTTP/native account
+	// context on the socket handshake. The reusable token is validated and
+	// discarded immediately; it is never retained in this session.
+	bootstrapPlayerID string
+	remoteIP          string
+
 	// authHash is the account hash the client presented in auth_v2. It is kept
 	// because get_binded_ids is answered with id/hash pairs and the hash the
 	// client authorised with is the only one this server can name truthfully.
@@ -464,6 +470,36 @@ func (s *Server) handleSocketIO(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// bindSocketBootstrap validates the native account context carried into the
+// initial socket handshake and stores only the canonical id and client IP.
+func (s *Server) bindSocketBootstrap(session *sioSession, r *http.Request) {
+	// Preserve the peer address even when the stock client omits custom
+	// bootstrap credentials; answerAuth uses it for conservative backend-only
+	// first-login correlation.
+	session.setRemoteIP(clientIP(r))
+	query := r.URL.Query()
+	playerID := query.Get("opg3d_player")
+	token := query.Get("opg3d_session")
+	if playerID == "" && token == "" {
+		return
+	}
+	if playerID == "" || token == "" {
+		s.log.Event("socket.bootstrap_identity_incomplete", map[string]any{"sid": session.sid})
+		return
+	}
+	account, ok := s.st.Authenticate(playerID, token, clientIP(r))
+	if !ok {
+		s.log.Event("socket.bootstrap_identity_rejected", map[string]any{
+			"sid": session.sid, "player_id": playerID, "ip": clientIP(r),
+		})
+		return
+	}
+	session.setBootstrapIdentity(account.PlayerID, clientIP(r))
+	s.log.Event("socket.bootstrap_identity_accepted", map[string]any{
+		"sid": session.sid, "player_id": account.PlayerID, "ip": clientIP(r),
+	})
+}
+
 // socketPolling serves the XHR transport: the handshake, the long-poll GET that
 // carries server packets, and the POST that carries client packets.
 func (s *Server) socketPolling(w http.ResponseWriter, r *http.Request, sid, eio string) {
@@ -503,6 +539,7 @@ func (s *Server) socketHandshake(w http.ResponseWriter, r *http.Request, eio str
 		s.writeError(w, http.StatusInternalServerError, "handshake", err.Error())
 		return
 	}
+	s.bindSocketBootstrap(session, r)
 
 	open, err := json.Marshal(openPayload(session, []string{"websocket"}))
 	if err != nil {
@@ -608,6 +645,7 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 			return
 		}
 		fresh = true
+		s.bindSocketBootstrap(session, r)
 	}
 
 	conn, err := wsUpgrade(w, r)
@@ -624,7 +662,7 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 		"eio_served": int(session.version),
 		"ip":         clientIP(r),
 		"fresh":      fresh,
-		"query":      r.URL.RawQuery,
+		"query":      redactedRawQuery(r),
 	})
 	session.setTransport("websocket")
 	session.touch()

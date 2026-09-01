@@ -84,6 +84,7 @@ func (b Ban) Active(now time.Time) bool {
 type state struct {
 	Accounts map[string]*Account `json:"accounts"`
 	Profiles map[string]*Profile `json:"profiles,omitempty"`
+	Aliases  map[string]string   `json:"aliases,omitempty"`
 	Bans     []Ban               `json:"bans"`
 }
 
@@ -119,9 +120,13 @@ func OpenWithOptions(dir string, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("store: mkdir %s: %w", dir, err)
 	}
 	s := &Store{
-		path:  filepath.Join(dir, "state.json"),
-		state: state{Accounts: map[string]*Account{}},
-		opts:  opts,
+		path: filepath.Join(dir, "state.json"),
+		state: state{
+			Accounts: map[string]*Account{},
+			Profiles: map[string]*Profile{},
+			Aliases:  map[string]string{},
+		},
+		opts: opts,
 	}
 	raw, err := os.ReadFile(s.path)
 	switch {
@@ -131,6 +136,12 @@ func OpenWithOptions(dir string, opts Options) (*Store, error) {
 		}
 		if s.state.Accounts == nil {
 			s.state.Accounts = map[string]*Account{}
+		}
+		if s.state.Profiles == nil {
+			s.state.Profiles = map[string]*Profile{}
+		}
+		if s.state.Aliases == nil {
+			s.state.Aliases = map[string]string{}
 		}
 	case errors.Is(err, os.ErrNotExist):
 		// First run.
@@ -171,6 +182,14 @@ func (s *Store) RegisterOrLogin(deviceID, nick, ip string) (Account, bool, error
 		if nick = strings.TrimSpace(nick); nick != "" {
 			account.Nick = nick
 		}
+		if s.state.Profiles == nil {
+			s.state.Profiles = map[string]*Profile{}
+		}
+		if s.state.Profiles[account.PlayerID] == nil {
+			s.state.Profiles[account.PlayerID] = &Profile{
+				PlayerID: account.PlayerID, Nick: account.Nick, CreatedAt: now, UpdatedAt: now,
+			}
+		}
 		if err := s.persistLocked(); err != nil {
 			return Account{}, false, err
 		}
@@ -194,8 +213,15 @@ func (s *Store) RegisterOrLogin(deviceID, nick, ip string) (Account, bool, error
 		LastIP:     ip,
 	}
 	s.state.Accounts[playerID] = account
+	if s.state.Profiles == nil {
+		s.state.Profiles = map[string]*Profile{}
+	}
+	s.state.Profiles[playerID] = &Profile{
+		PlayerID: playerID, Nick: nick, CreatedAt: now, UpdatedAt: now,
+	}
 	if err := s.persistLocked(); err != nil {
 		delete(s.state.Accounts, playerID)
+		delete(s.state.Profiles, playerID)
 		return Account{}, false, err
 	}
 	return *account, true, nil
@@ -209,6 +235,7 @@ func (s *Store) Authenticate(playerID, session, ip string) (Account, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	playerID = s.resolvePlayerIDLocked(playerID)
 	account, ok := s.state.Accounts[playerID]
 	if !ok || account.Session != session {
 		return Account{}, false
@@ -227,6 +254,7 @@ func (s *Store) Authenticate(playerID, session, ip string) (Account, bool) {
 func (s *Store) Account(playerID string) (Account, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	account, ok := s.state.Accounts[playerID]
 	if !ok {
 		return Account{}, ErrNotFound
@@ -254,6 +282,7 @@ func (s *Store) SetNick(playerID, nick string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	account, ok := s.state.Accounts[playerID]
 	if !ok {
 		return ErrNotFound
@@ -279,6 +308,9 @@ func (s *Store) AddBan(ban Ban) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if ban.Kind == BanPlayer {
+		ban.Subject = s.resolvePlayerIDLocked(ban.Subject)
+	}
 	s.state.Bans = append(s.state.Bans, ban)
 	return s.persistLocked()
 }
@@ -287,6 +319,10 @@ func (s *Store) AddBan(ban Ban) error {
 func (s *Store) RemoveBans(kind, subject string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	subject = strings.TrimSpace(subject)
+	if kind == BanPlayer {
+		subject = s.resolvePlayerIDLocked(subject)
+	}
 	kept := make([]Ban, 0, len(s.state.Bans))
 	removed := 0
 	for _, ban := range s.state.Bans {
@@ -318,21 +354,26 @@ func (s *Store) MatchBan(playerID, deviceID, ip string) (Ban, bool) {
 	now := time.Now().UTC()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	for _, ban := range s.state.Bans {
 		if !ban.Active(now) {
 			continue
 		}
 		var candidate string
+		subject := ban.Subject
 		switch ban.Kind {
 		case BanPlayer:
 			candidate = playerID
+			subject = s.resolvePlayerIDLocked(subject)
 		case BanDevice:
 			candidate = deviceID
 		case BanIP:
 			candidate = ip
 		}
-		if candidate != "" && candidate == ban.Subject {
-			return ban, true
+		if candidate != "" && candidate == subject {
+			matched := ban
+			matched.Subject = subject
+			return matched, true
 		}
 	}
 	return Ban{}, false
@@ -374,7 +415,9 @@ func (s *Store) mintFreePlayerIDLocked() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, taken := s.state.Accounts[id]; !taken {
+		_, accountTaken := s.state.Accounts[id]
+		_, aliasTaken := s.state.Aliases[id]
+		if !accountTaken && !aliasTaken {
 			return id, nil
 		}
 	}

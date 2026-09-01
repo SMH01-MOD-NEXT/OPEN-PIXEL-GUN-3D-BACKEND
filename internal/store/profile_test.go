@@ -3,6 +3,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -379,5 +380,173 @@ func TestProfilesSurviveReopen(t *testing.T) {
 	}
 	if profile.Level != 42 || profile.Nick != "Veteran" {
 		t.Fatalf("profile did not survive the reopen: %+v", profile)
+	}
+}
+
+func TestProfileProjectsKnownCountersAndPreservesUnknownProgress(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.MergeProfileProgress(socketUniqID, map[string]any{
+		"level": 7, "exp": float64(91), "coins": int64(33), "gems": json.Number("4"),
+		"future_field": map[string]any{"enabled": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Level != 7 || profile.Experience != 91 || profile.Coins != 33 || profile.Gems != 4 {
+		t.Fatalf("counters=%+v", profile)
+	}
+	if _, ok := profile.Progress["future_field"].(map[string]any); !ok {
+		t.Fatalf("unknown field lost: %#v", profile.Progress)
+	}
+
+	profile, err = s.MergeProfileProgressDocument(socketUniqID, map[string]any{
+		"4": map[string]any{"l": float64(9), "e": float64(123), "future": "kept"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Level != 9 || profile.Experience != 123 {
+		t.Fatalf("document counters=%+v", profile)
+	}
+	if profile.ProgressDocument["4"].(map[string]any)["future"] != "kept" {
+		t.Fatal("document field was lost")
+	}
+}
+
+func TestSetProfileSynchronizesClientFacingProgress(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.MergeProfileProgressDocument(socketUniqID, map[string]any{"4": map[string]any{"l": 1, "e": 0, "future": true}}); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.SetProfile(socketUniqID, "Veteran", 12, 345, 67, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]int64{"level": 12, "experience": 345, "coins": 67, "gems": 8} {
+		got, ok := counterInt64(profile.Progress[key])
+		if !ok || got != want {
+			t.Fatalf("progress[%s]=%#v, want %d", key, profile.Progress[key], want)
+		}
+	}
+	section := profile.ProgressDocument["4"].(map[string]any)
+	if level, _ := counterInt64(section["l"]); level != 12 {
+		t.Fatalf("section level=%#v", section["l"])
+	}
+	if experience, _ := counterInt64(section["e"]); experience != 345 {
+		t.Fatalf("section experience=%#v", section["e"])
+	}
+	if section["future"] != true {
+		t.Fatal("set profile dropped an unknown document member")
+	}
+	account, err := s.Account(socketUniqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Nick != "Veteran" {
+		t.Fatalf("account nick=%q, want profile nick", account.Nick)
+	}
+}
+
+func TestClientStateIsDeepCopiedAndSurvivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{
+		"unknown": map[string]any{"items": []any{"original", float64(2)}},
+		"w":       map[string]any{"pw": float64(10001)},
+	}
+	stored, err := s.MergeProfileClientState(socketUniqID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input["unknown"].(map[string]any)["items"].([]any)[0] = "input-mutated"
+	stored.ClientState["w"].(map[string]any)["pw"] = float64(999)
+
+	fresh, err := s.Profile(socketUniqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fresh.ClientState["unknown"].(map[string]any)["items"].([]any)[0]; got != "original" {
+		t.Fatalf("stored client state shared input memory: %#v", got)
+	}
+	if got := fresh.ClientState["w"].(map[string]any)["pw"]; got != float64(10001) {
+		t.Fatalf("returned client state shared store memory: %#v", got)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := reopened.Profile(socketUniqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := persisted.ClientState["unknown"].(map[string]any)["items"].([]any)[0]; got != "original" {
+		t.Fatalf("client state did not survive reopen: %#v", persisted.ClientState)
+	}
+}
+
+func TestMergeClientStateProjectsCountersAndNick(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.MergeProfileClientState(socketUniqID, map[string]any{
+		"nick": "Socket Nick", "level": json.Number("8"), "experience": float64(44),
+		"coins": int64(12), "gems": uint8(3), "future": true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Nick != "Socket Nick" || profile.Level != 8 || profile.Experience != 44 || profile.Coins != 12 || profile.Gems != 3 {
+		t.Fatalf("profile projection = %#v", profile)
+	}
+	if profile.ClientState["future"] != true {
+		t.Fatal("unknown client-state field was dropped")
+	}
+}
+
+func TestReplaceRawStateClearsStaleProjectedCounters(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetProfile(socketUniqID, "", 10, 200, 30, 4); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.ReplaceProfileRawState(socketUniqID,
+		map[string]string{}, map[string]any{}, map[string]any{}, map[string]any{},
+		map[string]any{"coins": -500, "future": "kept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Level != 0 || profile.Experience != 0 || profile.Coins != 0 || profile.Gems != 0 {
+		t.Fatalf("complete raw replacement left stale counters: %#v", profile)
+	}
+	if profile.ClientState["coins"] != -500 || profile.ClientState["future"] != "kept" {
+		t.Fatalf("invalid/unknown raw values were not preserved for support: %#v", profile.ClientState)
 	}
 }

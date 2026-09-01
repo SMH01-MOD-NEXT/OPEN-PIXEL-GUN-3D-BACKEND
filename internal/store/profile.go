@@ -19,9 +19,12 @@ package store
 // mutate stored state outside the lock.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -65,6 +68,12 @@ type Profile struct {
 	// client synchronises them at different points of its boot.
 	ProgressSlots map[string]any `json:"progress_slots,omitempty"`
 
+	// ClientState contains the remaining structured state reported through
+	// update_player, update_loadout, update_accessories and similar events. It
+	// is intentionally schema-free: support must be able to inspect and edit
+	// fields introduced by the frozen client without the server dropping them.
+	ClientState map[string]any `json:"client_state,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -87,6 +96,7 @@ func (p *Profile) clone() Profile {
 	out.Progress = cloneAnyMap(p.Progress)
 	out.ProgressDocument = cloneAnyMap(p.ProgressDocument)
 	out.ProgressSlots = cloneAnyMap(p.ProgressSlots)
+	out.ClientState = cloneAnyMap(p.ClientState)
 	if p.TransferredAt != nil {
 		at := *p.TransferredAt
 		out.TransferredAt = &at
@@ -123,6 +133,100 @@ func cloneAny(in any) any {
 	}
 }
 
+// counterInt64 accepts the integer representations produced by both Go code
+// and encoding/json. Fractional, negative and overflowing values are kept in
+// the raw map but are not projected into the trusted scalar counters.
+func counterInt64(value any) (int64, bool) {
+	var out int64
+	switch number := value.(type) {
+	case int:
+		out = int64(number)
+	case int8:
+		out = int64(number)
+	case int16:
+		out = int64(number)
+	case int32:
+		out = int64(number)
+	case int64:
+		out = number
+	case uint:
+		if uint64(number) > math.MaxInt64 {
+			return 0, false
+		}
+		out = int64(number)
+	case uint8:
+		out = int64(number)
+	case uint16:
+		out = int64(number)
+	case uint32:
+		out = int64(number)
+	case uint64:
+		if number > math.MaxInt64 {
+			return 0, false
+		}
+		out = int64(number)
+	case float32:
+		value := float64(number)
+		if math.IsNaN(value) || math.IsInf(value, 0) || value != math.Trunc(value) || value > math.MaxInt64 {
+			return 0, false
+		}
+		out = int64(value)
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || number != math.Trunc(number) || number > math.MaxInt64 {
+			return 0, false
+		}
+		out = int64(number)
+	case json.Number:
+		parsed, err := strconv.ParseInt(number.String(), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		out = parsed
+	default:
+		return 0, false
+	}
+	return out, out >= 0
+}
+
+func projectProfileCounters(profile *Profile, values map[string]any, compact bool) {
+	if values == nil {
+		return
+	}
+	project := func(keys []string, assign func(int64)) {
+		for _, key := range keys {
+			value, present := values[key]
+			if !present {
+				continue
+			}
+			if number, ok := counterInt64(value); ok {
+				assign(number)
+			}
+			return
+		}
+	}
+	levelKeys := []string{"level"}
+	experienceKeys := []string{"experience", "exp"}
+	if compact {
+		levelKeys = append(levelKeys, "l")
+		experienceKeys = append(experienceKeys, "e")
+	}
+	project(levelKeys, func(value int64) {
+		if int64(int(value)) == value {
+			profile.Level = int(value)
+		}
+	})
+	project(experienceKeys, func(value int64) { profile.Experience = value })
+	project([]string{"coins"}, func(value int64) { profile.Coins = value })
+	project([]string{"gems"}, func(value int64) { profile.Gems = value })
+}
+
+func projectProgressDocumentCounters(profile *Profile, document map[string]any) {
+	projectProfileCounters(profile, document, false)
+	if section, ok := document["4"].(map[string]any); ok {
+		projectProfileCounters(profile, section, true)
+	}
+}
+
 // ValidPlayerID reports whether id has the shape the 23.1.3 client parsers
 // expect: exactly nine decimal digits, the same shape mintPlayerID produces.
 // An operator typing an id by hand is the main way a malformed one could enter
@@ -143,6 +247,7 @@ func ValidPlayerID(id string) bool {
 func (s *Store) Profile(playerID string) (Profile, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
 		return Profile{}, ErrNotFound
@@ -173,6 +278,7 @@ func (s *Store) EnsureProfile(playerID, nick string) (Profile, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, nick)
 	if err != nil {
 		return Profile{}, err
@@ -213,6 +319,7 @@ func (s *Store) ensureProfileLocked(playerID, nick string) (*Profile, error) {
 func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string) (Profile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
 		return Profile{}, ErrNotFound
@@ -235,6 +342,7 @@ func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string) (Pro
 func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (Profile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
 		return Profile{}, ErrNotFound
@@ -245,6 +353,7 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (
 	for key, value := range progress {
 		profile.Progress[key] = cloneAny(value)
 	}
+	projectProfileCounters(profile, progress, false)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
 		return Profile{}, err
@@ -268,6 +377,7 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, "")
 	if err != nil {
 		return Profile{}, err
@@ -278,6 +388,7 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 	for key, value := range document {
 		profile.ProgressDocument[key] = cloneAny(value)
 	}
+	projectProgressDocumentCounters(profile, document)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
 		return Profile{}, err
@@ -300,6 +411,7 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, "")
 	if err != nil {
 		return Profile{}, err
@@ -317,6 +429,76 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 	return profile.clone(), nil
 }
 
+// MergeProfileClientState preserves structured fields that do not belong to
+// one of the progress documents. As with progress, a partial client update is
+// merged and unknown members survive unchanged.
+func (s *Store) MergeProfileClientState(playerID string, values map[string]any) (Profile, error) {
+	playerID = strings.TrimSpace(playerID)
+	if playerID == "" {
+		return Profile{}, errors.New("store: empty player id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
+	profile, err := s.ensureProfileLocked(playerID, "")
+	if err != nil {
+		return Profile{}, err
+	}
+	if profile.ClientState == nil {
+		profile.ClientState = make(map[string]any, len(values))
+	}
+	for key, value := range values {
+		profile.ClientState[key] = cloneAny(value)
+	}
+	if nick, ok := values["nick"].(string); ok && strings.TrimSpace(nick) != "" {
+		profile.Nick = strings.TrimSpace(nick)
+	}
+	projectProfileCounters(profile, values, false)
+	profile.UpdatedAt = time.Now().UTC()
+	if err := s.persistLocked(); err != nil {
+		return Profile{}, err
+	}
+	return profile.clone(), nil
+}
+
+// ReplaceProfileRawState is the explicit support-editor operation. Unlike the
+// client merge methods it replaces all five documents, because the operator
+// submits a complete reviewed snapshot. Callers must validate that every
+// document was present before invoking it; empty maps intentionally clear a
+// document while unknown members are preserved verbatim.
+func (s *Store) ReplaceProfileRawState(playerID string, prefs map[string]string, progress, document, slots, clientState map[string]any) (Profile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
+	profile, ok := s.state.Profiles[playerID]
+	if !ok {
+		return Profile{}, ErrNotFound
+	}
+	profile.Prefs = make(map[string]string, len(prefs))
+	for key, value := range prefs {
+		profile.Prefs[key] = value
+	}
+	profile.Progress = cloneAnyMap(progress)
+	profile.ProgressDocument = cloneAnyMap(document)
+	profile.ProgressSlots = cloneAnyMap(slots)
+	profile.ClientState = cloneAnyMap(clientState)
+	// This is a complete replacement, not a merge. Reset the projections first
+	// so clearing raw documents also clears the support-visible counters rather
+	// than leaving stale values from the previous snapshot.
+	profile.Level = 0
+	profile.Experience = 0
+	profile.Coins = 0
+	profile.Gems = 0
+	projectProfileCounters(profile, profile.Progress, false)
+	projectProgressDocumentCounters(profile, profile.ProgressDocument)
+	projectProfileCounters(profile, profile.ClientState, false)
+	profile.UpdatedAt = time.Now().UTC()
+	if err := s.persistLocked(); err != nil {
+		return Profile{}, err
+	}
+	return profile.clone(), nil
+}
+
 // SetProfile overwrites the operator-editable fields of a profile. The nested
 // client-owned maps are left alone: they are synchronised by the game and an
 // admin edit has no business silently dropping them.
@@ -326,17 +508,32 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
 		return Profile{}, ErrNotFound
 	}
 	if nick = strings.TrimSpace(nick); nick != "" {
 		profile.Nick = nick
+		if account := s.state.Accounts[playerID]; account != nil {
+			account.Nick = nick
+		}
 	}
 	profile.Level = level
 	profile.Experience = experience
 	profile.Coins = coins
 	profile.Gems = gems
+	if profile.Progress == nil {
+		profile.Progress = map[string]any{}
+	}
+	profile.Progress["level"] = level
+	profile.Progress["experience"] = experience
+	profile.Progress["coins"] = coins
+	profile.Progress["gems"] = gems
+	if section, ok := profile.ProgressDocument["4"].(map[string]any); ok {
+		section["l"] = level
+		section["e"] = experience
+	}
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
 		return Profile{}, err
@@ -371,6 +568,9 @@ func (s *Store) AdoptSocketIdentity(uniqID, device, ip string) (Account, bool, e
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
+	if uniqID != "" {
+		uniqID = s.resolvePlayerIDLocked(uniqID)
+	}
 
 	if uniqID == "" {
 		// The same handset has to come back to the same account, or every
@@ -452,15 +652,19 @@ func (s *Store) AdoptSocketIdentity(uniqID, device, ip string) (Account, bool, e
 func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 	oldID = strings.TrimSpace(oldID)
 	newID = strings.TrimSpace(newID)
-	if oldID == newID {
-		return Account{}, ErrSameAccount
-	}
 	if !ValidPlayerID(newID) {
 		return Account{}, ErrBadPlayerID
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	oldID = s.resolvePlayerIDLocked(oldID)
+	if oldID == newID {
+		return Account{}, ErrSameAccount
+	}
+	if _, retired := s.state.Aliases[newID]; retired {
+		return Account{}, ErrIDTaken
+	}
 
 	account, ok := s.state.Accounts[oldID]
 	if !ok {
@@ -481,6 +685,15 @@ func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 		s.state.Profiles[newID] = profile
 	}
 
+	aliases := make([]string, 0)
+	for alias := range s.state.Aliases {
+		if s.resolvePlayerIDLocked(alias) == oldID {
+			aliases = append(aliases, alias)
+		}
+	}
+	for _, alias := range aliases {
+		s.state.Aliases[alias] = newID
+	}
 	for i := range s.state.Bans {
 		if s.state.Bans[i].Kind == BanPlayer && s.state.Bans[i].Subject == oldID {
 			s.state.Bans[i].Subject = newID
@@ -503,12 +716,14 @@ func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	fromID = strings.TrimSpace(fromID)
 	toID = strings.TrimSpace(toID)
-	if fromID == toID {
-		return Profile{}, ErrSameAccount
-	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	fromID = s.resolvePlayerIDLocked(fromID)
+	toID = s.resolvePlayerIDLocked(toID)
+	if fromID == toID {
+		return Profile{}, ErrSameAccount
+	}
 
 	if _, ok := s.state.Accounts[toID]; !ok {
 		return Profile{}, fmt.Errorf("store: target %s: %w", toID, ErrNotFound)
@@ -545,6 +760,8 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	source.Prefs = nil
 	source.Progress = nil
 	source.ProgressDocument = nil
+	source.ProgressSlots = nil
+	source.ClientState = nil
 	source.UpdatedAt = now
 	source.TransferredTo = toID
 	source.TransferredAt = &now
@@ -560,8 +777,18 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 func (s *Store) DeleteAccount(playerID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	if _, ok := s.state.Accounts[playerID]; !ok {
 		return ErrNotFound
+	}
+	aliases := make([]string, 0)
+	for alias := range s.state.Aliases {
+		if s.resolvePlayerIDLocked(alias) == playerID {
+			aliases = append(aliases, alias)
+		}
+	}
+	for _, alias := range aliases {
+		delete(s.state.Aliases, alias)
 	}
 	delete(s.state.Accounts, playerID)
 	delete(s.state.Profiles, playerID)

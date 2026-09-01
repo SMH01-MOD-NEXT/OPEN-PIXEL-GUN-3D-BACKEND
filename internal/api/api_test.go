@@ -222,3 +222,25 @@ func TestUpdateEndpointReportsAvailability(t *testing.T) {
 		t.Fatal("older version must be offered an update")
 	}
 }
+
+func TestHTTPTraceRedactsSessionQuery(t *testing.T) {
+	s, _ := newTestServer(t)
+	const secret = "reusable-session-query-secret"
+	rec := do(t, s, http.MethodGet, "/api/v1/ping?opg3d_session="+secret+"&visible=value", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
+	}
+
+	foundRedaction := false
+	for _, entry := range s.log.Recent(0) {
+		if strings.Contains(entry.Line, secret) {
+			t.Fatalf("session query reached trace: %s", entry.Line)
+		}
+		if entry.Kind == "http.request" && strings.Contains(entry.Line, "opg3d_session=%3Credacted%3E") {
+			foundRedaction = true
+		}
+	}
+	if !foundRedaction {
+		t.Fatal("request trace did not retain a redacted session-query marker")
+	}
+}

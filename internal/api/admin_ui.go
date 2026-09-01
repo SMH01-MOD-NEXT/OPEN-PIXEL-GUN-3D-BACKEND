@@ -45,7 +45,7 @@ header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 18px
 header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.02em}
 .grow{flex:1}
 input,select,button,textarea{font:inherit;color:var(--text);background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:6px 9px}
-input:focus,select:focus{outline:1px solid var(--acc)}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--acc)}
 button{cursor:pointer;background:#21262d;transition:background .12s}
 button:hover{background:#2d333b}
 button.p{background:var(--acc);border-color:var(--acc)}
@@ -83,6 +83,10 @@ tbody tr.sel{background:#1f2a3d}
 .hint{color:var(--dim);font-size:12px;margin:0 0 10px}
 h3{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 9px;padding-top:14px;border-top:1px solid var(--line)}
 h3:first-child{margin-top:0;padding-top:0;border-top:0}
+.raw-grid{display:grid;grid-template-columns:1fr;gap:10px}
+.raw-grid label{display:block;color:var(--dim);font-size:12px}
+textarea.json{display:block;width:100%;min-height:150px;margin-top:5px;resize:vertical;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2;white-space:pre}
+.meta{font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}
 </style>
 </head>
 <body>
@@ -112,7 +116,7 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
         </div>
         <div class="scroll">
           <table>
-            <thead><tr><th>ID</th><th>Ник</th><th>Ур.</th><th>Монеты</th><th>Статус</th><th>Заходил</th></tr></thead>
+            <thead><tr><th>ID</th><th>Ник</th><th>Ур.</th><th>Опыт</th><th>Монеты</th><th>Гемы</th><th>Статус</th><th>Заходил</th></tr></thead>
             <tbody id="players"></tbody>
           </table>
         </div>
@@ -141,6 +145,12 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
         <div class="row"><label>Откуда</label><input id="trFrom"></div>
         <div class="row"><label>Куда</label><input id="trTo"></div>
         <button class="p" id="doTransfer">Перенести прогресс</button>
+
+        <h3>Объединение дублей</h3>
+        <p class="hint">HTTP-аккаунт объединяется с игровым id, а старый id сохраняется как alias. Если прогресс есть у обоих, сервер откажет без потери данных.</p>
+        <div class="row"><label>HTTP/source id</label><input id="rcSource"></div>
+        <div class="row"><label>Игровой/target id</label><input id="rcTarget"></div>
+        <button class="p" id="doReconcile">Объединить аккаунты</button>
       </div>
     </section>
 
@@ -203,6 +213,20 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
     });
   }
 
+  function pretty(value) {
+    return JSON.stringify(value || {}, null, 2);
+  }
+
+  function parseObject(id, label) {
+    var value;
+    try { value = JSON.parse(el(id).value); }
+    catch (err) { throw new Error(label + ': ' + err.message); }
+    if (!value || Array.isArray(value) || typeof value !== 'object') {
+      throw new Error(label + ': ожидается JSON-объект');
+    }
+    return value;
+  }
+
   function ago(iso) {
     if (!iso) { return '-'; }
     var delta = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -249,7 +273,9 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
           '<td>' + esc(p.player_id) + '</td>' +
           '<td>' + esc(p.nick) + '</td>' +
           '<td>' + esc(profile.level || 0) + '</td>' +
+          '<td>' + esc(profile.experience || 0) + '</td>' +
           '<td>' + esc(profile.coins || 0) + '</td>' +
+          '<td>' + esc(profile.gems || 0) + '</td>' +
           '<td>' + status + '</td>' +
           '<td>' + esc(ago(p.last_seen_at)) + '</td>' +
           '</tr>';
@@ -269,6 +295,7 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
     });
     el('cidOld').value = id;
     el('trFrom').value = id;
+    el('rcTarget').value = id;
 
     return api('GET', '/api/v1/admin/players/' + encodeURIComponent(id)).then(function (data) {
       var p = data.player || {};
@@ -279,17 +306,28 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
       var transferred = '';
       if (f.transferred_from) { transferred += '<p class="hint">Прогресс получен с ' + esc(f.transferred_from) + '</p>'; }
       if (f.transferred_to) { transferred += '<p class="hint">Прогресс отдан на ' + esc(f.transferred_to) + '</p>'; }
+      var aliases = (p.aliases || []).length ? p.aliases.join(', ') : '-';
 
       el('detail').innerHTML =
         '<h3>' + esc(p.nick || '-') + ' &middot; ' + esc(p.player_id) + '</h3>' +
         banLine + transferred +
-        '<p class="hint">устройство сокета: ' + esc(p.socket_device || '-') + '<br>устройство HTTP: ' + esc(p.device_id || '-') + '<br>адрес: ' + esc(p.last_ip || '-') + '</p>' +
+        '<p class="hint meta">aliases: ' + esc(aliases) + '<br>socket device: ' + esc(p.socket_device || '-') + '<br>HTTP device: ' + esc(p.device_id || '-') + '<br>IP: ' + esc(p.last_ip || '-') + '<br>created: ' + esc(p.created_at || '-') + '<br>last seen: ' + esc(p.last_seen_at || '-') + '<br>profile updated: ' + esc(f.updated_at || '-') + '</p>' +
         '<div class="row"><label>Ник</label><input id="pfNick" value="' + esc(f.nick || p.nick || '') + '"></div>' +
         '<div class="row"><label>Уровень</label><input id="pfLevel" type="number" min="0" value="' + esc(f.level || 0) + '"></div>' +
         '<div class="row"><label>Опыт</label><input id="pfExp" type="number" min="0" value="' + esc(f.experience || 0) + '"></div>' +
         '<div class="row"><label>Монеты</label><input id="pfCoins" type="number" min="0" value="' + esc(f.coins || 0) + '"></div>' +
         '<div class="row"><label>Гемы</label><input id="pfGems" type="number" min="0" value="' + esc(f.gems || 0) + '"></div>' +
-        '<div class="row"><button class="p" id="pfSave">Сохранить профиль</button></div>' +
+        '<div class="row"><button class="p" id="pfSave">Сохранить счётчики</button></div>' +
+        '<h3>Полное состояние</h3>' +
+        '<p class="hint">Неизвестные серверу поля сохраняются. Каждый редактор должен содержать JSON-объект; пустой объект {} очищает соответствующий раздел.</p>' +
+        '<div class="raw-grid">' +
+          '<label>Prefs<textarea class="json" id="rawPrefs">' + esc(pretty(f.prefs)) + '</textarea></label>' +
+          '<label>Progress<textarea class="json" id="rawProgress">' + esc(pretty(f.progress)) + '</textarea></label>' +
+          '<label>Progress document<textarea class="json" id="rawDocument">' + esc(pretty(f.progress_document)) + '</textarea></label>' +
+          '<label>Progress slots<textarea class="json" id="rawSlots">' + esc(pretty(f.progress_slots)) + '</textarea></label>' +
+          '<label>Client state<textarea class="json" id="rawClientState">' + esc(pretty(f.client_state)) + '</textarea></label>' +
+        '</div>' +
+        '<div class="row" style="margin-top:10px"><button class="p" id="rawSave">Проверить и сохранить всё состояние</button></div>' +
         '<h3>Модерация</h3>' +
         '<div class="row"><label>Причина</label><input id="bnReason" placeholder="читы"></div>' +
         '<div class="row"><label>Минуты</label><input id="bnMinutes" type="number" min="0" value="0" placeholder="0 = бессрочно"></div>' +
@@ -304,6 +342,23 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
           coins: Number(el('pfCoins').value) || 0,
           gems: Number(el('pfGems').value) || 0
         }), 'профиль сохранён', id);
+      };
+      el('rawSave').onclick = function () {
+        var state;
+        try {
+          state = {
+            prefs: parseObject('rawPrefs', 'Prefs'),
+            progress: parseObject('rawProgress', 'Progress'),
+            progress_document: parseObject('rawDocument', 'Progress document'),
+            progress_slots: parseObject('rawSlots', 'Progress slots'),
+            client_state: parseObject('rawClientState', 'Client state')
+          };
+        } catch (err) {
+          setStatus(err.message, true);
+          return;
+        }
+        if (!confirm('Сохранить полное состояние ' + id + '? Значения в редакторах заменят текущие разделы.')) { return; }
+        run(api('PUT', '/api/v1/admin/players/' + encodeURIComponent(id) + '/state', state), 'полное состояние сохранено', id);
       };
       el('bnDo').onclick = function () {
         run(api('POST', '/api/v1/admin/players/' + encodeURIComponent(id) + '/ban', {
@@ -438,6 +493,12 @@ h3:first-child{margin-top:0;padding-top:0;border-top:0}
     var to = el('trTo').value.trim();
     if (!confirm('Перенести прогресс ' + from + ' на ' + to + '? Источник будет обнулён.')) { return; }
     run(api('POST', '/api/v1/admin/transfer', { from_id: from, to_id: to }), 'прогресс перенесён', to);
+  };
+  el('doReconcile').onclick = function () {
+    var source = el('rcSource').value.trim();
+    var target = el('rcTarget').value.trim();
+    if (!confirm('Объединить HTTP-аккаунт ' + source + ' с игровым id ' + target + '?')) { return; }
+    run(api('POST', '/api/v1/admin/reconcile', { source_id: source, target_id: target }), 'аккаунты объединены', target);
   };
 
   if (token) { connect(); }

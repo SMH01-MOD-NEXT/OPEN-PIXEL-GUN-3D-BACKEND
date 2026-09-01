@@ -39,15 +39,34 @@ const contentFallbackObject = "{}"
 // map of how far a boot got.
 func (s *Server) handleLegacyEvent(w http.ResponseWriter, r *http.Request) {
 	form := s.form(r)
+	query := r.URL.Query()
+	backendPlayer := query.Get("opg3d_player")
+	clientPlayer := form.Get("player_id")
+	clientDevice := form.Get("device_id")
+	if backendPlayer != "" && clientPlayer != "" && backendPlayer != clientPlayer {
+		result, err := s.st.ReconcileAuthenticatedIdentity(
+			backendPlayer, query.Get("opg3d_session"), clientPlayer, clientDevice, clientIP(r),
+		)
+		if err != nil {
+			s.log.Event("identity.legacy_reconciliation_rejected", map[string]any{
+				"bootstrap_player": backendPlayer, "game_player": clientPlayer, "err": err.Error(),
+			})
+		} else if result.Changed {
+			s.log.Event("identity.legacy_reconciled", map[string]any{
+				"canonical_player": result.Account.PlayerID, "retired_alias": result.AliasAdded,
+			})
+			backendPlayer = result.Account.PlayerID
+		}
+	}
 	s.log.Event("client.event", map[string]any{
 		"ip":             clientIP(r),
 		"event_id":       form.Get("event_id"),
 		"progress":       form.Get("progress"),
 		"version":        form.Get("version"),
 		"device_model":   form.Get("device_model"),
-		"client_player":  form.Get("player_id"),
-		"client_device":  form.Get("device_id"),
-		"backend_player": r.URL.Query().Get("opg3d_player"),
+		"client_player":  clientPlayer,
+		"client_device":  clientDevice,
+		"backend_player": backendPlayer,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"result": "ok", "status": "ok"})
 }

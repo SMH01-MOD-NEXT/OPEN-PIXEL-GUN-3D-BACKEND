@@ -33,11 +33,13 @@ func (s *Server) registerAdminRoutes() {
 	s.mux.HandleFunc("GET /api/v1/admin/players", s.admin(s.handleAdminPlayers))
 	s.mux.HandleFunc("GET /api/v1/admin/players/{id}", s.admin(s.handleAdminPlayer))
 	s.mux.HandleFunc("PUT /api/v1/admin/players/{id}/profile", s.admin(s.handleAdminSaveProfile))
+	s.mux.HandleFunc("PUT /api/v1/admin/players/{id}/state", s.admin(s.handleAdminSaveRawState))
 	s.mux.HandleFunc("POST /api/v1/admin/players/{id}/ban", s.admin(s.handleAdminBanPlayer))
 	s.mux.HandleFunc("POST /api/v1/admin/players/{id}/unban", s.admin(s.handleAdminUnbanPlayer))
 	s.mux.HandleFunc("DELETE /api/v1/admin/players/{id}", s.admin(s.handleAdminDeletePlayer))
 	s.mux.HandleFunc("POST /api/v1/admin/change-id", s.admin(s.handleAdminChangeID))
 	s.mux.HandleFunc("POST /api/v1/admin/transfer", s.admin(s.handleAdminTransfer))
+	s.mux.HandleFunc("POST /api/v1/admin/reconcile", s.admin(s.handleAdminReconcile))
 	s.mux.HandleFunc("GET /api/v1/admin/settings", s.admin(s.handleAdminSettings))
 	s.mux.HandleFunc("PATCH /api/v1/admin/settings", s.admin(s.handleAdminSaveSettings))
 	s.mux.HandleFunc("GET /api/v1/admin/logs", s.admin(s.handleAdminLogs))
@@ -51,16 +53,27 @@ func (s *Server) registerAdminRoutes() {
 // are joined here because an operator judging an account needs all three at
 // once, and three round trips per row would make the list useless.
 type adminPlayer struct {
-	store.Account
-	Profile   *store.Profile `json:"profile,omitempty"`
-	Banned    bool           `json:"banned"`
-	BanKind   string         `json:"ban_kind,omitempty"`
-	BanReason string         `json:"ban_reason,omitempty"`
-	BanUntil  *time.Time     `json:"ban_until,omitempty"`
+	PlayerID     string         `json:"player_id"`
+	DeviceID     string         `json:"device_id"`
+	SocketDevice string         `json:"socket_device,omitempty"`
+	Nick         string         `json:"nick"`
+	CreatedAt    time.Time      `json:"created_at"`
+	LastSeenAt   time.Time      `json:"last_seen_at"`
+	LastIP       string         `json:"last_ip"`
+	Aliases      []string       `json:"aliases"`
+	Profile      *store.Profile `json:"profile,omitempty"`
+	Banned       bool           `json:"banned"`
+	BanKind      string         `json:"ban_kind,omitempty"`
+	BanReason    string         `json:"ban_reason,omitempty"`
+	BanUntil     *time.Time     `json:"ban_until,omitempty"`
 }
 
 func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
-	row := adminPlayer{Account: account}
+	row := adminPlayer{
+		PlayerID: account.PlayerID, DeviceID: account.DeviceID, SocketDevice: account.SocketDevice,
+		Nick: account.Nick, CreatedAt: account.CreatedAt, LastSeenAt: account.LastSeenAt,
+		LastIP: account.LastIP, Aliases: s.st.Aliases(account.PlayerID),
+	}
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		row.Profile = &profile
 	}
@@ -102,10 +115,10 @@ func (s *Server) handleAdminPlayers(w http.ResponseWriter, r *http.Request) {
 	accounts := s.st.Accounts()
 	rows := make([]adminPlayer, 0, len(accounts))
 	for _, account := range accounts {
-		if query != "" && !adminMatches(account, query) {
+		row := s.buildAdminPlayer(account)
+		if query != "" && !adminMatches(row, query) {
 			continue
 		}
-		row := s.buildAdminPlayer(account)
 		if onlyBanned && !row.Banned {
 			continue
 		}
@@ -121,7 +134,7 @@ func (s *Server) handleAdminPlayers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func adminMatches(account store.Account, query string) bool {
+func adminMatches(account adminPlayer, query string) bool {
 	fields := []string{
 		account.PlayerID,
 		account.Nick,
@@ -129,6 +142,7 @@ func adminMatches(account store.Account, query string) bool {
 		account.SocketDevice,
 		account.LastIP,
 	}
+	fields = append(fields, account.Aliases...)
 	for _, field := range fields {
 		if field != "" && strings.Contains(strings.ToLower(field), query) {
 			return true
@@ -160,6 +174,10 @@ func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
 		return
 	}
+	if req.Level < 0 || req.Experience < 0 || req.Coins < 0 || req.Gems < 0 {
+		s.writeError(w, http.StatusBadRequest, "invalid_profile", "level, experience, coins and gems cannot be negative")
+		return
+	}
 	id := r.PathValue("id")
 	profile, err := s.st.SetProfile(id, req.Nick, req.Level, req.Experience, req.Coins, req.Gems)
 	if err != nil {
@@ -180,6 +198,56 @@ func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) 
 		"level":     req.Level,
 		"coins":     req.Coins,
 		"gems":      req.Gems,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
+}
+
+type adminRawStateRequest struct {
+	Prefs            map[string]string `json:"prefs"`
+	Progress         map[string]any    `json:"progress"`
+	ProgressDocument map[string]any    `json:"progress_document"`
+	ProgressSlots    map[string]any    `json:"progress_slots"`
+	ClientState      map[string]any    `json:"client_state"`
+}
+
+func decodeStrictAdminJSON(body io.Reader, dst any) error {
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("only one JSON document is allowed")
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Server) handleAdminSaveRawState(w http.ResponseWriter, r *http.Request) {
+	var req adminRawStateRequest
+	if err := decodeStrictAdminJSON(r.Body, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+		return
+	}
+	if req.Prefs == nil || req.Progress == nil || req.ProgressDocument == nil || req.ProgressSlots == nil || req.ClientState == nil {
+		s.writeError(w, http.StatusBadRequest, "incomplete_state", "prefs, progress, progress_document, progress_slots and client_state must all be JSON objects")
+		return
+	}
+	id := r.PathValue("id")
+	profile, err := s.st.ReplaceProfileRawState(id, req.Prefs, req.Progress, req.ProgressDocument, req.ProgressSlots, req.ClientState)
+	if err != nil {
+		s.writeAdminError(w, err)
+		return
+	}
+	s.log.Event("admin.profile_state_saved", map[string]any{
+		"player_id": id,
+		"prefs":     len(req.Prefs), "progress": len(req.Progress),
+		"progress_document": len(req.ProgressDocument), "progress_slots": len(req.ProgressSlots),
+		"client_state": len(req.ClientState),
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
 }
@@ -341,6 +409,33 @@ func (s *Server) handleAdminTransfer(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
 }
 
+type adminReconcileRequest struct {
+	SourceID string `json:"source_id"`
+	TargetID string `json:"target_id"`
+}
+
+// handleAdminReconcile combines a known duplicate native account into the game
+// account while retaining the source id as an alias. The store refuses the
+// operation if both profiles contain payload, so this support action cannot
+// silently choose which progress to discard.
+func (s *Server) handleAdminReconcile(w http.ResponseWriter, r *http.Request) {
+	var req adminReconcileRequest
+	if err := decodeStrictAdminJSON(r.Body, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+		return
+	}
+	result, err := s.st.ReconcileAccounts(req.SourceID, req.TargetID)
+	if err != nil {
+		s.writeAdminError(w, err)
+		return
+	}
+	s.log.Event("admin.accounts_reconciled", map[string]any{
+		"source_id": req.SourceID, "target_id": result.Account.PlayerID, "alias": result.AliasAdded,
+		"note": "the source login remains valid through its canonical alias",
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"player": s.buildAdminPlayer(result.Account)})
+}
+
 func (s *Server) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 200
 	if raw := r.URL.Query().Get("limit"); raw != "" {
@@ -361,7 +456,7 @@ func (s *Server) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 // putting the admin token in a URL, where it would end up in this server's own
 // access logs.
 func (s *Server) handleAdminLogStream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := findResponseFlusher(w)
 	if !ok {
 		s.writeError(w, http.StatusInternalServerError, "no_flush", "this connection cannot stream")
 		return
@@ -414,6 +509,31 @@ func (s *Server) handleAdminLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type responseWriterUnwrapper interface {
+	Unwrap() http.ResponseWriter
+}
+
+// findResponseFlusher preserves streaming through middleware wrappers. The
+// top-level trace recorder deliberately captures writes, but flushing belongs
+// to the underlying network writer.
+func findResponseFlusher(w http.ResponseWriter) (http.Flusher, bool) {
+	for w != nil {
+		if flusher, ok := w.(http.Flusher); ok {
+			return flusher, true
+		}
+		unwrapper, ok := w.(responseWriterUnwrapper)
+		if !ok {
+			return nil, false
+		}
+		next := unwrapper.Unwrap()
+		if next == w {
+			return nil, false
+		}
+		w = next
+	}
+	return nil, false
+}
+
 func writeSSE(w http.ResponseWriter, entry logs.Entry) bool {
 	payload, err := json.Marshal(entry)
 	if err != nil {
@@ -431,6 +551,8 @@ func (s *Server) writeAdminError(w http.ResponseWriter, err error) {
 		s.writeError(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, store.ErrIDTaken):
 		s.writeError(w, http.StatusConflict, "id_taken", err.Error())
+	case errors.Is(err, store.ErrIdentityConflict):
+		s.writeError(w, http.StatusConflict, "identity_conflict", "both accounts contain progress; transfer or clear one profile before reconciling")
 	case errors.Is(err, store.ErrBadPlayerID):
 		s.writeError(w, http.StatusBadRequest, "bad_player_id", err.Error())
 	case errors.Is(err, store.ErrSameAccount):

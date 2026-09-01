@@ -35,6 +35,7 @@ package api
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
@@ -59,6 +60,27 @@ const (
 	sioUpdateProgressEvent    = "update_progress"
 	sioPlayerSuccessInitEvent = "player_success_init"
 )
+
+// setBootstrapIdentity keeps the validated bootstrap id and source address,
+// but never the reusable session credential that proved it.
+func (s *sioSession) setBootstrapIdentity(playerID, ip string) {
+	s.mu.Lock()
+	s.bootstrapPlayerID = playerID
+	s.remoteIP = ip
+	s.mu.Unlock()
+}
+
+func (s *sioSession) setRemoteIP(ip string) {
+	s.mu.Lock()
+	s.remoteIP = ip
+	s.mu.Unlock()
+}
+
+func (s *sioSession) bootstrapIdentity() (playerID, ip string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.bootstrapPlayerID, s.remoteIP
+}
 
 // setIdentity records who authorised this session.
 func (s *sioSession) setIdentity(uniqID, device, playerID string) {
@@ -140,6 +162,28 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
 		return (*Server).answerCreateSlots
+	case "get_info_by_id", "get_info_by_id_v2", "get_info_by_id_v3":
+		return (*Server).answerGetInfoByID
+	case "update_player":
+		return (*Server).answerUpdatePlayer
+	case "update_accessories":
+		return (*Server).answerUpdateAccessories
+	case "update_loadout":
+		return (*Server).answerUpdateLoadout
+	case "update_character_target_ad_consent":
+		return (*Server).answerUpdateTargetAdConsent
+	case "refund_get":
+		return (*Server).answerRefundGet
+	case "get_time":
+		return (*Server).answerGetTime
+	case "check_binded_id":
+		return (*Server).answerCheckBindedID
+	case "get_map_popularity":
+		return (*Server).answerMapPopularity
+	case "get_leader_clan":
+		return (*Server).answerLeaderClan
+	case "unsubscribe":
+		return (*Server).answerUnsubscribe
 	default:
 		// Anything else gets the minimal acknowledgement rather than silence.
 		//
@@ -151,7 +195,9 @@ func sioAnswerFor(event string) sioAnswer {
 		// working. An empty ok is the smallest answer that can release the wait,
 		// and it is logged separately so it is visible which events are still
 		// running on the fallback rather than a real handler.
-		return (*Server).answerGenericAck
+		return func(s *Server, session *sioSession, head sioHead, reqID int) map[string]any {
+			return s.answerGenericAck(event, session, head, reqID)
+		}
 	}
 }
 
@@ -196,7 +242,43 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	// Kept for get_binded_ids, which is answered with id/hash pairs.
 	session.setAuthHash(head.text("hash"))
 
-	account, created, err := s.st.AdoptSocketIdentity(uniqID, device, "")
+	bootstrapID, remoteIP := session.bootstrapIdentity()
+	var account store.Account
+	var created bool
+	var err error
+	var reconciliation store.IdentityReconciliation
+	if bootstrapID != "" {
+		reconciliation, err = s.st.AdoptSocketIdentityForAccount(bootstrapID, uniqID, device, remoteIP)
+		account = reconciliation.Account
+	} else {
+		// The stock 23.1.3 client does not preserve custom query parameters on
+		// its direct WebSocket handshake. Correlate only one unbound native
+		// account recently seen on this address; zero or multiple candidates
+		// are deliberately left untouched rather than risking a wrong merge.
+		var candidates int
+		reconciliation, candidates, err = s.st.ReconcileRecentHTTPIdentity(uniqID, device, remoteIP, 45*time.Second)
+		if err == nil && candidates == 1 {
+			account = reconciliation.Account
+			bootstrapID = account.PlayerID
+			s.log.Event("socket.bootstrap_identity_correlated", map[string]any{
+				"sid": session.sid, "player_id": account.PlayerID, "ip": remoteIP,
+				"note": "one recently seen HTTP account on this address had no socket binding",
+			})
+		} else if err == nil && candidates > 1 {
+			s.log.Event("socket.bootstrap_identity_ambiguous", map[string]any{
+				"sid": session.sid, "ip": remoteIP, "candidates": candidates,
+				"note": "automatic reconciliation skipped; use the support merge operation",
+			})
+		}
+		if err == nil && candidates != 1 {
+			account, created, err = s.st.AdoptSocketIdentity(uniqID, device, remoteIP)
+		}
+	}
+	if err == nil && reconciliation.Changed {
+		s.log.Event("socket.identity_reconciled", map[string]any{
+			"sid": session.sid, "canonical_player": account.PlayerID, "retired_alias": reconciliation.AliasAdded,
+		})
+	}
 	if err != nil {
 		// Identity is not a precondition for the reply the client waits on, so
 		// a store failure is recorded and authorisation still completes. The
@@ -219,7 +301,7 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		"created":   created,
 	})
 
-	if ban, banned := s.st.MatchBan(account.PlayerID, device, ""); banned {
+	if ban, banned := s.st.MatchBan(account.PlayerID, device, remoteIP); banned {
 		s.log.Event("socket.auth_banned", map[string]any{
 			"sid":       session.sid,
 			"player_id": account.PlayerID,
@@ -465,6 +547,8 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	}
 	body["level"] = profile.Level
 	body["experience"] = profile.Experience
+	body["coins"] = profile.Coins
+	body["gems"] = profile.Gems
 	return body
 }
 
@@ -716,8 +800,9 @@ func (s *Server) answerPlayerVersion(session *sioSession, head sioHead, reqID in
 // answerGenericAck is the fallback for an event that has no handler of its own.
 // It is logged under its own kind so it stays visible which events are running
 // on the fallback instead of a real answer.
-func (s *Server) answerGenericAck(session *sioSession, head sioHead, reqID int) map[string]any {
+func (s *Server) answerGenericAck(event string, session *sioSession, head sioHead, reqID int) map[string]any {
 	s.log.Event("socket.event_generic_ack", map[string]any{
+		"event":  event,
 		"sid":    session.sid,
 		"req_id": reqID,
 		"note":   "acknowledged by the fallback; no dedicated handler exists for this event yet",
