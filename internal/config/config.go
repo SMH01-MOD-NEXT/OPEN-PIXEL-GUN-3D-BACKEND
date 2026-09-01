@@ -190,6 +190,26 @@ type Config struct {
 	// code is what those earlier runs settled on; the flag exists so the two
 	// paths can be compared on a device without editing code.
 	ProgressSynchronizeMode bool
+	// ProgressBlankUploadGuard keeps a blank client snapshot from erasing the
+	// four core counters this server already holds for an account.
+	//
+	// The 2026-09-01 device run measured the erasure directly. The client
+	// finished the slot handshake and sent replace_progress carrying its own
+	// local slot 3 and slot 4, both blank, 62 ms after this server answered
+	// with the 87 stored slot ids. store.projectReplacementSlotState reads
+	// exactly those two slots and zeroes the currencies and the level before
+	// reading them back, which is correct for a genuine reset and wrong for a
+	// client that simply has not been told what the server holds yet. The
+	// operator edit went from 123123123 coins to zero in one write.
+	//
+	// With the guard on, a slot 3 that projects to no currency at all and a
+	// slot 4 that projects to level one with no experience are refilled from
+	// the stored profile before the snapshot is installed. Every other slot in
+	// the upload is stored exactly as it arrived. The trade-off is deliberate
+	// and narrow: the server wins the four counters an operator can edit, and
+	// the client keeps ownership of everything else. A real reset to zero from
+	// a non-blank profile is the case this refuses, which is why it is a flag.
+	ProgressBlankUploadGuard bool
 	// ProgressSlotsAlwaysCreate omits the slots member from every
 	// get_progress_slots answer, including for an account that already has
 	// a stored set.
@@ -277,6 +297,7 @@ func Load() (*Config, error) {
 		ConfigPushWrapper:                  envBool("OPG3D_CONFIG_PUSH_WRAPPER", false),
 		ConfigPushInline:                   envBool("OPG3D_CONFIG_PUSH_INLINE", false),
 		ProgressSynchronizeMode:            envBool("OPG3D_PROGRESS_SYNCHRONIZE_MODE", true),
+		ProgressBlankUploadGuard:           envBool("OPG3D_PROGRESS_BLANK_UPLOAD_GUARD", true),
 		ProgressSlotsAlwaysCreate:          envBool("OPG3D_PROGRESS_SLOTS_ALWAYS_CREATE", false),
 		TutorialSectionSeed:                envBool("OPG3D_TUTORIAL_SECTION_SEED", true),
 		TutorialSectionIDs:                 envInts("OPG3D_TUTORIAL_SECTION_IDS", []int{1100, 1500}),

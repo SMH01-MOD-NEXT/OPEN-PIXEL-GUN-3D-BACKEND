@@ -36,7 +36,8 @@ func newTestServer(t *testing.T) (*Server, *config.Config) {
 		TutorialSectionViaCreateSlots: true,
 		// Mirrors the shipping default so the wire-code tests keep measuring
 		// the escalation the earlier runs settled on.
-		ProgressSynchronizeMode: true,
+		ProgressSynchronizeMode:  true,
+		ProgressBlankUploadGuard: true,
 		Update: config.Update{
 			Version: "23.1.3-1",
 			APKURL:  "http://example.invalid/opg3d.apk",
