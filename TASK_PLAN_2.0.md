@@ -248,3 +248,83 @@ and that limitation should be stated in the console rather than left implicit.
 - [ ] 86 `Exception` lines in the fresh client log, but the visible ones are all
       platform noise (Play Games, APN, launcher, Phenotype). Re-check after the
       configs land.
+
+## Device measurement 2026-09-01 16:15-16:20 UTC - the `enabled` code, both arms
+
+The previous section left the ownership question open as options A/B/C. Option B
+was chosen, and it asked for a measurement rather than a decision, so the
+escalation is now a flag (`OPG3D_PROGRESS_SYNCHRONIZE_MODE`, on by default) and
+both arms were run on the device against player 541028684 with the same operator
+edit re-applied before each boot.
+
+One reading was wrong going in and is recorded so it is not repeated: `enabled`
+is **not** an `AuthSceneState` value. `AuthSceneState.SynchronizeProgress` is 9
+(`dump2313.cs:92853`) while the server sends 2, so the two are unrelated. The
+handler at `libil2cpp.so+0x17A9980` splits the integer into three statics and the
+outer auth iterator reads the byte `(value == 2)` at `0x3DC78D4`. The mapping
+already in the code is correct and was left alone.
+
+### The two arms
+
+| | `enabled: 2` (default) | `enabled: 1` (flag off) |
+|---|---|---|
+| Boot | completes, 45 answered events, full menu traffic | stalls after `get_inapps`, 34 events, socket re-auths after 90 s |
+| `get_progress_slots` | asked; 87 stored slot ids served | never asked |
+| `replace_progress` | client uploads its blank snapshot | never sent |
+| Operator edit | erased 62 ms after being answered | survives; `updated_at` still the admin write |
+| `init_progress` | never emitted | never emitted |
+| `123123123` in client log | 0 occurrences | 0 occurrences |
+
+Arm 2 event tail: `auth_v2`, 8 subscribes, `progress_status`, `player_prefs`,
+`get_last_command`, `get_time`, `full_check_version`, `mmc_get_room`,
+`update_player_online`, `get_binded_ids`, `check_binded_gc`, then `get_inapps`
+every 30 s and a second `auth_v2` at 16:17:54. Absent: the whole slot handshake,
+`player_success_init`, `get_info_by_id`, `update_player`, `refund_get`,
+`unsubscribe`, `check_binded_id` and all five `update_progress` batches.
+
+### What this settles
+
+The server cannot take ownership of boot progress by choosing a different
+`enabled` code. Code 2 buys a completed boot at the price of the client
+overwriting the server; code 1 protects the server's copy at the price of the
+boot never finishing. Neither arm opens a download channel, because neither
+arm emits `init_progress`.
+
+The missing piece is now named: the 23.3.2 reference protocol has a **download**
+event this backend does not implement at all -
+`["get_progress", {"player_id": "...", "slots": [...]}]`
+(`PGWSD/.../TestScript55.py:1237`, beside `get_progress_hashes_v2` at `:639`).
+`sioAnswerFor` has no case for either name, so if the client ever asked, it would
+receive the generic acknowledgement. That is the channel the stock
+SynchronizeProgress continuation is documented to use, and it is the only route
+by which a server-held value can reach the client without the client uploading
+first.
+
+- [x] Measured option B on the device, both arms. Recorded above.
+- [ ] Implement `get_progress` (and `get_progress_hashes_v2`) so the server has a
+      download channel at all, then re-run arm 1 and check whether the
+      continuation asks for it once an answer exists.
+- [ ] Only then revisit option A. Guarding the blank upload while there is no
+      download channel would keep the edit in storage and still never show it.
+- [ ] Leave `OPG3D_PROGRESS_SYNCHRONIZE_MODE` on. Off is a diagnostic arm, not a
+      configuration: it does not finish the boot.
+
+### Corrected again: the config fault is delivery-accepted, not missing
+
+Arm 2 caught the config complaint in the act, which retires the "promote the
+parked files" theory for at least one name. The push arrives and the client
+saves it:
+
+```
+[ConfigSystem.OnWebS_ocketCallback] save incoming config: Boosters with value 7B-22-62-65-73-...
+```
+
+Hex-decoded that body is
+`{"bes":{},"bs":[],"configId":"Boosters","e":false,"ed":"2027-01-01T00:00:00","gm":[],"l":1,"ms":{},"s":1,"sd":"2026-01-01T00:00:00"}`,
+and two milliseconds later the same thread logs `[Boosters] ---- _config == null`
+from `Boosters.<init>` inside the same callback stack. So the file is served, the
+body is accepted and stored, and the feature's own initialiser still ends up with
+a null config. `"e":false` is the first thing to test as the cause.
+
+- [ ] Test `Boosters` with `"e":true` and a non-empty `bs`, and re-check whether
+      `_config == null` disappears. Do this before moving any parked file.
