@@ -579,6 +579,86 @@ func (s *Store) ReplaceProfileRawState(playerID string, prefs map[string]string,
 	return profile.clone(), nil
 }
 
+// syncClientFacingSlots writes an operator edit into the two slot documents the
+// client actually applies, so a support change reaches the game instead of
+// living only in the flat counters.
+//
+// Measured 2026-09-01 on player 541028684: an edit setting 123123123 coins and
+// 123123123 gems reached Progress and the flat counters, and slot 4 reached
+// level 32 with experience 20000, but slot 3 was never written and never
+// existed in the stored document. The client applies the document slot by slot,
+// so the level arrived and the two currencies did not. Slot 3 owns Coins and
+// GemsCurrency and slot 4 owns l and e, the same members
+// projectReplacementSlotState reads back.
+//
+// Both documents are written because they travel on different events -
+// init_progress carries ProgressDocument and get_progress_slots carries
+// ProgressSlots - and a value that differed between them would let whichever
+// event the client trusts last undo the edit. Absent slots are created:
+// declining to create slot 3 is exactly the defect this repairs. Unknown
+// members of a slot that does exist are preserved.
+func syncClientFacingSlots(profile *Profile, level int, experience, coins, gems int64) {
+	write := func(document map[string]any) {
+		section, ok := document["4"].(map[string]any)
+		if !ok {
+			section = map[string]any{}
+			document["4"] = section
+		}
+		section["l"] = level
+		section["e"] = experience
+
+		currencies, ok := document["3"].(map[string]any)
+		if !ok {
+			currencies = map[string]any{}
+			document["3"] = currencies
+		}
+		currencies["Coins"] = coins
+		currencies["GemsCurrency"] = gems
+	}
+	if profile.ProgressDocument == nil {
+		profile.ProgressDocument = map[string]any{}
+	}
+	write(profile.ProgressDocument)
+	if profile.ProgressSlots == nil {
+		profile.ProgressSlots = map[string]any{}
+	}
+	write(profile.ProgressSlots)
+}
+
+// Counters reports the four flat counters progress_status puts on the wire
+// beside the raw progress document, reconciled so the two cannot contradict
+// each other.
+//
+// The document wins wherever it carries a key, because both halves travel in
+// one reply and the client has no way to choose between them. Measured
+// 2026-09-01 on player 541028684: this server answered level 1 with 0 coins and
+// 0 gems beside a document holding level 32 and 123123123 of each currency. The
+// client adopted the flat zeros, and its next replace_progress uploaded them
+// back as an empty slot 3 and a slot 4 holding l 1, so an operator edit was
+// erased rather than applied.
+//
+// The projections remain the fallback: they are what a client that has already
+// synchronised uploaded, and they hold keys the flat document need not carry.
+func (p Profile) Counters() (level int, experience, coins, gems int64) {
+	level, experience, coins, gems = p.Level, p.Experience, p.Coins, p.Gems
+	if value, ok := counterInt64(p.Progress["level"]); ok && int64(int(value)) == value {
+		level = int(value)
+	}
+	for _, key := range []string{"experience", "exp"} {
+		if value, ok := counterInt64(p.Progress[key]); ok {
+			experience = value
+			break
+		}
+	}
+	if value, ok := counterInt64(p.Progress["coins"]); ok {
+		coins = value
+	}
+	if value, ok := counterInt64(p.Progress["gems"]); ok {
+		gems = value
+	}
+	return level, experience, coins, gems
+}
+
 // SetProfile overwrites the operator-editable fields of a profile. The nested
 // client-owned maps are left alone: they are synchronised by the game and an
 // admin edit has no business silently dropping them.
@@ -610,10 +690,7 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 	profile.Progress["experience"] = experience
 	profile.Progress["coins"] = coins
 	profile.Progress["gems"] = gems
-	if section, ok := profile.ProgressDocument["4"].(map[string]any); ok {
-		section["l"] = level
-		section["e"] = experience
-	}
+	syncClientFacingSlots(profile, level, experience, coins, gems)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
 		return Profile{}, err

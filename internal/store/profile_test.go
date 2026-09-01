@@ -704,3 +704,81 @@ func TestReplaceProfileProgressSlotsRollsBackEveryInMemoryProjectionOnPersistFai
 		}
 	})
 }
+
+// TestSetProfileWritesBothCoreSlotsIntoBothDocuments pins the 2026-09-01
+// defect: an operator edit reached slot 4 but never slot 3, so the client
+// applied the new level and never saw the new currencies.
+func TestSetProfileWritesBothCoreSlotsIntoBothDocuments(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	// Slot 4 exists and carries an unknown member; slot 3 does not exist at
+	// all. That is the state measured on player 541028684.
+	if _, err := s.MergeProfileProgressDocument(socketUniqID, map[string]any{
+		"4": map[string]any{"l": 1, "e": 0, "future": true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.SetProfile(socketUniqID, "Veteran", 32, 20000, 123123123, 123123123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, document := range map[string]map[string]any{
+		"progress_document": profile.ProgressDocument,
+		"progress_slots":    profile.ProgressSlots,
+	} {
+		section, ok := document["4"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s has no slot 4", name)
+		}
+		if level, _ := counterInt64(section["l"]); level != 32 {
+			t.Fatalf("%s slot 4 l=%#v, want 32", name, section["l"])
+		}
+		if experience, _ := counterInt64(section["e"]); experience != 20000 {
+			t.Fatalf("%s slot 4 e=%#v, want 20000", name, section["e"])
+		}
+		currencies, ok := document["3"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s never received currency slot 3, so the edit cannot reach the client", name)
+		}
+		if coins, _ := counterInt64(currencies["Coins"]); coins != 123123123 {
+			t.Fatalf("%s slot 3 Coins=%#v, want 123123123", name, currencies["Coins"])
+		}
+		if gems, _ := counterInt64(currencies["GemsCurrency"]); gems != 123123123 {
+			t.Fatalf("%s slot 3 GemsCurrency=%#v, want 123123123", name, currencies["GemsCurrency"])
+		}
+	}
+	if profile.ProgressDocument["4"].(map[string]any)["future"] != true {
+		t.Fatal("set profile dropped an unknown document member")
+	}
+}
+
+// TestCountersReconcileAgainstTheProgressDocument pins the other half: the flat
+// counters progress_status puts on the wire may not contradict the document
+// travelling in the same reply.
+func TestCountersReconcileAgainstTheProgressDocument(t *testing.T) {
+	// The exact state read out of data/state.json on 2026-09-01: a blank client
+	// snapshot had zeroed the projections while Progress still held the edit.
+	clobbered := Profile{
+		Level: 1, Experience: 0, Coins: 0, Gems: 0,
+		Progress: map[string]any{
+			"level": float64(32), "experience": float64(20000),
+			"coins": float64(123123123), "gems": float64(123123123),
+		},
+	}
+	level, experience, coins, gems := clobbered.Counters()
+	if level != 32 || experience != 20000 || coins != 123123123 || gems != 123123123 {
+		t.Fatalf("Counters()=%d/%d/%d/%d, want 32/20000/123123123/123123123", level, experience, coins, gems)
+	}
+
+	// With no document at all the projections stand on their own.
+	bare := Profile{Level: 7, Experience: 70, Coins: 28, Gems: 5}
+	level, experience, coins, gems = bare.Counters()
+	if level != 7 || experience != 70 || coins != 28 || gems != 5 {
+		t.Fatalf("Counters()=%d/%d/%d/%d, want the projections 7/70/28/5", level, experience, coins, gems)
+	}
+}

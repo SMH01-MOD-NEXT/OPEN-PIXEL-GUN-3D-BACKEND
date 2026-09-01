@@ -551,10 +551,15 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	if profile.Progress != nil {
 		body["progress"] = profile.Progress
 	}
-	body["level"] = profile.Level
-	body["experience"] = profile.Experience
-	body["coins"] = profile.Coins
-	body["gems"] = profile.Gems
+	// The flat counters have to agree with the document already in this reply:
+	// the client reads both out of one object and cannot choose between them.
+	// See store.Profile.Counters for the run that measured them disagreeing and
+	// for how a blank client snapshot erased an operator edit because of it.
+	level, experience, coins, gems := profile.Counters()
+	body["level"] = level
+	body["experience"] = experience
+	body["coins"] = coins
+	body["gems"] = gems
 	return body
 }
 
