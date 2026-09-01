@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "${OPG3D_BUILD_VERSION:-docker}"
+    image: "open-pixel-gun-3d-backend:${OPG3D_IMAGE_TAG:-local}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Keep container paths and health-check ports stable. Host-facing ports
+      # are configured independently below.
+      OPG3D_ADDR: ":8080"
+      OPG3D_DATA_DIR: /var/lib/opg3d
+      OPG3D_LOG_DIR: /var/log/opg3d
+      OPG3D_CONTENT_DIR: /app/content
+      OPG3D_DISCOVERY_PORT: "47318"
+    ports:
+      - "${OPG3D_HTTP_PORT:-8080}:8080/tcp"
+      - "${OPG3D_DISCOVERY_HOST_PORT:-47318}:47318/udp"
+    volumes:
+      - backend-data:/var/lib/opg3d
+      - backend-logs:/var/log/opg3d
+      - backend-bundles:/app/content/bundles
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+
+volumes:
+  backend-data:
+  backend-logs:
+  backend-bundles:

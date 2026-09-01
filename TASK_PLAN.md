@@ -5264,3 +5264,26 @@ replays a log frame with HTTP 200 instead of the previous `no_flush` 500.
       diff checks, then commit the backend changes.
 - [ ] Deploy only after operator coordination, reproduce one victory, and
       verify rewards/buttons plus zero fallbacks in the new backend session.
+
+## Session 2026-09-01 — portable Docker runtime
+
+- [x] Inspect the executable, runtime directories, network ports, existing
+      environment contract and dirty worktree before touching deployment files.
+- [x] Add a small multi-stage image that runs as an unprivileged user, contains
+      the authored config documents, persists player data/logs/fetched bundles,
+      exposes HTTP and UDP discovery, and reports container health.
+- [x] Add a Docker Compose path for one-command build/start with named volumes
+      and no credentials baked into the image.
+- [x] Document Docker and Compose startup, upgrades, backups, LAN-discovery
+      limitations and a container smoke test.
+- [x] Build the image, start it without host tooling or secrets, verify health,
+      API access and persisted state, then inspect only the deployment diff.
+- [x] Commit only the Docker deployment work; preserve the existing uncommitted
+      progress-synchronization implementation and captured logs untouched.
+
+Verification: Docker transferred a 669 kB context instead of the 394 MB local
+content tree, ran every Go test in the builder and produced a 7.2 MB image. The
+runtime reported healthy as uid 10001 on a read-only root filesystem, served
+`/api/v1/ping`, registered an account and retained it after container recreation
+with the same named data volume. Host `go vet ./...`, `go test ./...`, Compose
+configuration validation and `git diff --check` also passed.

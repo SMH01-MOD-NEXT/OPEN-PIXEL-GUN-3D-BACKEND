@@ -5,12 +5,143 @@ to install. One binary, one data directory, one log directory.
 
 ## Requirements
 
-- Go 1.24 or newer (`go version`)
-- A machine on the same network as the phone for LAN play, or any reachable host
-  for remote play
-- Nothing else: no CGO, no Docker, no Photon self-hosted licence
+Choose either of these runtime paths:
 
-## 1. Build
+- **Docker:** Docker Engine or Docker Desktop with the Compose plugin
+  (`docker compose version`). No host Go installation is needed.
+- **Native:** Go 1.24 or newer (`go version`). No CGO or database server is
+  needed.
+
+Both paths need a machine reachable by the phone for LAN play, or any reachable
+host for remote play. Photon remains Photon Cloud; no self-hosted Photon licence
+is required.
+
+## Docker Compose (recommended portable path)
+
+The repository ships a multi-stage `Dockerfile` and `compose.yaml`. The builder
+runs the complete Go test suite and produces a static server binary. The final
+Alpine image contains only that binary, CA certificates and the authored config
+documents; it runs as uid/gid 10001 with all Linux capabilities dropped by
+Compose. `.dockerignore` prevents credentials, player data, logs and local
+vendor bundles from entering the build context.
+
+### Configure and start
+
+```bash
+cd "$HOME/Studio canaryProjects/OPEN-PIXEL-GUN-3D-BACKEND"
+cp .env.example .env
+chmod 600 .env
+# Edit .env and set at least the AppID key, Photon AppID and admin token.
+
+docker compose up --build -d
+docker compose ps
+curl -fsS http://127.0.0.1:8080/api/v1/ping; echo
+```
+
+On Windows, copy `.env.example` to `.env` in Explorer or PowerShell, then run
+the same `docker compose` commands from the repository directory.
+
+`compose.yaml` deliberately fixes the ports *inside* the container and lets the
+host mapping vary independently:
+
+| Variable | Default | Docker meaning |
+| --- | --- | --- |
+| `OPG3D_HTTP_PORT` | `8080` | Host TCP port mapped to container port 8080. |
+| `OPG3D_DISCOVERY_HOST_PORT` | `47318` | Host UDP port mapped to container port 47318. |
+
+For example, `OPG3D_HTTP_PORT=18080` in `.env` publishes the API at host port
+18080 while the container and its health check continue to use port 8080.
+All normal `OPG3D_*` server settings are still read from the same `.env` file.
+Container paths for state, logs and authored content are fixed to their mounted
+locations so native relative paths in `.env.example` cannot bypass persistence.
+
+Follow the service and its health check with:
+
+```bash
+docker compose logs -f backend
+docker compose ps
+```
+
+Stop or remove the container without deleting player data:
+
+```bash
+docker compose down
+```
+
+`docker compose down -v` is intentionally different: it permanently deletes the
+player-state, log and fetched-bundle volumes. Do not use `-v` unless that reset
+is intended.
+
+### Persistent data and upgrades
+
+Compose creates three named volumes:
+
+- `backend-data` for `state.json` and operator settings;
+- `backend-logs` for dated backend logs;
+- `backend-bundles` for verified bundles fetched on demand.
+
+The authored open config documents stay in the image, so they update with the
+code while the much larger vendor bundles remain outside it. Rebuild and replace
+the container without touching any of the three volumes:
+
+```bash
+docker compose build --pull
+docker compose up -d
+```
+
+Before moving or restoring a server, stop writes and copy the data directory:
+
+```bash
+docker compose stop backend
+mkdir -p backup/data
+docker compose cp backend:/var/lib/opg3d/. backup/data/
+docker compose start backend
+```
+
+The copied `state.json` is the important backup. Treat it as private player
+data. Docker Desktop can export the same named volume through its Volumes UI.
+
+### Run without Compose
+
+Compose is only convenience; the image also runs with plain Docker:
+
+```bash
+docker build --build-arg VERSION=docker -t open-pixel-gun-3d-backend:local .
+
+docker run --rm --name opg3d-backend \
+  --env-file .env \
+  -e OPG3D_ADDR=:8080 \
+  -e OPG3D_DATA_DIR=/var/lib/opg3d \
+  -e OPG3D_LOG_DIR=/var/log/opg3d \
+  -e OPG3D_CONTENT_DIR=/app/content \
+  -e OPG3D_DISCOVERY_PORT=47318 \
+  -p 8080:8080/tcp \
+  -p 47318:47318/udp \
+  -v opg3d-data:/var/lib/opg3d \
+  -v opg3d-logs:/var/log/opg3d \
+  -v opg3d-bundles:/app/content/bundles \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  open-pixel-gun-3d-backend:local
+```
+
+The `-e` path overrides after `--env-file` are required because the same
+`.env.example` also supports native relative paths.
+
+### LAN discovery through Docker
+
+TCP access works through the published host port on Docker Engine and Docker
+Desktop. UDP broadcast discovery depends on the host network: it normally works
+with the published UDP port on native Linux, but Docker Desktop, Wi-Fi client
+isolation and routed/VPS networks may not forward broadcast packets into the
+container. In that case, enter `<docker-host-ip>:<OPG3D_HTTP_PORT>` manually in
+the client.
+
+On native Linux, host networking is the most reliable discovery option. Use the
+plain `docker run` command above with `--network host` and omit both `-p` flags.
+Host networking is deliberately not the Compose default because Docker Desktop
+and non-Linux engines implement it differently.
+
+## 1. Build natively
 
 ```bash
 cd "$HOME/Studio canaryProjects/OPEN-PIXEL-GUN-3D-BACKEND"

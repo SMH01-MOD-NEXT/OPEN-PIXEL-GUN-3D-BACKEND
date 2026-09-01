@@ -98,8 +98,24 @@ All configuration is environment-based; no credential is ever committed.
 
 ## Run
 
-Step-by-step build, configuration, service and log-reading instructions live in
-[`docs/RUN.md`](docs/RUN.md). The short version:
+Step-by-step Docker, native build, configuration, backup and log-reading
+instructions live in [`docs/RUN.md`](docs/RUN.md).
+
+### Docker Compose (portable path)
+
+```sh
+cp .env.example .env
+# Fill OPG3D_APPID_KEY, a Photon AppID and OPG3D_ADMIN_TOKEN in .env.
+docker compose up --build -d
+docker compose ps
+curl http://127.0.0.1:8080/api/v1/ping
+```
+
+The image is built in two stages, runs as an unprivileged user, and contains no
+`.env`, player state, logs or locally downloaded vendor bundles. Compose keeps
+state, logs and fetched bundles in named volumes across container upgrades.
+
+### Native Go build
 
 ```sh
 go test ./...

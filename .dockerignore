@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Source control and editor state
+.git/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Credentials and host-specific configuration
+.env
+.env.*
+!.env.example
+
+# Build products and runtime state
+bin/
+data/
+logs/
+*.log
+log_*.txt
+
+# Local vendor assets are large, copyrighted and not part of the image. The
+# authored open config documents under content/ remain in the build context.
+content/bundles/
+content/sio-configs/AssetBundlesAndroid.json
+
+# Project notes and host-only tooling are not build inputs.
+TASK_PLAN*.md
+docs/
+deploy/
+tools/
+README.md
+LICENSE
