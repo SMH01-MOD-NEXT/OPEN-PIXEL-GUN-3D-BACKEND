@@ -5,6 +5,8 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -549,4 +551,156 @@ func TestReplaceRawStateClearsStaleProjectedCounters(t *testing.T) {
 	if profile.ClientState["coins"] != -500 || profile.ClientState["future"] != "kept" {
 		t.Fatalf("invalid/unknown raw values were not preserved for support: %#v", profile.ClientState)
 	}
+}
+
+func TestReplaceProfileProgressSlotsPersistsACompleteDeepCopy(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	if _, err := s.MergeProfileProgressSlots(socketUniqID, map[string]any{
+		"99": map[string]any{"stale": true},
+	}); err != nil {
+		t.Fatalf("seed stale slot: %v", err)
+	}
+
+	input := map[string]any{
+		"1":  map[string]any{"n": "Snapshot Player"},
+		"2":  map[string]any{"r": float64(9)},
+		"3":  map[string]any{"Coins": float64(28), "GemsCurrency": float64(5)},
+		"4":  map[string]any{"l": float64(2), "e": float64(15)},
+		"35": []any{map[string]any{"nested": "kept"}},
+	}
+	replaced, err := s.ReplaceProfileProgressSlots(socketUniqID, input)
+	if err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	if _, stale := replaced.ProgressSlots["99"]; stale {
+		t.Fatal("complete replacement retained the stale slot")
+	}
+	if replaced.Nick != "Snapshot Player" || replaced.Level != 2 || replaced.Experience != 15 || replaced.Coins != 28 || replaced.Gems != 5 {
+		t.Fatalf("projected replacement is %+v", replaced)
+	}
+
+	input["3"].(map[string]any)["Coins"] = float64(999)
+	replaced.ProgressSlots["35"].([]any)[0].(map[string]any)["nested"] = "mutated result"
+	stored, err := s.Profile(socketUniqID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := stored.ProgressSlots["3"].(map[string]any)["Coins"]; got != float64(28) {
+		t.Fatalf("store aliases its input: Coins=%v", got)
+	}
+	if got := stored.ProgressSlots["35"].([]any)[0].(map[string]any)["nested"]; got != "kept" {
+		t.Fatalf("returned profile aliases stored state: nested=%v", got)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	afterRestart, err := reopened.Profile(socketUniqID)
+	if err != nil {
+		t.Fatalf("load after restart: %v", err)
+	}
+	if !reflect.DeepEqual(afterRestart.ProgressSlots, stored.ProgressSlots) {
+		t.Fatalf("replacement changed after restart:\n got %#v\nwant %#v", afterRestart.ProgressSlots, stored.ProgressSlots)
+	}
+	if afterRestart.Level != 2 || afterRestart.Coins != 28 || afterRestart.Gems != 5 {
+		t.Fatalf("projected counters changed after restart: %+v", afterRestart)
+	}
+}
+
+func TestReplaceProfileProgressSlotsTreatsEmptyCoreSlotsAsZeroState(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	if _, err := s.ReplaceProfileProgressSlots(socketUniqID, map[string]any{
+		"3": map[string]any{"Coins": float64(28), "GemsCurrency": float64(5)},
+		"4": map[string]any{"l": float64(2), "e": float64(15)},
+	}); err != nil {
+		t.Fatalf("seed populated core slots: %v", err)
+	}
+
+	profile, err := s.ReplaceProfileProgressSlots(socketUniqID, map[string]any{
+		"3": map[string]any{},
+		"4": map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("replace with empty core slots: %v", err)
+	}
+	if profile.Level != 0 || profile.Experience != 0 || profile.Coins != 0 || profile.Gems != 0 {
+		t.Fatalf("empty authoritative core slots left stale counters: %+v", profile)
+	}
+}
+
+func TestReplaceProfileProgressSlotsRollsBackEveryInMemoryProjectionOnPersistFailure(t *testing.T) {
+	t.Run("existing profile and account", func(t *testing.T) {
+		s, err := Open(t.TempDir())
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+			t.Fatalf("adopt: %v", err)
+		}
+		if _, err := s.SetProfile(socketUniqID, "Before", 7, 70, 28, 5); err != nil {
+			t.Fatalf("seed profile: %v", err)
+		}
+		beforeProfile, err := s.Profile(socketUniqID)
+		if err != nil {
+			t.Fatalf("load profile before failure: %v", err)
+		}
+		beforeAccount, err := s.Account(socketUniqID)
+		if err != nil {
+			t.Fatalf("load account before failure: %v", err)
+		}
+
+		s.path = filepath.Join(t.TempDir(), "missing", "state.json")
+		if _, err := s.ReplaceProfileProgressSlots(socketUniqID, map[string]any{
+			"1": map[string]any{"n": "After"},
+			"3": map[string]any{"Coins": float64(999), "GemsCurrency": float64(999)},
+			"4": map[string]any{"l": float64(99), "e": float64(999)},
+		}); err == nil {
+			t.Fatal("replacement unexpectedly persisted into a missing directory")
+		}
+
+		afterProfile, err := s.Profile(socketUniqID)
+		if err != nil {
+			t.Fatalf("load profile after failure: %v", err)
+		}
+		afterAccount, err := s.Account(socketUniqID)
+		if err != nil {
+			t.Fatalf("load account after failure: %v", err)
+		}
+		if !reflect.DeepEqual(afterProfile, beforeProfile) {
+			t.Fatalf("failed persist left a projected profile mutation:\n got %+v\nwant %+v", afterProfile, beforeProfile)
+		}
+		if !reflect.DeepEqual(afterAccount, beforeAccount) {
+			t.Fatalf("failed persist left an account nickname mutation:\n got %+v\nwant %+v", afterAccount, beforeAccount)
+		}
+	})
+
+	t.Run("new profile", func(t *testing.T) {
+		s, err := Open(t.TempDir())
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		s.path = filepath.Join(t.TempDir(), "missing", "state.json")
+		if _, err := s.ReplaceProfileProgressSlots(socketUniqID, map[string]any{
+			"3": map[string]any{"Coins": float64(1)},
+		}); err == nil {
+			t.Fatal("replacement unexpectedly persisted into a missing directory")
+		}
+		if _, err := s.Profile(socketUniqID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("failed first replacement left a new in-memory profile: %v", err)
+		}
+	})
 }

@@ -429,6 +429,86 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 	return profile.clone(), nil
 }
 
+// ReplaceProfileProgressSlots atomically installs the complete raw slot set
+// sent by replace_progress. Unlike create_slots, that event is a snapshot: a
+// slot omitted by the client is no longer part of the profile. Callers must
+// validate and unwrap every wire {d,h} record before invoking this method.
+func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]any) (Profile, error) {
+	playerID = strings.TrimSpace(playerID)
+	if playerID == "" {
+		return Profile{}, errors.New("store: empty player id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	playerID = s.resolvePlayerIDLocked(playerID)
+	profile, existed := s.state.Profiles[playerID]
+	profilesWereNil := s.state.Profiles == nil
+	if !existed {
+		if s.state.Profiles == nil {
+			s.state.Profiles = make(map[string]*Profile)
+		}
+		now := time.Now().UTC()
+		profile = &Profile{PlayerID: playerID, CreatedAt: now, UpdatedAt: now}
+		s.state.Profiles[playerID] = profile
+	}
+
+	before := profile.clone()
+	account := s.state.Accounts[playerID]
+	accountNick := ""
+	if account != nil {
+		accountNick = account.Nick
+	}
+
+	profile.ProgressSlots = cloneAnyMap(slots)
+	projectReplacementSlotState(profile, slots)
+	if account != nil && profile.Nick != "" {
+		account.Nick = profile.Nick
+	}
+	profile.UpdatedAt = time.Now().UTC()
+	if err := s.persistLocked(); err != nil {
+		if existed {
+			*profile = before
+		} else {
+			delete(s.state.Profiles, playerID)
+			if profilesWereNil {
+				s.state.Profiles = nil
+			}
+		}
+		if account != nil {
+			account.Nick = accountNick
+		}
+		return Profile{}, err
+	}
+	return profile.clone(), nil
+}
+
+// projectReplacementSlotState maps only fields proven by 23.1.3 snapshots.
+// Slot 1 owns the nickname, slot 3 owns the two base currencies, and slot 4
+// owns level/experience. Empty currency slot 3 is the client's zero encoding.
+func projectReplacementSlotState(profile *Profile, slots map[string]any) {
+	if identity, ok := slots["1"].(map[string]any); ok {
+		if nick, ok := identity["n"].(string); ok && strings.TrimSpace(nick) != "" {
+			profile.Nick = strings.TrimSpace(nick)
+		}
+	}
+	if currencies, ok := slots["3"].(map[string]any); ok {
+		profile.Coins = 0
+		profile.Gems = 0
+		if value, ok := counterInt64(currencies["Coins"]); ok {
+			profile.Coins = value
+		}
+		if value, ok := counterInt64(currencies["GemsCurrency"]); ok {
+			profile.Gems = value
+		}
+	}
+	if progress, ok := slots["4"].(map[string]any); ok {
+		profile.Level = 0
+		profile.Experience = 0
+		projectProfileCounters(profile, progress, true)
+	}
+}
+
 // MergeProfileClientState preserves structured fields that do not belong to
 // one of the progress documents. As with progress, a partial client update is
 // merged and unknown members survive unchanged.

@@ -5238,3 +5238,29 @@ and `internal/store`, `go vet ./...`, a clean release build, `node --check` for
 the embedded admin script, JSON parsing for every hosted document, `bash -n`
 for the bundle fetcher and `git diff --check`. The admin SSE regression now
 replays a log frame with HTTP 200 instead of the previous `no_flush` 500.
+
+## Session 2026-09-01 — final placeholders from the victory-screen run
+
+- [x] Bound the audit to the backend session that started at
+      `2026-09-01T14:11:08.516Z`: the only generic Socket.IO acknowledgements
+      were three `replace_progress` requests and two `get_leaderboard_v3`
+      requests; the only static-content fallback was
+      `rating-minigame/rating-minigame-count-all.json`.
+- [x] Implement `replace_progress` as an authenticated complete snapshot:
+      validate every numeric slot id, unwrap only the wire `d` member, replace
+      rather than merge, deep-copy and persist atomically, and project the
+      proven 23.1.3 nickname/currency/level/experience fields. Malformed or
+      unauthenticated packets cannot clear stored state.
+- [x] Implement `get_leaderboard_v3` with the exact callback types recovered
+      from `TournamentController` at `0x4991394`: boolean `result`, string
+      `season_id`, Int32-safe season times, integer disable fields, and typed
+      leaderboard/player/removal lists. The local authenticated player is
+      included when slot 2 contains a nonnegative integer rating.
+- [x] Reverse the real mini-game rating parser at `0x3F9726C`. It accepts an
+      object keyed by decimal game-mode id, with `{rating:number,count:int}`
+      values; the second reader uses `id+1000`. Host a complete local zero-vote
+      baseline for modes 0-42 and 1000-1042 instead of serving `{}`.
+- [x] Run the complete static, race, release-build, JSON, shell, embedded-JS and
+      diff checks, then commit the backend changes.
+- [ ] Deploy only after operator coordination, reproduce one victory, and
+      verify rewards/buttons plus zero fallbacks in the new backend session.

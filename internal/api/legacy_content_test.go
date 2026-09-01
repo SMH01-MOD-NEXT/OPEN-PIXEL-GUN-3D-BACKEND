@@ -3,9 +3,11 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -66,5 +68,47 @@ func TestRemoteConfigRefusesEscapingPaths(t *testing.T) {
 	rec := do(t, s, http.MethodGet, "/pixelgun3d-config/../../../etc/passwd", nil, nil)
 	if rec.Code == http.StatusOK {
 		t.Fatalf("escaping path was served: %s", rec.Body)
+	}
+}
+
+func TestAuthoredMiniGameRatingDocumentMatchesThe2313Parser(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+
+	rec := do(t, s, http.MethodGet,
+		"/@secure.pixelgun3dserver.com/pixelgun3d-config/rating-minigame/rating-minigame-count-all.json",
+		nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+
+	// The 23.1.3 MiniGameRatingDownloader parses a dictionary keyed by an
+	// integer game-mode id. Each value is another dictionary with optional
+	// numeric "rating" and integer "count" fields. A second accessor looks up
+	// the same game-mode id plus 1000, so the local zero-vote baseline covers
+	// both groups instead of relying on an empty-object fallback.
+	var document map[string]struct {
+		Rating float64 `json:"rating"`
+		Count  int     `json:"count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &document); err != nil {
+		t.Fatalf("decode authored rating document: %v", err)
+	}
+	if len(document) != 86 {
+		t.Fatalf("document has %d modes, want 0-42 and 1000-1042", len(document))
+	}
+	for mode := 0; mode <= 42; mode++ {
+		for _, id := range []int{mode, mode + 1000} {
+			value, ok := document[strconv.Itoa(id)]
+			if !ok {
+				t.Fatalf("rating document omits mode id %d", id)
+			}
+			if value.Rating != 0 || value.Count != 0 {
+				t.Fatalf("fresh local mode %d is rating=%v count=%d, want zero votes", id, value.Rating, value.Count)
+			}
+		}
 	}
 }

@@ -59,6 +59,8 @@ const (
 	sioGetInappsEvent         = "get_inapps"
 	sioUpdateProgressEvent    = "update_progress"
 	sioPlayerSuccessInitEvent = "player_success_init"
+	sioReplaceProgressEvent   = "replace_progress"
+	sioLeaderboardV3Event     = "get_leaderboard_v3"
 )
 
 // setBootstrapIdentity keeps the validated bootstrap id and source address,
@@ -158,6 +160,10 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerSyncFull
 	case sioUpdateProgressEvent:
 		return (*Server).answerUpdateProgress
+	case sioReplaceProgressEvent:
+		return (*Server).answerReplaceProgress
+	case sioLeaderboardV3Event:
+		return (*Server).answerLeaderboardV3
 	case sioGetInappsEvent:
 		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
