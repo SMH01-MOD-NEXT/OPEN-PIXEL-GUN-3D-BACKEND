@@ -156,6 +156,10 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerInitProgress
 	case sioProgressSlotsEvent:
 		return (*Server).answerProgressSlots
+	case sioGetProgressEvent:
+		return (*Server).answerGetProgress
+	case sioGetProgressHashesEvent:
+		return (*Server).answerGetProgressHashes
 	case sioSyncFullEvent:
 		return (*Server).answerSyncFull
 	case sioUpdateProgressEvent:
