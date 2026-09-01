@@ -35,6 +35,7 @@ package api
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
@@ -114,6 +115,38 @@ func (s *sioSession) identityHash() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.authHash
+}
+
+func (s *sioSession) setPendingProgressRevision(revision uint64) {
+	s.mu.Lock()
+	s.pendingProgressRevision = revision
+	s.progressSyncServed = false
+	s.mu.Unlock()
+}
+
+func (s *sioSession) pendingProgressState() (revision uint64, syncServed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingProgressRevision, s.progressSyncServed
+}
+
+func (s *sioSession) markProgressSyncServed(revision uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if revision == 0 || s.pendingProgressRevision != revision {
+		return false
+	}
+	s.progressSyncServed = true
+	return true
+}
+
+func (s *sioSession) clearPendingProgressRevision(revision uint64) {
+	s.mu.Lock()
+	if revision == 0 || s.pendingProgressRevision == revision {
+		s.pendingProgressRevision = 0
+		s.progressSyncServed = false
+	}
+	s.mu.Unlock()
 }
 
 // sioAnswer builds the single argument of a reply, or returns nil to send
@@ -583,15 +616,49 @@ func (s *Server) answerPlayerPrefs(session *sioSession, head sioHead, reqID int)
 	return body
 }
 
-// answerLastCommand reports that no operator command is queued for this player.
-//
-// This is the channel a live server uses to tell a client something happened to
-// its account out of band. Nothing is queued on a fresh server, and saying so
-// is what lets the client move on.
+const progressCursorDeviceID = "backend"
+
+func progressRevisionCursor(playerID string, revision uint64) string {
+	return "srv-" + playerID + "-" + strconv.FormatUint(revision, 36)
+}
+
+// answerLastCommand advertises an operator-edited profile as a stock progress
+// revision. The live 23.1.3 client treats index as a synchronization cursor and
+// asks get_progress when it differs from the local cursor. device_id names an
+// external origin so the client offers the server copy instead of mistaking the
+// change for its own upload.
 func (s *Server) answerLastCommand(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["command"] = ""
 	body["command_id"] = 0
+
+	_, device, playerID := session.identity()
+	if playerID == "" {
+		return sioDenied(reqID)
+	}
+	profile, ok := s.sessionProfile(session)
+	if !ok || device == "" {
+		session.clearPendingProgressRevision(0)
+		return body
+	}
+	revision, pending := profile.PendingProgressRevision(device)
+	if !pending {
+		session.clearPendingProgressRevision(0)
+		return body
+	}
+
+	cursor := progressRevisionCursor(playerID, revision)
+	session.setPendingProgressRevision(revision)
+	delete(body, "error")
+	delete(body, "result")
+	delete(body, "command")
+	delete(body, "command_id")
+	body["index"] = cursor
+	body["device_id"] = progressCursorDeviceID
+	s.log.Event("socket.progress_revision_served", map[string]any{
+		"sid": session.sid, "player_id": playerID, "req_id": reqID,
+		"revision": revision, "index": cursor, "device_id": progressCursorDeviceID,
+	})
 	return body
 }
 

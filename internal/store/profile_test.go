@@ -782,3 +782,131 @@ func TestCountersReconcileAgainstTheProgressDocument(t *testing.T) {
 		t.Fatalf("Counters()=%d/%d/%d/%d, want the projections 7/70/28/5", level, experience, coins, gems)
 	}
 }
+
+func TestOperatorProgressRevisionAcknowledgementIsDurable(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := s.SetProfile(socketUniqID, "Veteran", 32, 20000, 123123123, 123123123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ProgressRevision == 0 {
+		t.Fatal("first operator edit did not create a revision")
+	}
+	if revision, pending := first.PendingProgressRevision(socketDevice); !pending || revision != first.ProgressRevision {
+		t.Fatalf("first revision pending = (%d, %t), want (%d, true)", revision, pending, first.ProgressRevision)
+	}
+	applied, err := s.AcknowledgeProfileProgressRevision(socketUniqID, socketDevice, first.ProgressRevision)
+	if err != nil || !applied {
+		t.Fatalf("acknowledge first revision = (%t, %v)", applied, err)
+	}
+
+	unchanged, err := s.SetProfile(socketUniqID, "Veteran", 32, 20000, 123123123, 123123123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.ProgressRevision != first.ProgressRevision {
+		t.Fatalf("no-op edit advanced revision %d -> %d", first.ProgressRevision, unchanged.ProgressRevision)
+	}
+	if _, pending := unchanged.PendingProgressRevision(socketDevice); pending {
+		t.Fatal("no-op edit discarded the device acknowledgement")
+	}
+
+	changed, err := s.SetProfile(socketUniqID, "Veteran", 32, 470, 123123123, 123123124)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.ProgressRevision == first.ProgressRevision {
+		t.Fatal("effective operator edit did not advance the revision")
+	}
+	if revision, pending := changed.PendingProgressRevision(socketDevice); !pending || revision != changed.ProgressRevision {
+		t.Fatalf("new revision pending = (%d, %t), want (%d, true)", revision, pending, changed.ProgressRevision)
+	}
+	if applied, err := s.AcknowledgeProfileProgressRevision(socketUniqID, socketDevice, first.ProgressRevision); err != nil || applied {
+		t.Fatalf("stale revision acknowledgement = (%t, %v), want false without error", applied, err)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := reopened.Profile(socketUniqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.ProgressRevision != changed.ProgressRevision {
+		t.Fatalf("persisted revision = %d, want %d", persisted.ProgressRevision, changed.ProgressRevision)
+	}
+	if revision, pending := persisted.PendingProgressRevision(socketDevice); !pending || revision != changed.ProgressRevision {
+		t.Fatalf("pending revision did not survive reopen: (%d, %t)", revision, pending)
+	}
+}
+
+func TestAuthoritativeProgressSurvivesEveryClientOwnedMerge(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AdoptSocketIdentity(socketUniqID, socketDevice, ""); err != nil {
+		t.Fatal(err)
+	}
+	want, err := s.SetProfile(socketUniqID, "Veteran", 32, 20000, 123123123, 123123123)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.MergeProfileProgress(socketUniqID, map[string]any{
+		"level": 1, "experience": 470, "coins": 7, "gems": 8, "future": "kept",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	clientSlots := map[string]any{
+		"3":  map[string]any{"Coins": 7, "GemsCurrency": 8},
+		"4":  map[string]any{"l": 32, "e": 470},
+		"99": map[string]any{"future": true},
+	}
+	if _, err := s.MergeProfileProgressDocument(socketUniqID, clientSlots); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.MergeProfileProgressSlots(socketUniqID, clientSlots); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.MergeProfileClientState(socketUniqID, map[string]any{
+		"level": 1, "experience": 470, "coins": 7, "gems": 8, "rank": 32,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.ReplaceProfileProgressSlots(socketUniqID, clientSlots)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if profile.ProgressRevision != want.ProgressRevision {
+		t.Fatalf("client merge changed revision %d -> %d", want.ProgressRevision, profile.ProgressRevision)
+	}
+	level, experience, coins, gems := profile.Counters()
+	if level != 32 || experience != 20000 || coins != 123123123 || gems != 123123123 {
+		t.Fatalf("client merge rewrote authoritative counters: %d %d %d %d", level, experience, coins, gems)
+	}
+	for name, document := range map[string]map[string]any{
+		"progress_document": profile.ProgressDocument,
+		"progress_slots":    profile.ProgressSlots,
+	} {
+		if got, _ := counterInt64(document["3"].(map[string]any)["Coins"]); got != 123123123 {
+			t.Fatalf("%s Coins = %d", name, got)
+		}
+		if got, _ := counterInt64(document["4"].(map[string]any)["e"]); got != 20000 {
+			t.Fatalf("%s experience = %d", name, got)
+		}
+	}
+	if profile.Progress["future"] != "kept" || profile.ClientState["rank"] != 32 {
+		t.Fatalf("non-core client state was lost: progress=%#v client=%#v", profile.Progress, profile.ClientState)
+	}
+}

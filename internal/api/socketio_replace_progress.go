@@ -76,12 +76,14 @@ func (s *Server) answerReplaceProgress(session *sioSession, head sioHead, reqID 
 	// not "reset to zero". See config.ProgressBlankUploadGuard for the device
 	// run that measured an operator edit being erased 62 ms after this server
 	// answered the slot handshake.
-	var repaired []string
-	if s.cfg.ProgressBlankUploadGuard {
-		if stored, ok := s.sessionProfile(session); ok {
-			level, experience, coins, gems := stored.Counters()
-			repaired = repairBlankCoreSlots(slots, level, experience, coins, gems)
-		}
+	var repaired, authoritative []string
+	stored, hasStored := s.sessionProfile(session)
+	if hasStored && stored.ProgressRevision != 0 {
+		level, experience, coins, gems := stored.Counters()
+		authoritative = enforceAuthoritativeCoreSlots(slots, level, experience, coins, gems)
+	} else if s.cfg.ProgressBlankUploadGuard && hasStored {
+		level, experience, coins, gems := stored.Counters()
+		repaired = repairBlankCoreSlots(slots, level, experience, coins, gems)
 	}
 
 	profile, err := s.st.ReplaceProfileProgressSlots(playerID, slots)
@@ -99,8 +101,10 @@ func (s *Server) answerReplaceProgress(session *sioSession, head sioHead, reqID 
 		"sid": session.sid, "player_id": playerID, "req_id": reqID,
 		"index": head.text(sioReplaceProgressIndexKey), "received": len(slots), "stored": len(profile.ProgressSlots),
 		"level": profile.Level, "experience": profile.Experience, "coins": profile.Coins, "gems": profile.Gems,
-		"repaired_slots": repaired,
-		"note":           "installed the full unwrapped slot snapshot",
+		"repaired_slots":      repaired,
+		"authoritative_slots": authoritative,
+		"progress_revision":   profile.ProgressRevision,
+		"note":                "installed the full unwrapped slot snapshot",
 	})
 	return sioOK(reqID)
 }
@@ -154,6 +158,30 @@ func writeSlotCounter(slot map[string]any, value int64, candidates ...string) {
 		}
 	}
 	slot[candidates[len(candidates)-1]] = float64(value)
+}
+
+// enforceAuthoritativeCoreSlots overwrites the two operator-owned slots with
+// the current server values. This applies to non-blank uploads too: the stock
+// client can legally normalize an impossible XP value, but that local repair
+// must not silently rewrite a profile an operator still owns. Missing core
+// slots are created so a complete replacement cannot drop server authority.
+func enforceAuthoritativeCoreSlots(slots map[string]any, level int, experience, coins, gems int64) []string {
+	currencies, ok := slots["3"].(map[string]any)
+	if !ok {
+		currencies = map[string]any{}
+		slots["3"] = currencies
+	}
+	writeSlotCounter(currencies, coins, "Coins")
+	writeSlotCounter(currencies, gems, "GemsCurrency")
+
+	progress, ok := slots["4"].(map[string]any)
+	if !ok {
+		progress = map[string]any{}
+		slots["4"] = progress
+	}
+	writeSlotCounter(progress, int64(level), "level", "l")
+	writeSlotCounter(progress, experience, "experience", "exp", "e")
+	return []string{"3", "4"}
 }
 
 // repairBlankCoreSlots refills the two core slots when the upload would erase a

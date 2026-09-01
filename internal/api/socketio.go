@@ -181,6 +181,13 @@ type sioSession struct {
 	// client authorised with is the only one this server can name truthfully.
 	authHash string
 
+	// pendingProgressRevision is the exact operator revision offered through
+	// get_last_command. progressSyncServed becomes true only after sync_full
+	// returned that same revision's authoritative slots. Both are transient: a
+	// durable per-device acknowledgement is written after player_success_init.
+	pendingProgressRevision uint64
+	progressSyncServed      bool
+
 	// pending is the binary event whose text header has arrived and whose
 	// attachments are still being collected. A socket.io binary event is split
 	// across one text packet and one frame per attachment, so the halves have

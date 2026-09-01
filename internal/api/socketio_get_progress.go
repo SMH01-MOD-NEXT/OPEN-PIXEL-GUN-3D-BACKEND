@@ -73,6 +73,7 @@ func (s *Server) answerGetProgress(session *sioSession, head sioHead, reqID int)
 	// the applier runs to a no-op instead of dereferencing null. Every early
 	// return below leaves this in place for that reason.
 	body[sioProgressDocumentKey] = map[string]any{}
+	body[sioSlotsKey] = map[string]any{}
 
 	_, _, playerID := session.identity()
 	if playerID == "" {
@@ -121,7 +122,10 @@ func (s *Server) answerGetProgress(session *sioSession, head sioHead, reqID int)
 		}
 		document[id] = value
 	}
+	// The live 23.1.3 handler reads the document from slots. Keep progress as
+	// a compatibility alias for the later reference protocol and older tests.
 	body[sioProgressDocumentKey] = document
+	body[sioSlotsKey] = document
 
 	level, experience, coins, gems := profile.Counters()
 	body["level"] = level
