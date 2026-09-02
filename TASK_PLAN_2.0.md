@@ -837,3 +837,44 @@ These remain separate work and must not be mixed into the proven progress fix:
       read-only PGWSD 23.3.2 contracts;
 - [ ] continue using PGWSD as read-only reference; never run `TestScript55.py`;
 - [ ] never inspect or modify PG-1200.
+
+### Final closure (2026-09-02)
+
+The backend-only progress implementation was committed as:
+
+```text
+ec352e6 fix(progress): apply backend revisions without chooser
+```
+
+After the proof runs and commit, production instrumentation was removed from the
+device:
+
+- the game process was force-stopped by package name only;
+- the host `/tmp/libopg3d.run49.nodiag.so` copy had already been removed by
+  temporary-file cleanup;
+- an exact surviving stock copy was found at
+  `/data/local/tmp/libopg3d.so` and independently verified as 402576 bytes with
+  SHA-256 `e56c2b357461a8b106bcadbe9d26dfc719e20e152d5cb61527fb58d431fd2703`;
+- the installed passive tracer first matched its expected SHA-256
+  `194a5f274d626111ace6dea12d9396cb67cd56ada797d320928a94cdbb2926d5`;
+- the existing installed inode was restored byte-for-byte to the stock SHA-256;
+- mode `0755`, owner `root:root`, and SELinux context
+  `u:object_r:apk_data_file:s0` were preserved;
+- the game was left stopped, so no instrumented frontend code remains loaded.
+
+Final backend runtime verification:
+
+```text
+PID             58852
+listener        :8080 owned by PID 58852
+executable      bin/opg3d-backend
+working dir     OPEN-PIXEL-GUN-3D-BACKEND
+binary SHA-256  d5ae17d3e52df2f18ebda32e8ca34c5137b552a2d44c8df38e101f6c889a5bda
+mode override   absent
+revision / ack  2 / 2
+```
+
+Current run50-run58 frontend logs were moved out of the backend repository and
+into `OLD-PIXEL-GUN-3D-ONLINE-PROJECT` as passive trace artefacts. They remain
+uncommitted. The backend worktree is clean, and historical `TASK_PLAN.md`
+remains unchanged.
