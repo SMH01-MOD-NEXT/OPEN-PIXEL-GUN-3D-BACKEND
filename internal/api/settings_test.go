@@ -178,12 +178,10 @@ func TestProgressStatusSelectsSynchronizationForStoredProfile(t *testing.T) {
 	}
 }
 
-// The comparison arm for the 2026-09-01 device measurement. With the escalation
-// switched off, a profile this server holds progress for still answers the open
-// code, so the two boot paths can be compared on a device without a code change.
-// Code 2 starts the stock SynchronizeProgress continuation, and that
-// continuation was measured uploading the client's blank snapshot over an
-// operator edit 62 ms after it received the stored slot ids.
+// The comparison arm for ordinary stored profiles. With the broad mode off, a
+// profile with no pending operator revision stays on code 1. Pending revisions
+// have their own measured two-phase route and may force code 1 for download or
+// code 2 for a staged raw echo independently of this setting.
 func TestProgressStatusKeepsOpenCodeWhenSynchronizeModeIsOff(t *testing.T) {
 	s, cfg := newTestServer(t)
 	cfg.ProgressSynchronizeMode = false

@@ -412,3 +412,428 @@ still open.** The remaining lever is the continuation itself, not the value.
       cheapest next probe; hot-pushing the lib is authorised.
 - [ ] Decide the `update_progress` ownership model. The guard covers the boot
       snapshot only; an in-session batch can still overwrite the same counters.
+
+## Runs 59-66 (2026-09-02) - backend-only authoritative progress delivery completed
+
+This section supersedes the earlier conclusion that the stock 23.1.3 client has
+no usable server-to-client progress route. The route exists, but it is gated by
+a nullable local cursor and must be entered through the exact auth state
+machine. No gameplay-affecting frontend change is part of the result. The
+frontend library used for these runs contains passive logging only.
+
+### Acceptance contract
+
+The operator edit used for the final measurement stayed at revision 2:
+
+```text
+player       541028684
+nick         Удачливый Снайпер
+level        32
+experience   470
+coins        123123123
+gems         123123124
+```
+
+Completion required all of the following, not merely the absence of the chooser:
+
+- [x] stock 23.1.3 downloads server-owned slots;
+- [x] the correlated callback hands a non-null 87-slot dictionary to the stock
+      applier;
+- [x] AuthScene reaches Login without `ChooseProgress` (state 7);
+- [x] the lobby visibly renders 123123123 coins and 123123124 gems;
+- [x] a later stock upload echoes raw slot 3 and slot 4 values exactly;
+- [x] the server writes a per-device acknowledgement only after that raw echo
+      and `player_success_init`;
+- [x] an unchanged app restart does not re-arm or re-download the revision;
+- [x] the same remains true after the backend itself reopens `data/state.json`.
+
+### Corrected `enabled` routing
+
+The final routing is deliberately revision-aware:
+
+```text
+maintenance
+  -> enabled=0 (TechnicalWorks)
+
+pending operator revision, first phase
+  -> enabled=1
+  -> get_last_command returns non-null index="" and device_id=""
+  -> state 8 completes
+  -> state 9 sends correlated sync_full
+  -> authoritative slots are applied
+  -> Login stages a raw-echo boot
+
+same pending revision, delivery staged in this backend process
+  -> enabled=2
+  -> state 13 uploads replace_progress
+  -> exact raw slot-3/slot-4 match becomes acknowledgement evidence
+  -> player_success_init persists the per-device revision acknowledgement
+
+no pending revision
+  -> ordinary ProgressSynchronizeMode behavior
+  -> default enabled=2 for a stored profile
+```
+
+A process restart before the raw-echo boot deliberately loses only the transient
+stage and repeats the safe state-9 download. It cannot manufacture an
+acknowledgement. The final acknowledgement remains durable in the profile store.
+
+The broad `OPG3D_PROGRESS_SYNCHRONIZE_MODE` flag now controls only ordinary
+stored profiles. It cannot strand an operator revision: phase one forces code 1
+and a staged phase two forces code 2. Maintenance code 0 still has priority.
+
+### Static client proof behind the safe cursor
+
+The 23.1.3 `Progress` singleton (`TypeDef 6674`) contains:
+
+```text
++0x18 string index
++0x20 string device_id
+```
+
+Relevant code:
+
+```text
+0x3DC7584  state-8 predicate: Progress.Singleton.index != null
+0x1B43248  cached-command method called after the predicate succeeds
+0x3DC5C44  state-8 completion callback
+0x3DC59E8  state-9 iterator factory
+0x17AB594  sync_full request builder
+0x17AB704  correlated sync_full callback
+0x2701830  slot-document applier
+```
+
+The old response omitted `index`, leaving a null managed reference and parking
+state 8 at 83%. An empty string is a real, non-null managed string, satisfies the
+predicate, and does not fabricate a foreign revision cursor. `device_id` also
+stays empty. A non-empty mismatching device id is the external-profile branch
+that opens state 7, so it is forbidden.
+
+The accepted `get_last_command` body is:
+
+```json
+{
+  "command": "",
+  "command_id": 0,
+  "device_id": "",
+  "error": 0,
+  "index": "",
+  "req_id": 5,
+  "result": "ok"
+}
+```
+
+The stock parser ignores attempts to use `command` and `command_id` as inbound
+progress commands. IDs 10, 63, 64, 65 and 66 belong to the outgoing
+`update_progress` command stream; they are not a server-to-client command API.
+
+### Bind-handler contracts retained
+
+The auth path was also checked so the progress experiment would not hide behind
+a social-bind failure:
+
+- `get_binded_ids` returns the authenticated id/hash pair only;
+- `check_binded_gc` and `check_binded_id` return the measured empty/unbound
+  result shapes and preserve correlation;
+- none of these handlers selects a profile from a payload-supplied player id;
+- the completed runs received all required bind replies without an undelivered
+  frame.
+
+### Rejected delivery routes
+
+- `enabled=0`: maintenance, not synchronization.
+- `enabled=1` without an `index` key: state 8 waits forever at 83%.
+- `enabled=2` before download: state 13 uploads the old local snapshot.
+- a non-empty backend `device_id` or fabricated cursor: opens the two-profile
+  chooser and is unacceptable.
+- unsolicited `sync_full`: reaches only generic handler `0x294E108`; it does not
+  invoke callback `0x17AB704` or the slot applier.
+- `replace_progress` reply augmented with slots: the client ignores those slots.
+- `player_prefs`: cannot write arbitrary Storager progress keys.
+- `update_progress`: carries commands/equipment changes, not a full raw echo.
+- `update_player`: carries rank and lobby metadata, not currencies and XP.
+- frontend preference, branch, return-value or state mutation: prohibited.
+
+### Run chronology
+
+#### Run 59 - local-upload baseline
+
+The enabled-2 path completed but remained client-authoritative. The client sent
+its local progress; the server guard preserved operator-owned counters, but the
+client did not adopt the changed gems. This established that durable server
+storage alone was not delivery.
+
+```text
+backend SID   534168421e62fb6a36c6e418
+result        lobby, local upload, no server application proof
+```
+
+#### Run 60 - unsolicited push rejected
+
+An uncorrelated `sync_full` was decrypted and dispatched only to the generic
+subscriber. Callback `0x17AB704` and applier `0x2701830` were absent. Auth used
+state 13, sent a local `replace_progress`, and displayed the old gems.
+
+```text
+backend SID   86cb438bf0054964ccbeccfc
+result        enabled=2, generic handler only, no application
+```
+
+This run also supplied the measured raw-upload baseline: slot 3 carried
+`Coins=123123123` but old `GemsCurrency=123123123`; slot 4 carried `l=32,e=470`.
+
+#### Run 61 - missing-index blocker isolated
+
+The backend forced code 1 and sent an unsolicited push. The client reached state
+8, but the actual `get_last_command` body omitted both `index` and `device_id`.
+The predicate at `0x3DC7584` remained false through the bounded trace and the UI
+stayed at 83%.
+
+```text
+backend SID   ccd3d53668f8fd71c3757d55
+frontend PID  13237
+result        failed at state 8; index was absent, not ""
+```
+
+The earlier SID `dff2b3080e98a28a08174225` belongs to the preceding connection
+and is not run-61 evidence.
+
+#### Run 62 - server values physically applied
+
+The first empty-cursor candidate removed the unsolicited push, answered
+`enabled=1`, and supplied `index="", device_id=""`.
+
+Measured sequence:
+
+```text
+09:40:40.926  state 8 SendCachedCommands
+09:40:40.926  predicate 0x3DC7584 -> true on first poll
+09:40:40.960  state 9 SynchronizeProgress
+09:40:41.150  client emits sync_full
+09:40:41.367  callback 0x17AB704 reads slots
+09:40:41.367  applier receives Dictionary count=87
+09:40:43.973  state 16 Login
+09:40:44.541  UI label = 123123124
+09:40:44.545  UI label = 123123123
+```
+
+Backend evidence:
+
+```text
+SID                         df0dc798d0edade8616d95a6
+progress_status             enabled=1
+pending revision            2
+correlated revision served  true
+player_success_init         true
+raw replace_progress        absent
+```
+
+This proved download and visible application. It intentionally did **not** write
+an acknowledgement because stock state 9 does not upload a raw snapshot. The
+five subsequent `update_progress` requests and `update_player` were inspected;
+none contained all four counters.
+
+#### Run 63 - final candidate stages the raw-echo phase
+
+The final two-phase candidate repeated the safe download and staged revision 2
+only after Login:
+
+```text
+backend PID    57730
+backend SID    4ed94b2bba37f15d0459b872
+enabled        1
+route          state9_download
+state path     2 -> 8 -> 9 -> 16
+sync slots     87
+staged         progress_revision_delivery_staged=true
+ack on disk    absent (correct at this phase)
+UI             coins=123123123, gems=123123124, level=32
+```
+
+#### Run 64 - exact raw echo and durable acknowledgement
+
+Without restarting the backend, the next stock boot consumed the staged phase:
+
+```text
+backend SID    22e97925297b60b366679232
+enabled        2
+route          state13_raw_echo
+state path     1 -> 13 -> 16
+chooser        absent
+```
+
+The client itself emitted the full 87-slot `replace_progress`:
+
+```json
+"3": {"d": {"Coins": 123123123, "GemsCurrency": 123123124}},
+"4": {"d": {"l": 32, "e": 470, "cr": 1, "cre": 0}}
+```
+
+The server compared these values before enforcing authority and logged:
+
+```text
+progress_revision_echoed=true
+progress_revision_confirmable=2
+progress_revision_delivery_reset=false
+progress_revision_applied=true
+```
+
+The durable profile then contained:
+
+```json
+"progress_revision": 2,
+"applied_progress_revisions": {
+  "92d091e1c165e08c8bc957c3e3a6a6bc": 2
+}
+```
+
+The lobby again rendered both changed currency values.
+
+#### Run 65 - unchanged app restart does not replay
+
+```text
+backend SID                   653dabd550f082cf3cc357dc
+progress_revision_armed       0
+progress_sync_server_slots    0
+AuthScene state 9             0
+AuthScene state 7             0
+ordinary state path           2 -> 13 -> 16
+revision / acknowledgement    2 / 2
+```
+
+The ordinary state-13 upload remained exact and did not change counters or slot
+contents. No additive duplication occurred.
+
+#### Run 66 - backend restart also does not replay
+
+The backend was stopped only after verifying PID 57730, its executable, cwd and
+`:8080` listener. The same candidate reopened the on-disk store as PID 58852.
+Before any client connected, revision 2 and its acknowledgement were present.
+The clean client boot then measured:
+
+```text
+backend SID                   d7460dc494083199be3e333c
+progress_revision_armed       0
+progress_sync_server_slots    0
+AuthScene state 9             0
+AuthScene state 7             0
+ordinary state path           1 -> 13 -> 16
+revision / acknowledgement    2 / 2
+UI                            123123123 / 123123124 / level 32
+```
+
+This is the durable no-replay proof: both the app and backend were restarted,
+and the acknowledged operator revision was not re-applied.
+
+### Backend implementation
+
+Key source behavior:
+
+- `answerProgressStatus` selects the two revision phases without weakening
+  maintenance or ordinary profile routing.
+- `answerLastCommand` always supplies safe non-null empty strings and arms only
+  the authenticated device's pending revision.
+- `answerSyncFull` returns authoritative `slots` through the correlated response
+  and marks only the exact current revision as served.
+- the old unsolicited `sync_full` push and its queue hook are gone.
+- `answerReplaceProgress` compares raw slot 3/4 values before server repair.
+- a mismatching staged upload clears the transient phase and returns the next
+  boot to state 9; repaired server values can never count as client proof.
+- `answerPlayerSuccessInit` stages after the download boot and persists the
+  acknowledgement only after both delivery and raw-echo evidence.
+- final acknowledgements remain per device and operator revision.
+
+Removed/rejected identifiers:
+
+```text
+pushPendingProgressRevision
+progressSyncPushed
+markProgressSyncPushed
+confirmPushedProgressEcho
+progressCursorDeviceID
+progressRevisionCursor
+```
+
+Final evidence fields:
+
+```text
+progress_revision
+progress_sync_served
+progress_revision_delivery_staged
+progress_revision_echoed
+progress_revision_confirmable
+progress_revision_delivery_reset
+progress_revision_applied
+```
+
+### Automated validation
+
+The final source passes:
+
+```bash
+go test ./...
+go test -race ./internal/api -count=1
+go vet ./...
+go build ./...
+git diff --check
+```
+
+The revision tests cover:
+
+- first-phase code 1 and safe empty cursor;
+- correlated authoritative `sync_full`;
+- Login staging without premature acknowledgement;
+- second-phase code 2 even when the broad mode is disabled;
+- exact raw echo followed by per-device acknowledgement;
+- mismatch reset back to state 9;
+- stale-session/newer-revision rejection;
+- no acknowledgement from raw values without prior delivery;
+- core authority against non-blank client rewrites;
+- no re-arming after acknowledgement.
+
+### Reproducibility artifacts
+
+Final backend candidate:
+
+```text
+path      bin/opg3d-backend
+SHA-256   d5ae17d3e52df2f18ebda32e8ca34c5137b552a2d44c8df38e101f6c889a5bda
+runtime   direct process, :8080, no OPG3D_PROGRESS_SYNCHRONIZE_MODE override
+```
+
+Passive frontend tracer used only for observation:
+
+```text
+installed SHA-256  194a5f274d626111ace6dea12d9396cb67cd56ada797d320928a94cdbb2926d5
+stock backup       /tmp/libopg3d.run49.nodiag.so
+stock SHA-256      e56c2b357461a8b106bcadbe9d26dfc719e20e152d5cb61527fb58d431fd2703
+```
+
+Immutable capture checksums:
+
+```text
+run63 frontend log  89b1d24c7a7ee4235e77820f6e00a6954a5dd6a9ed2e8e1d02ea8d7037f41660
+run63 screenshot    59c37c4351e6781aa3d954f0b4139a8bbd52e60d7705767791f96ba8c36dcdf5
+run64 frontend log  13ced8d0d6f4fdcffaf04c6239441e0f8dd6b2ecd9a8f27dfc60b8a74cec9415
+run64 screenshot    bb6c54d3d1993065009fb917d77f0cf62d2f420eaee5d67c6f060fc26d40eaa1
+run65 frontend log  3f66c241c5dfe13a82a47948a5d19606dc991b047b201c350eb1148b142ebde4
+run65 screenshot    e1e72a4ef6927521bae277b75ecac5d68261fff29139839fa80c649cd90bac91
+run66 frontend log  5eb089691acfb136bd790cc646dd776079463ce57823fede3cd198d92407d073
+run66 screenshot    3f4dcebb4e9b5d9774a79811d5cd3fa23c693af8144502b8def912d3992b285c
+```
+
+`TASK_PLAN.md` remains an untouched historical document. Runtime state, logs,
+binaries, `.env`, bundles and screenshots must not enter the commit.
+
+### Deferred after progress completion
+
+These remain separate work and must not be mixed into the proven progress fix:
+
+- [ ] decide general `update_progress` command ownership/merging;
+- [ ] initialize `Boosters` with measured valid content;
+- [ ] classify the old reconnect-only `ws_write_failed` line;
+- [ ] determine whether the 30-second `get_inapps` cadence is normal polling;
+- [ ] replace remaining placeholder/thin handlers only from measured 23.1.3 or
+      read-only PGWSD 23.3.2 contracts;
+- [ ] continue using PGWSD as read-only reference; never run `TestScript55.py`;
+- [ ] never inspect or modify PG-1200.

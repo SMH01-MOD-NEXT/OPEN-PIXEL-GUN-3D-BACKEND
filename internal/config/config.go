@@ -172,23 +172,24 @@ type Config struct {
 	// globally inlining unrelated documents caused their parsers to consume
 	// unverified JSON and must not be a production dependency.
 	ConfigPushInline bool
-	// ProgressSynchronizeMode escalates the progress_status "enabled" answer
-	// from the open code 1 to the synchronization code 2 whenever this server
-	// already holds progress for the account.
+	// ProgressSynchronizeMode selects progress_status code 2 for an ordinary
+	// stored profile that has no unacknowledged operator revision. Code 2 starts
+	// the stock state-13 upload path; code 1 starts state 8 and then the
+	// correlated state-9 download once get_last_command supplies a non-null
+	// empty local cursor.
 	//
-	// Code 2 sets the static byte the outer auth iterator reads at 0x3DC78D4,
-	// which starts the stock SynchronizeProgress continuation. The 2026-09-01
-	// device run measured what that continuation does with a full answer: it
-	// asks get_progress_slots, receives the 87 stored slot ids, and then uploads
-	// its own local snapshot through replace_progress 62 ms later, which
-	// overwrites the operator edit with the client's blank values. The same run
-	// recorded init_progress never being emitted, so the progress document this
-	// server owns had no delivery channel on that path.
+	// Pending operator revisions deliberately override this broad setting. The
+	// first boot always uses code 1 to download authoritative slots. Reaching
+	// Login stages a second boot, which always uses code 2 so replace_progress
+	// can echo the raw slots. Only an exact echo is acknowledged. A mismatching
+	// upload returns the device to code 1 on its next boot. Thus switching this
+	// flag off changes ordinary stored-profile behavior, but cannot strand a
+	// revision between its measured download and proof phases.
 	//
-	// Off answers the open code 1 instead, which is the path runs 95 to 97
-	// measured emitting init_progress. On by default because the synchronize
-	// code is what those earlier runs settled on; the flag exists so the two
-	// paths can be compared on a device without editing code.
+	// Run 60 measured code 2 uploading the old local snapshot. Run 62 measured
+	// code 1 reaching state 9, applying 87 server slots, and entering the lobby
+	// with the edited currencies. Server authority protects the four editable
+	// counters throughout both paths. On by default for ordinary compatibility.
 	ProgressSynchronizeMode bool
 	// ProgressBlankUploadGuard keeps a blank client snapshot from erasing the
 	// four core counters this server already holds for an account.

@@ -19,15 +19,26 @@ func (s *Server) answerPlayerSuccessInit(session *sioSession, head sioHead, reqI
 		"player_id": playerID,
 		"req_id":    reqID,
 	}
-	if revision, syncServed := session.pendingProgressState(); revision != 0 && syncServed {
+	if revision, syncServed, echoed := session.progressRevisionEvidence(); revision != 0 {
 		_, device, _ := session.identity()
-		applied, err := s.st.AcknowledgeProfileProgressRevision(playerID, device, revision)
 		fields["progress_revision"] = revision
-		fields["progress_revision_applied"] = applied
-		if err != nil {
-			fields["progress_revision_error"] = err.Error()
-		} else if applied {
-			session.clearPendingProgressRevision(revision)
+		fields["progress_sync_served"] = syncServed
+		fields["progress_revision_echoed"] = echoed
+		switch {
+		case syncServed && echoed && session.progressRevisionConfirmed(revision):
+			applied, err := s.st.AcknowledgeProfileProgressRevision(playerID, device, revision)
+			fields["progress_revision_applied"] = applied
+			if err != nil {
+				fields["progress_revision_error"] = err.Error()
+			} else if applied {
+				s.clearProgressRevisionDelivery(playerID, device, revision)
+				session.clearPendingProgressRevision(revision)
+			}
+		case syncServed:
+			// Stock state 9 applies the slots before it can reach Login, but it
+			// does not upload them. Stage a second ordinary boot so state 13 can
+			// provide the raw replace_progress proof.
+			fields["progress_revision_delivery_staged"] = s.stageProgressRevisionDelivery(playerID, device, revision)
 		}
 	}
 	s.log.Event("socket.player_success_init", fields)

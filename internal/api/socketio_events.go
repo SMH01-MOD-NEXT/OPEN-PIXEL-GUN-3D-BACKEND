@@ -35,7 +35,6 @@ package api
 
 import (
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
@@ -121,6 +120,7 @@ func (s *sioSession) setPendingProgressRevision(revision uint64) {
 	s.mu.Lock()
 	s.pendingProgressRevision = revision
 	s.progressSyncServed = false
+	s.progressRevisionEchoed = false
 	s.mu.Unlock()
 }
 
@@ -128,6 +128,12 @@ func (s *sioSession) pendingProgressState() (revision uint64, syncServed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pendingProgressRevision, s.progressSyncServed
+}
+
+func (s *sioSession) progressRevisionEvidence() (revision uint64, syncServed, echoed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingProgressRevision, s.progressSyncServed, s.progressRevisionEchoed
 }
 
 func (s *sioSession) markProgressSyncServed(revision uint64) bool {
@@ -140,11 +146,45 @@ func (s *sioSession) markProgressSyncServed(revision uint64) bool {
 	return true
 }
 
+func (s *sioSession) resetProgressRevisionEvidence(revision uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if revision == 0 || s.pendingProgressRevision != revision {
+		return false
+	}
+	s.progressSyncServed = false
+	s.progressRevisionEchoed = false
+	return true
+}
+
+// confirmProgressRevisionEcho records the second half of delivery proof only
+// after a correlated sync_full returned this exact revision in the current boot
+// or in the process-local staged boot immediately before it. The comparison is
+// performed on the raw replace_progress upload before server authority repairs
+// either core slot.
+func (s *sioSession) confirmProgressRevisionEcho(revision uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if revision == 0 || s.pendingProgressRevision != revision || !s.progressSyncServed {
+		return false
+	}
+	s.progressRevisionEchoed = true
+	return true
+}
+
+func (s *sioSession) progressRevisionConfirmed(revision uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return revision != 0 && s.pendingProgressRevision == revision &&
+		s.progressSyncServed && s.progressRevisionEchoed
+}
+
 func (s *sioSession) clearPendingProgressRevision(revision uint64) {
 	s.mu.Lock()
 	if revision == 0 || s.pendingProgressRevision == revision {
 		s.pendingProgressRevision = 0
 		s.progressSyncServed = false
+		s.progressRevisionEchoed = false
 	}
 	s.mu.Unlock()
 }
@@ -578,8 +618,20 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 
 	profile, ok := s.sessionProfile(session)
 	status := s.progressStatusCode()
-	if status == sioProgressOpen && ok && s.cfg.ProgressSynchronizeMode && profileNeedsSynchronization(profile) {
-		status = sioProgressSynchronize
+	if status == sioProgressOpen && ok {
+		_, device, playerID := session.identity()
+		revision, operatorRevisionPending := profile.PendingProgressRevision(device)
+		switch {
+		case operatorRevisionPending && s.progressRevisionWasDelivered(playerID, device, revision):
+			// The previous stock state-9 boot reached Login. Use the ordinary
+			// state-13 upload now so replace_progress can echo the raw slots.
+			status = sioProgressSynchronize
+		case operatorRevisionPending:
+			// The first phase needs state 8 -> state 9, which is code 1.
+			status = sioProgressOpen
+		case s.cfg.ProgressSynchronizeMode && profileNeedsSynchronization(profile):
+			status = sioProgressSynchronize
+		}
 	}
 	body[sioProgressEnabledKey] = status
 	if !ok {
@@ -616,21 +668,19 @@ func (s *Server) answerPlayerPrefs(session *sioSession, head sioHead, reqID int)
 	return body
 }
 
-const progressCursorDeviceID = "backend"
-
-func progressRevisionCursor(playerID string, revision uint64) string {
-	return "srv-" + playerID + "-" + strconv.FormatUint(revision, 36)
-}
-
-// answerLastCommand advertises an operator-edited profile as a stock progress
-// revision. The live 23.1.3 client treats index as a synchronization cursor and
-// asks get_progress when it differs from the local cursor. device_id names an
-// external origin so the client offers the server copy instead of mistaking the
-// change for its own upload.
+// answerLastCommand supplies the two strings the stock 23.1.3 handler actually
+// reads. The state-8 wait at 0x3DC7584 tests whether the parsed index object is
+// non-null, so omitting the key stalls forever even though an empty string is a
+// valid local cursor. Both values stay empty: a non-empty mismatching device_id
+// is the external-profile route that opens ChooseProgress (state 7). With this
+// safe local shape, state 8 can finish and its stock callback starts the
+// correlated state-9 sync_full request.
 func (s *Server) answerLastCommand(session *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["command"] = ""
 	body["command_id"] = 0
+	body["index"] = ""
+	body["device_id"] = ""
 
 	_, device, playerID := session.identity()
 	if playerID == "" {
@@ -647,17 +697,23 @@ func (s *Server) answerLastCommand(session *sioSession, head sioHead, reqID int)
 		return body
 	}
 
-	cursor := progressRevisionCursor(playerID, revision)
 	session.setPendingProgressRevision(revision)
-	delete(body, "error")
-	delete(body, "result")
-	delete(body, "command")
-	delete(body, "command_id")
-	body["index"] = cursor
-	body["device_id"] = progressCursorDeviceID
-	s.log.Event("socket.progress_revision_served", map[string]any{
+	deliveryStaged := s.progressRevisionWasDelivered(playerID, device, revision)
+	if deliveryStaged {
+		session.markProgressSyncServed(revision)
+	}
+	route := "state9_download"
+	deliveryEvent := sioSyncFullEvent
+	if deliveryStaged {
+		route = "state13_raw_echo"
+		deliveryEvent = sioReplaceProgressEvent
+	}
+	s.log.Event("socket.progress_revision_armed", map[string]any{
 		"sid": session.sid, "player_id": playerID, "req_id": reqID,
-		"revision": revision, "index": cursor, "device_id": progressCursorDeviceID,
+		"revision": revision, "delivery_event": deliveryEvent,
+		"index": "", "device_id": "", "route": route,
+		"delivery_staged": deliveryStaged,
+		"note":            "used a non-null empty local cursor without advertising a foreign device or ChooseProgress",
 	})
 	return body
 }
