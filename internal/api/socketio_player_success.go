@@ -5,6 +5,9 @@ package api
 // answerPlayerSuccessInit acknowledges the stock post-login event with the
 // three integers its 23.1.3 subscriber reads. Run 174 reached 100% with zeros;
 // spelling them explicitly removes the generic-fallback dependency.
+// Stock state 9 applies sync_full before Login; this correlated success is the
+// durable application boundary. Requiring a second boot/raw echo kept an admin
+// counter override alive throughout the first playable session.
 func (s *Server) answerPlayerSuccessInit(session *sioSession, head sioHead, reqID int) map[string]any {
 	_, _, playerID := session.identity()
 	if playerID == "" {
@@ -25,20 +28,15 @@ func (s *Server) answerPlayerSuccessInit(session *sioSession, head sioHead, reqI
 		fields["progress_sync_served"] = syncServed
 		fields["progress_revision_echoed"] = echoed
 		switch {
-		case syncServed && echoed && session.progressRevisionConfirmed(revision):
+		case syncServed:
 			applied, err := s.st.AcknowledgeProfileProgressRevision(playerID, device, revision)
 			fields["progress_revision_applied"] = applied
 			if err != nil {
 				fields["progress_revision_error"] = err.Error()
+				body["error"], body["err_code"], body["result"] = 1, 1, "progress_store_failed"
 			} else if applied {
-				s.clearProgressRevisionDelivery(playerID, device, revision)
 				session.clearPendingProgressRevision(revision)
 			}
-		case syncServed:
-			// Stock state 9 applies the slots before it can reach Login, but it
-			// does not upload them. Stage a second ordinary boot so state 13 can
-			// provide the raw replace_progress proof.
-			fields["progress_revision_delivery_staged"] = s.stageProgressRevisionDelivery(playerID, device, revision)
 		}
 	}
 	s.log.Event("socket.player_success_init", fields)

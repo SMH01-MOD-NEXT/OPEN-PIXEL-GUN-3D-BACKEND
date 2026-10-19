@@ -48,7 +48,7 @@ func (s *Server) persistSocketClientState(session *sioSession, reqID int, event 
 		body["err_code"] = sioErrNotAuthorized
 		return body
 	}
-	if _, err := s.st.MergeProfileClientState(playerID, values); err != nil {
+	if _, err := s.st.MergeProfileClientState(playerID, values, session.progressWriteContext()); err != nil {
 		s.log.Event("socket.state_store_failed", map[string]any{
 			"event": event, "player_id": playerID, "req_id": reqID, "err": err.Error(),
 		})
@@ -75,19 +75,7 @@ func socketEventFields(head sioHead) map[string]any {
 
 func (s *Server) answerUpdatePlayer(session *sioSession, head sioHead, reqID int) map[string]any {
 	values := socketEventFields(head)
-	response := s.persistSocketClientState(session, reqID, "update_player", values)
-	if response["error"] != sioErrNone {
-		return response
-	}
-	if nick, ok := values["nick"].(string); ok && strings.TrimSpace(nick) != "" {
-		playerID, _ := s.socketPlayerID(session)
-		if err := s.st.SetNick(playerID, nick); err != nil {
-			s.log.Event("socket.nick_store_failed", map[string]any{
-				"player_id": playerID, "req_id": reqID, "err": err.Error(),
-			})
-		}
-	}
-	return response
+	return s.persistSocketClientState(session, reqID, "update_player", values)
 }
 
 func (s *Server) answerUpdateAccessories(session *sioSession, head sioHead, reqID int) map[string]any {

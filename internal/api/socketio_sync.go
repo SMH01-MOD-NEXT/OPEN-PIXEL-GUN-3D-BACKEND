@@ -48,7 +48,8 @@ func (s *Server) answerSyncFull(session *sioSession, head sioHead, reqID int) ma
 
 	body[sioSlotsKey] = profile.ProgressSlots
 	pendingRevision, _ := session.pendingProgressState()
-	revisionServed := pendingRevision != 0 && pendingRevision == profile.ProgressRevision && session.markProgressSyncServed(pendingRevision)
+	revisionServed := pendingRevision != 0 && pendingRevision == profile.ProgressRevision &&
+		session.progressWriteContext().Revision == profile.ProgressRevision && session.markProgressSyncServed(pendingRevision)
 	s.log.Event("socket.progress_sync_server_slots", map[string]any{
 		"sid":              session.sid,
 		"player_id":        playerID,
@@ -58,7 +59,7 @@ func (s *Server) answerSyncFull(session *sioSession, head sioHead, reqID int) ma
 		"pending_revision": pendingRevision,
 		"revision_served":  revisionServed,
 		"prop":             head.text("prop"),
-		"note":             "returned authoritative slots through correlated sync_full; raw client echo is still required",
+		"note":             "returned authoritative slots through correlated sync_full; Login will durably acknowledge this exact revision",
 	})
 	return body
 }

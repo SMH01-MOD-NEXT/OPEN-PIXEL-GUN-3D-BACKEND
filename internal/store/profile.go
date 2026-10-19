@@ -70,15 +70,18 @@ type Profile struct {
 	ProgressSlots map[string]any `json:"progress_slots,omitempty"`
 
 	// ProgressRevision is advanced by an operator edit that changes the core
-	// profile. Revision zero means the client still owns these counters. A
-	// non-zero revision makes the edited counters server-authoritative until a
-	// later operator edit advances it again.
+	// profile. A revision fences stale sessions during an admin replacement;
+	// once a device has applied it, gameplay owns subsequent counter changes.
 	ProgressRevision uint64 `json:"progress_revision,omitempty"`
 
 	// AppliedProgressRevisions records which authenticated devices completed
 	// the stock server-profile application flow for the current revision. Keys
 	// are fixed-size hashes of device fingerprints rather than raw identifiers.
 	AppliedProgressRevisions map[string]uint64 `json:"applied_progress_revisions,omitempty"`
+
+	// ProgressCommandReceipts prevents acknowledged counter commands from being
+	// charged twice after a reconnect or server restart. Reset on admin edit.
+	ProgressCommandReceipts map[string]bool `json:"progress_command_receipts,omitempty"`
 
 	// ClientState contains the remaining structured state reported through
 	// update_player, update_loadout, update_accessories and similar events. It
@@ -112,6 +115,12 @@ func (p *Profile) clone() Profile {
 		out.AppliedProgressRevisions = make(map[string]uint64, len(p.AppliedProgressRevisions))
 		for device, revision := range p.AppliedProgressRevisions {
 			out.AppliedProgressRevisions[device] = revision
+		}
+	}
+	if p.ProgressCommandReceipts != nil {
+		out.ProgressCommandReceipts = make(map[string]bool, len(p.ProgressCommandReceipts))
+		for key, value := range p.ProgressCommandReceipts {
+			out.ProgressCommandReceipts[key] = value
 		}
 	}
 	out.ClientState = cloneAnyMap(p.ClientState)
@@ -175,6 +184,7 @@ func nextProgressRevision(current uint64) uint64 {
 func advanceProfileProgressRevision(profile *Profile) {
 	profile.ProgressRevision = nextProgressRevision(profile.ProgressRevision)
 	profile.AppliedProgressRevisions = nil
+	profile.ProgressCommandReceipts = nil
 }
 
 // PendingProgressRevision reports the operator revision this device still has
@@ -412,7 +422,7 @@ func (s *Store) ensureProfileLocked(playerID, nick string) (*Profile, error) {
 // Merging rather than replacing is deliberate: the client sends the keys it
 // currently cares about, not the full set, so a replace would delete state on
 // every partial sync. Deleting a key is an explicit admin action.
-func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string) (Profile, error) {
+func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string, context ...ProgressWriteContext) (Profile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
@@ -420,6 +430,12 @@ func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string) (Pro
 	if !ok {
 		return Profile{}, ErrNotFound
 	}
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+	before := profile.clone()
 	if profile.Prefs == nil {
 		profile.Prefs = make(map[string]string, len(prefs))
 	}
@@ -428,6 +444,7 @@ func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string) (Pro
 	}
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -444,7 +461,7 @@ func isCoreProgressKey(key string) bool {
 
 // MergeProfileProgress folds a progress payload into the stored profile, for
 // the same reason MergeProfilePrefs merges.
-func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (Profile, error) {
+func (s *Store) MergeProfileProgress(playerID string, progress map[string]any, context ...ProgressWriteContext) (Profile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
@@ -452,20 +469,29 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (
 	if !ok {
 		return Profile{}, ErrNotFound
 	}
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+	before := profile.clone()
+
 	if profile.Progress == nil {
 		profile.Progress = make(map[string]any, len(progress))
 	}
 	for key, value := range progress {
-		if profile.ProgressRevision != 0 && isCoreProgressKey(key) {
+		if profile.ProgressRevision != 0 && len(context) == 0 && isCoreProgressKey(key) {
 			continue
 		}
 		profile.Progress[key] = cloneAny(value)
 	}
-	if profile.ProgressRevision == 0 {
+	if profile.ProgressRevision == 0 || len(context) != 0 {
 		projectProfileCounters(profile, progress, false)
 	}
+	reconcileProfileCounters(profile)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -480,7 +506,7 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any) (
 // whole, because a slot's members are the client's own encoding of that one
 // slot, and half merging two versions of it would produce a state neither side
 // ever held.
-func (s *Store) MergeProfileProgressDocument(playerID string, document map[string]any) (Profile, error) {
+func (s *Store) MergeProfileProgressDocument(playerID string, document map[string]any, context ...ProgressWriteContext) (Profile, error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
@@ -492,7 +518,14 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 	if err != nil {
 		return Profile{}, err
 	}
-	if profile.ProgressRevision != 0 {
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+	before := profile.clone()
+
+	if profile.ProgressRevision != 0 && len(context) == 0 {
 		document = cloneAnyMap(document)
 		level, experience, coins, gems := profile.Counters()
 		syncCoreSlotDocument(document, level, experience, coins, gems)
@@ -503,11 +536,13 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 	for key, value := range document {
 		profile.ProgressDocument[key] = cloneAny(value)
 	}
-	if profile.ProgressRevision == 0 {
+	if profile.ProgressRevision == 0 || len(context) != 0 {
 		projectProgressDocumentCounters(profile, document)
 	}
+	reconcileProfileCounters(profile)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -521,7 +556,7 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 // as it was. That is the rule the boot document already follows, for the same
 // reason: the client owns the slot set, and half merging two versions of one
 // slot would produce a state neither side ever held.
-func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any) (Profile, error) {
+func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (Profile, error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
@@ -533,7 +568,14 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 	if err != nil {
 		return Profile{}, err
 	}
-	if profile.ProgressRevision != 0 {
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+	before := profile.clone()
+
+	if profile.ProgressRevision != 0 && len(context) == 0 {
 		slots = cloneAnyMap(slots)
 		level, experience, coins, gems := profile.Counters()
 		syncCoreSlotDocument(slots, level, experience, coins, gems)
@@ -544,8 +586,13 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 	for key, value := range slots {
 		profile.ProgressSlots[key] = cloneAny(value)
 	}
+	if len(context) != 0 || profile.ProgressRevision == 0 {
+		projectReplacementSlotState(profile, slots)
+	}
+	reconcileProfileCounters(profile)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -555,7 +602,7 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any)
 // sent by replace_progress. Unlike create_slots, that event is a snapshot: a
 // slot omitted by the client is no longer part of the profile. Callers must
 // validate and unwrap every wire {d,h} record before invoking this method.
-func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]any) (Profile, error) {
+func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (Profile, error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
@@ -572,6 +619,15 @@ func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]an
 		}
 		now := time.Now().UTC()
 		profile = &Profile{PlayerID: playerID, CreatedAt: now, UpdatedAt: now}
+	}
+
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+
+	if !existed {
 		s.state.Profiles[playerID] = profile
 	}
 
@@ -582,13 +638,14 @@ func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]an
 		accountNick = account.Nick
 	}
 
-	if profile.ProgressRevision != 0 {
+	if profile.ProgressRevision != 0 && len(context) == 0 {
 		slots = cloneAnyMap(slots)
 		level, experience, coins, gems := profile.Counters()
 		syncCoreSlotDocument(slots, level, experience, coins, gems)
 	}
 	profile.ProgressSlots = cloneAnyMap(slots)
 	projectReplacementSlotState(profile, slots)
+	reconcileProfileCounters(profile)
 	if account != nil && profile.Nick != "" {
 		account.Nick = profile.Nick
 	}
@@ -639,7 +696,7 @@ func projectReplacementSlotState(profile *Profile, slots map[string]any) {
 // MergeProfileClientState preserves structured fields that do not belong to
 // one of the progress documents. As with progress, a partial client update is
 // merged and unknown members survive unchanged.
-func (s *Store) MergeProfileClientState(playerID string, values map[string]any) (Profile, error) {
+func (s *Store) MergeProfileClientState(playerID string, values map[string]any, context ...ProgressWriteContext) (Profile, error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
@@ -651,23 +708,43 @@ func (s *Store) MergeProfileClientState(playerID string, values map[string]any) 
 	if err != nil {
 		return Profile{}, err
 	}
+	if allowed, err := allowProfileClientWrite(profile, context); err != nil {
+		return Profile{}, err
+	} else if !allowed {
+		return profile.clone(), nil
+	}
+	before := profile.clone()
+	account := s.state.Accounts[playerID]
+	accountNick := ""
+	if account != nil {
+		accountNick = account.Nick
+	}
+
 	if profile.ClientState == nil {
 		profile.ClientState = make(map[string]any, len(values))
 	}
 	for key, value := range values {
-		if profile.ProgressRevision != 0 && isCoreProgressKey(key) {
+		if profile.ProgressRevision != 0 && len(context) == 0 && isCoreProgressKey(key) {
 			continue
 		}
 		profile.ClientState[key] = cloneAny(value)
 	}
 	if nick, ok := values["nick"].(string); ok && strings.TrimSpace(nick) != "" {
 		profile.Nick = strings.TrimSpace(nick)
+		if account != nil {
+			account.Nick = profile.Nick
+		}
 	}
-	if profile.ProgressRevision == 0 {
+	if profile.ProgressRevision == 0 || len(context) != 0 {
 		projectProfileCounters(profile, values, false)
 	}
+	reconcileProfileCounters(profile)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
+		if account != nil {
+			account.Nick = accountNick
+		}
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -686,6 +763,7 @@ func (s *Store) ReplaceProfileRawState(playerID string, prefs map[string]string,
 	if !ok {
 		return Profile{}, ErrNotFound
 	}
+	before := profile.clone()
 	profile.Prefs = make(map[string]string, len(prefs))
 	for key, value := range prefs {
 		profile.Prefs[key] = value
@@ -704,9 +782,16 @@ func (s *Store) ReplaceProfileRawState(playerID string, prefs map[string]string,
 	projectProfileCounters(profile, profile.Progress, false)
 	projectProgressDocumentCounters(profile, profile.ProgressDocument)
 	projectProfileCounters(profile, profile.ClientState, false)
+	projectReplacementSlotState(profile, profile.ProgressSlots)
+	if _, core := profile.ProgressSlots["3"]; core {
+		reconcileProfileCounters(profile)
+	} else if _, core := profile.ProgressSlots["4"]; core {
+		reconcileProfileCounters(profile)
+	}
 	advanceProfileProgressRevision(profile)
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
 		return Profile{}, err
 	}
 	return profile.clone(), nil
@@ -807,11 +892,24 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 	if !ok {
 		return Profile{}, ErrNotFound
 	}
+	before := profile.clone()
+	account := s.state.Accounts[playerID]
+	accountNick := ""
+	if account != nil {
+		accountNick = account.Nick
+	}
 	beforeLevel, beforeExperience, beforeCoins, beforeGems := profile.Counters()
-	advanceRevision := profile.ProgressRevision == 0 || beforeLevel != level || beforeExperience != experience || beforeCoins != coins || beforeGems != gems
+	nick = strings.TrimSpace(nick)
+	nickChanged := nick != "" && profile.Nick != nick
+	advanceRevision := nickChanged || profile.ProgressRevision == 0 || beforeLevel != level || beforeExperience != experience || beforeCoins != coins || beforeGems != gems
 
 	if nick = strings.TrimSpace(nick); nick != "" {
 		profile.Nick = nick
+		for _, document := range []map[string]any{profile.ProgressSlots, profile.ProgressDocument} {
+			if slot, ok := document["1"].(map[string]any); ok {
+				slot["n"] = nick
+			}
+		}
 		if account := s.state.Accounts[playerID]; account != nil {
 			account.Nick = nick
 		}
@@ -828,11 +926,16 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 	profile.Progress["coins"] = coins
 	profile.Progress["gems"] = gems
 	syncClientFacingSlots(profile, level, experience, coins, gems)
+	reconcileProfileCounters(profile)
 	if advanceRevision {
 		advanceProfileProgressRevision(profile)
 	}
 	profile.UpdatedAt = time.Now().UTC()
 	if err := s.persistLocked(); err != nil {
+		*profile = before
+		if account != nil {
+			account.Nick = accountNick
+		}
 		return Profile{}, err
 	}
 	return profile.clone(), nil

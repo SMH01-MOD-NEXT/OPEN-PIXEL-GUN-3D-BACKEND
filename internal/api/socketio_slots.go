@@ -131,16 +131,15 @@ func (s *Server) answerCreateSlots(session *sioSession, head sioHead, reqID int)
 
 	stored := 0
 	if len(uploaded) > 0 {
-		profile, err := s.st.MergeProfileProgressSlots(playerID, uploaded)
+		profile, err := s.st.MergeProfileProgressSlots(playerID, uploaded, session.progressWriteContext())
 		if err != nil {
-			// The client is waiting on an acknowledgement, not on this
-			// server's bookkeeping, so a failed write is recorded and the
-			// reply still goes out.
+			// Do not report a successful durable upload after a failed write.
 			s.log.Event("socket.profile_unsaved", map[string]any{
 				"player_id": playerID,
 				"part":      "progress_slots",
 				"err":       err.Error(),
 			})
+			return socketStateFailure(reqID, "store_failed")
 		} else {
 			stored = len(profile.ProgressSlots)
 		}

@@ -5321,3 +5321,12 @@ WebSocket endpoints cannot share this backend's required port.
 - [ ] Recover exact target-version lifetimes, mode list, migration data and veteran reward weights; historical sources do not establish these.
 - [/] Map confirmed data to client item IDs and ConfigId 167/157 schemas. Booster indices and currency/selected parts indices verified; full veteran item mapping and eligibility filters remain open.
 - [ ] Implement verified configs and real reward persistence; validate on ADB device and run tests/build before commit.
+
+## Admin edits and gameplay reconciliation (current)
+- [x] Trace permanent counter override and targeted online/offline resynchronization.
+- [x] Accept post-sync gameplay snapshots without replaying old admin counters; keep all counter representations coherent.
+- [x] Protect pending admin revisions from stale uploads and preserve per-player isolation.
+- [x] Add persistence, stale-session, gameplay and targeted-relogin regression tests.
+- [x] Run tests/race/build, deploy with fresh private backup, and verify the real device without clearing data.
+- [x] Document contracts, observed device verification and compatibility limitations.
+- [x] Commit isolated backend/frontend changes, preserving unrelated work.

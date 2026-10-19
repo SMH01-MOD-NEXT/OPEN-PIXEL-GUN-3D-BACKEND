@@ -83,7 +83,9 @@ func (s *Server) answerReplaceProgress(session *sioSession, head sioHead, reqID 
 	pendingRevision, _ := session.pendingProgressState()
 	revisionEchoed := pendingRevision != 0 && hasStored &&
 		stored.ProgressRevision == pendingRevision && replacementEchoesAuthoritativeCore(slots, stored)
-	if hasStored && stored.ProgressRevision != 0 {
+	_, device, _ := session.identity()
+	_, revisionPending := stored.PendingProgressRevision(device)
+	if hasStored && revisionPending {
 		level, experience, coins, gems := stored.Counters()
 		authoritative = enforceAuthoritativeCoreSlots(slots, level, experience, coins, gems)
 	} else if s.cfg.ProgressBlankUploadGuard && hasStored {
@@ -91,7 +93,7 @@ func (s *Server) answerReplaceProgress(session *sioSession, head sioHead, reqID 
 		repaired = repairBlankCoreSlots(slots, level, experience, coins, gems)
 	}
 
-	profile, err := s.st.ReplaceProfileProgressSlots(playerID, slots)
+	profile, err := s.st.ReplaceProfileProgressSlots(playerID, slots, session.progressWriteContext())
 	if err != nil {
 		body := sioOK(reqID)
 		body["error"] = 1
@@ -102,35 +104,22 @@ func (s *Server) answerReplaceProgress(session *sioSession, head sioHead, reqID 
 		return body
 	}
 
-	_, device, _ := session.identity()
-	deliveryStaged := s.progressRevisionWasDelivered(playerID, device, pendingRevision)
-	deliveryReset := false
 	confirmedRevision := uint64(0)
 	if revisionEchoed && session.confirmProgressRevisionEcho(pendingRevision) {
 		confirmedRevision = pendingRevision
-	} else if pendingRevision != 0 && deliveryStaged {
-		// The state-13 upload is the proof phase. If its raw counters do not
-		// match, return to state 9 on the next boot rather than acknowledging
-		// server-repaired values as if the device had supplied them.
-		deliveryReset = s.clearProgressRevisionDelivery(playerID, device, pendingRevision)
-		if deliveryReset {
-			session.resetProgressRevisionEvidence(pendingRevision)
-		}
 	}
 
 	s.log.Event("socket.progress_replaced", map[string]any{
 		"sid": session.sid, "player_id": playerID, "req_id": reqID,
 		"index": head.text(sioReplaceProgressIndexKey), "received": len(slots), "stored": len(profile.ProgressSlots),
 		"level": profile.Level, "experience": profile.Experience, "coins": profile.Coins, "gems": profile.Gems,
-		"repaired_slots":                    repaired,
-		"authoritative_slots":               authoritative,
-		"progress_revision":                 profile.ProgressRevision,
-		"pending_progress_revision":         pendingRevision,
-		"progress_revision_echoed":          revisionEchoed,
-		"progress_revision_confirmable":     confirmedRevision,
-		"progress_revision_delivery_staged": deliveryStaged,
-		"progress_revision_delivery_reset":  deliveryReset,
-		"note":                              "installed the full unwrapped slot snapshot",
+		"repaired_slots":                repaired,
+		"authoritative_slots":           authoritative,
+		"progress_revision":             profile.ProgressRevision,
+		"pending_progress_revision":     pendingRevision,
+		"progress_revision_echoed":      revisionEchoed,
+		"progress_revision_confirmable": confirmedRevision,
+		"note":                          "installed the full unwrapped slot snapshot",
 	})
 	return sioOK(reqID)
 }

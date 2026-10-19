@@ -288,6 +288,25 @@ func (c *wsConn) writeFrame(opcode byte, payload []byte) error {
 	return c.brw.Flush()
 }
 
+// abortForRelogin releases the TCP connection without an Engine.IO packet or
+// a graceful WebSocket close frame. BestHTTP treats a graceful application
+// close as final; a transport failure is the path that activates its normal
+// reconnect and auth_v2 flow.
+func (c *wsConn) abortForRelogin() bool {
+	c.writeMu.Lock()
+	if c.closed {
+		c.writeMu.Unlock()
+		return false
+	}
+	c.closed = true
+	conn := c.conn
+	c.writeMu.Unlock()
+
+	_ = conn.SetDeadline(time.Now())
+	_ = conn.Close()
+	return true
+}
+
 // Close sends a close frame, best effort, and releases the socket.
 func (c *wsConn) Close() error {
 	c.writeMu.Lock()

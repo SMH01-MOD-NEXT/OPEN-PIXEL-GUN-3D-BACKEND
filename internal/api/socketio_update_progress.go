@@ -74,14 +74,56 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 		return body
 	}
 
+	commands := progressCounterCommands(head)
+	applied := 0
+	if len(commands) != 0 {
+		var err error
+		applied, err = s.st.ApplyProfileCounterCommands(playerID, session.progressWriteContext(), commands)
+		if err != nil {
+			body[sioUpdateProgressErrCodeKey] = 1
+			body["error"] = 1
+			body["result"] = "progress_store_failed"
+			s.log.Event("socket.progress_update_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": err.Error()})
+			return body
+		}
+	}
 	body[sioUpdateProgressErrCodeKey] = sioErrNone
 	s.log.Event("socket.progress_update_acknowledged", map[string]any{
-		"sid":        session.sid,
-		"player_id":  playerID,
-		"req_id":     reqID,
-		"command_id": commandID,
-		"child_id":   childID,
-		"note":       "echoed i and the optional single ci so the stock progress manager can retire its pending command",
+		"sid":                      session.sid,
+		"player_id":                playerID,
+		"req_id":                   reqID,
+		"command_id":               commandID,
+		"child_id":                 childID,
+		"applied_counter_commands": applied,
+		"note":                     "persisted measured counter commands before acknowledging i/ci",
 	})
 	return body
+}
+
+// Only the four measured core schemas are forwarded. Analytics and inventory
+// retain their existing snapshot path; unknown schemas are never interpreted
+// as money or experience.
+func progressCounterCommands(head sioHead) []any {
+	var source []any
+	if payload, ok := head["p"].(map[string]any); ok {
+		source, _ = payload["c"].([]any)
+	}
+	if source == nil {
+		source = []any{map[string]any(head)}
+	}
+	var result []any
+	for _, raw := range source {
+		command, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, ok := slotCounter(command["id"])
+		if !ok {
+			continue
+		}
+		if id == 10 || id == 66 || id == 64 || id == 65 {
+			result = append(result, command)
+		}
+	}
+	return result
 }

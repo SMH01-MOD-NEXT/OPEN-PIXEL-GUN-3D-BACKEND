@@ -192,6 +192,12 @@ type sioSession struct {
 	progressSyncServed      bool
 	progressRevisionEchoed  bool
 
+	// reloginTransport is present only while this exact session owns a live
+	// WebSocket. An operator progress edit may abort it to make the stock client
+	// reconnect and run auth_v2 again. It is never shared across players.
+	reloginTransport      sioReloginTransport
+	progressWriteRevision uint64
+
 	// pending is the binary event whose text header has arrived and whose
 	// attachments are still being collected. A socket.io binary event is split
 	// across one text packet and one frame per attachment, so the halves have
@@ -666,6 +672,8 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 		return
 	}
 	defer conn.Close()
+	session.attachReloginTransport(conn)
+	defer session.detachReloginTransport(conn)
 
 	s.log.Event("socket.ws_open", map[string]any{
 		"sid":        session.sid,

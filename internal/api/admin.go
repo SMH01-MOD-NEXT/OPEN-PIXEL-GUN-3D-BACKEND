@@ -179,18 +179,11 @@ func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id := r.PathValue("id")
+	before, _ := s.st.Profile(id)
 	profile, err := s.st.SetProfile(id, req.Nick, req.Level, req.Experience, req.Coins, req.Gems)
 	if err != nil {
 		s.writeAdminError(w, err)
 		return
-	}
-	if req.Nick != "" {
-		// The account carries the nick the game logs in with, so an edit that
-		// only touched the profile would leave the two disagreeing.
-		if err := s.st.SetNick(id, req.Nick); err != nil && !errors.Is(err, store.ErrNotFound) {
-			s.writeAdminError(w, err)
-			return
-		}
 	}
 	s.log.Event("admin.profile_saved", map[string]any{
 		"player_id": id,
@@ -200,6 +193,9 @@ func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) 
 		"gems":      req.Gems,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
+	if profile.ProgressRevision != before.ProgressRevision {
+		s.reloginOnlinePlayerAfterProgressEdit(id, profile.ProgressRevision)
+	}
 }
 
 type adminRawStateRequest struct {
@@ -238,6 +234,7 @@ func (s *Server) handleAdminSaveRawState(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	id := r.PathValue("id")
+	before, _ := s.st.Profile(id)
 	profile, err := s.st.ReplaceProfileRawState(id, req.Prefs, req.Progress, req.ProgressDocument, req.ProgressSlots, req.ClientState)
 	if err != nil {
 		s.writeAdminError(w, err)
@@ -250,6 +247,9 @@ func (s *Server) handleAdminSaveRawState(w http.ResponseWriter, r *http.Request)
 		"client_state": len(req.ClientState),
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
+	if profile.ProgressRevision != before.ProgressRevision {
+		s.reloginOnlinePlayerAfterProgressEdit(id, profile.ProgressRevision)
+	}
 }
 
 type adminBanRequest struct {
@@ -407,6 +407,10 @@ func (s *Server) handleAdminTransfer(w http.ResponseWriter, r *http.Request) {
 		"note":    "the source profile was emptied so the same progress cannot be handed out twice",
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
+	s.reloginOnlinePlayerAfterProgressEdit(req.ToID, profile.ProgressRevision)
+	if source, err := s.st.Profile(req.FromID); err == nil {
+		s.reloginOnlinePlayerAfterProgressEdit(req.FromID, source.ProgressRevision)
+	}
 }
 
 type adminReconcileRequest struct {

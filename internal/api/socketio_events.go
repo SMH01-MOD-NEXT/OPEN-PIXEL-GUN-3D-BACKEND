@@ -35,6 +35,7 @@ package api
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
@@ -376,6 +377,9 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	}
 
 	session.setIdentity(uniqID, device, account.PlayerID)
+	if profile, err := s.st.Profile(account.PlayerID); err == nil {
+		session.setProgressWriteRevision(profile.ProgressRevision)
+	}
 	s.log.Event("socket.identity_bound", map[string]any{
 		"sid":       session.sid,
 		"player_id": account.PlayerID,
@@ -619,15 +623,12 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	profile, ok := s.sessionProfile(session)
 	status := s.progressStatusCode()
 	if status == sioProgressOpen && ok {
-		_, device, playerID := session.identity()
-		revision, operatorRevisionPending := profile.PendingProgressRevision(device)
+		_, device, _ := session.identity()
+		_, operatorRevisionPending := profile.PendingProgressRevision(device)
 		switch {
-		case operatorRevisionPending && s.progressRevisionWasDelivered(playerID, device, revision):
-			// The previous stock state-9 boot reached Login. Use the ordinary
-			// state-13 upload now so replace_progress can echo the raw slots.
-			status = sioProgressSynchronize
 		case operatorRevisionPending:
-			// The first phase needs state 8 -> state 9, which is code 1.
+			// Every pending revision uses the stock state-9 download. Login
+			// after this session's full download is the durable boundary.
 			status = sioProgressOpen
 		case s.cfg.ProgressSynchronizeMode && profileNeedsSynchronization(profile):
 			status = sioProgressSynchronize
@@ -649,6 +650,14 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	body["experience"] = experience
 	body["coins"] = coins
 	body["gems"] = gems
+	// A stock lobby reconnect does not instantiate AuthSceneController. The
+	// exact-build frontend bridge uses this authenticated, per-device pending
+	// revision to re-enter the stock authorization scene on Unity's main thread.
+	// Cold boot needs no bridge. Only correlated sync_full + Login clears it.
+	_, device, _ := session.identity()
+	if revision, pending := profile.PendingProgressRevision(device); pending {
+		body["opg3d_admin_resync"] = profile.PlayerID + ":" + strconv.FormatUint(revision, 10)
+	}
 	return body
 }
 
@@ -698,22 +707,11 @@ func (s *Server) answerLastCommand(session *sioSession, head sioHead, reqID int)
 	}
 
 	session.setPendingProgressRevision(revision)
-	deliveryStaged := s.progressRevisionWasDelivered(playerID, device, revision)
-	if deliveryStaged {
-		session.markProgressSyncServed(revision)
-	}
-	route := "state9_download"
-	deliveryEvent := sioSyncFullEvent
-	if deliveryStaged {
-		route = "state13_raw_echo"
-		deliveryEvent = sioReplaceProgressEvent
-	}
 	s.log.Event("socket.progress_revision_armed", map[string]any{
 		"sid": session.sid, "player_id": playerID, "req_id": reqID,
-		"revision": revision, "delivery_event": deliveryEvent,
-		"index": "", "device_id": "", "route": route,
-		"delivery_staged": deliveryStaged,
-		"note":            "used a non-null empty local cursor without advertising a foreign device or ChooseProgress",
+		"revision": revision, "delivery_event": sioSyncFullEvent,
+		"index": "", "device_id": "", "route": "state9_download",
+		"note": "used a non-null empty local cursor without advertising a foreign device or ChooseProgress",
 	})
 	return body
 }
@@ -884,14 +882,14 @@ func (s *Server) answerRegisterPush(session *sioSession, head sioHead, reqID int
 	}
 
 	if len(progress) > 0 {
-		if _, err := s.st.MergeProfileProgress(playerID, progress); err != nil {
+		if _, err := s.st.MergeProfileProgress(playerID, progress, session.progressWriteContext()); err != nil {
 			s.log.Event("socket.profile_unsaved", map[string]any{
 				"player_id": playerID, "part": "progress", "err": err.Error(),
 			})
 		}
 	}
 	if len(prefs) > 0 {
-		if _, err := s.st.MergeProfilePrefs(playerID, prefs); err != nil {
+		if _, err := s.st.MergeProfilePrefs(playerID, prefs, session.progressWriteContext()); err != nil {
 			s.log.Event("socket.profile_unsaved", map[string]any{
 				"player_id": playerID, "part": "prefs", "err": err.Error(),
 			})
@@ -1094,7 +1092,7 @@ func (s *Server) answerInitProgress(session *sioSession, head sioHead, reqID int
 	// The client uploads under the same member it reads the answer from.
 	snapshot, _ := head[sioProgressDocumentKey].(map[string]any)
 	if len(snapshot) > 0 {
-		if _, err := s.st.MergeProfileProgressDocument(playerID, snapshot); err != nil {
+		if _, err := s.st.MergeProfileProgressDocument(playerID, snapshot, session.progressWriteContext()); err != nil {
 			// The client is waiting on a document, not on this server's
 			// bookkeeping, so a failed write is recorded and the reply still
 			// goes out with whatever was stored before.

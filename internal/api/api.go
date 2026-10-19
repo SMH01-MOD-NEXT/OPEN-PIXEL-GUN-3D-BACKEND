@@ -54,13 +54,6 @@ type Server struct {
 	// on. It is fixed for the life of the process, so the poll answer and the
 	// push state the same fingerprint for the same document.
 	configNonce string
-
-	// progressDeliveries holds the first phase of an operator revision: a stock
-	// state-9 sync reached Login, but the next stock state-13 upload has not yet
-	// echoed the raw counters. It is deliberately process-local. Losing it can
-	// only repeat a safe download; the final per-device acknowledgement remains
-	// durable in the profile store.
-	progressDeliveries progressDeliveryStages
 }
 
 // New builds the router.
