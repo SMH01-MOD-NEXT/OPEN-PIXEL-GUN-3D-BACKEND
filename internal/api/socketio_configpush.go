@@ -41,11 +41,14 @@ const sioConfigPushEvent = "config_info_versions"
 // Runs 172-174 separated delivery from schema: an attachment index left c
 // empty, while inline text populated c. With the exact `evs` root, all three
 // GameModeEvents coroutines reached their stock finalizer and ready write.
+// Boosters uses the generic JSON ConfigId=167 reader (0x26065A0 ->
+// 0x24981B0). An attachment leaves its cached text empty and its model null;
+// reward preparation then dereferences GameModes at 0x4850BE4.
 // Keep this allow-list deliberately closed: other hosted documents retain the
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents":
+	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters":
 		return true
 	default:
 		return false
@@ -257,7 +260,7 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 		}
 		inline := s.cfg.ConfigPushInline || configPushUsesInlineBody(name)
 		if inline {
-			// The GameModeEvents family takes the String branch and assigns
+			// The allow-listed JSON configs take the String branch and assign
 			// this text to the cache entry's c member in the same process.
 			// ConfigPushInline remains a global diagnostic override; normal
 			// production uses only the measured allow-list above.

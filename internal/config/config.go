@@ -168,7 +168,8 @@ type Config struct {
 	// as text instead of sending a binary attachment index.
 	//
 	// DIAGNOSTIC, off by default. Production selects inline delivery only for
-	// the GameModeEvents family whose String branch was proved in runs 172-174;
+	// the GameModeEvents family (runs 172-174) and Boosters (ConfigId 167),
+	// whose stock readers consume JSON text;
 	// globally inlining unrelated documents caused their parsers to consume
 	// unverified JSON and must not be a production dependency.
 	ConfigPushInline bool
