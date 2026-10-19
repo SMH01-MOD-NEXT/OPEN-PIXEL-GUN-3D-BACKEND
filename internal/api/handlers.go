@@ -215,8 +215,23 @@ func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
 // ignores members it does not know and covering the aliases removes a class of
 // guesswork at no cost.
 func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
+	// Both wire formats contain reusable credentials; never copy the reply to logs.
+	discardTraceBody(w)
 	query := r.URL.Query()
+	var legacyFields map[string]string
+	if r.Method == http.MethodPost && (r.Header.Get("Content-Type") == "" || strings.HasPrefix(r.Header.Get("Content-Type"), "application/octet-stream")) {
+		raw, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, maxLegacyAuthBody))
+		var decodeErr error
+		if readErr == nil {
+			legacyFields, decodeErr = decodeLegacyAuth(raw)
+		}
+		if readErr != nil || decodeErr != nil {
+			s.writeError(w, http.StatusBadRequest, "bad_legacy_auth", "invalid legacy auth packet")
+			return
+		}
+	}
 	deviceID := firstNonEmpty(
+		legacyFields["device_id"],
 		r.Header.Get("X-OPG3D-Device"),
 		query.Get("device_id"),
 		query.Get("udid"),
@@ -233,10 +248,24 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	account, created, err := s.st.RegisterOrLogin(deviceID, query.Get("nick"), ip)
-	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "register_failed", err.Error())
-		return
+	// The native bootstrap has already registered this device. Reuse its
+	// authenticated session: registering again rotates it and breaks AppID
+	// refreshes and every outstanding request carrying the native session.
+	var account store.Account
+	var created bool
+	var err error
+	if query.Get("opg3d_player") != "" || query.Get("opg3d_session") != "" {
+		var ok bool
+		account, ok = s.authenticate(w, r, query.Get("opg3d_player"), query.Get("opg3d_session"))
+		if !ok {
+			return
+		}
+	} else {
+		account, created, err = s.st.RegisterOrLogin(deviceID, query.Get("nick"), ip)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, "register_failed", err.Error())
+			return
+		}
 	}
 	if ban, banned := s.st.MatchBan(account.PlayerID, "", ""); banned {
 		s.writeBan(w, ban)
@@ -248,6 +277,25 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		"ip":        ip,
 		"created":   created,
 	})
+	if legacyFields != nil {
+		body, err := encodeLegacyAuth(map[string]string{
+			"player_id": account.PlayerID,
+			"hash":      "",
+			"token":     account.Session,
+			"url":       legacySocketURL(r, account),
+			"mm_url":    "",
+			"wait":      "0",
+			"create_to": "0",
+		}, 37)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, "legacy_auth_encode_failed", "cannot encode auth response")
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"result":    "ok",
 		"id_player": account.PlayerID,
@@ -256,9 +304,15 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		"user_id":   account.PlayerID,
 		"session":   account.Session,
 		"token":     account.Session,
-		"nick":      account.Nick,
-		"name":      account.Nick,
-		"time":      time.Now().UTC().Unix(),
+		// AuthSceneController's HTTP callback reads these exact keys before
+		// initializing WebSocketManager. Do not add err_code on success:
+		// merely having that key selects the stock error/retry branch.
+		"url":    legacySocketURL(r, account),
+		"mm_url": "",
+		"wait":   0,
+		"nick":   account.Nick,
+		"name":   account.Nick,
+		"time":   time.Now().UTC().Unix(),
 	})
 }
 
