@@ -44,11 +44,14 @@ const sioConfigPushEvent = "config_info_versions"
 // Boosters uses the generic JSON ConfigId=167 reader (0x26065A0 ->
 // 0x24981B0). An attachment leaves its cached text empty and its model null;
 // reward preparation then dereferences GameModes at 0x4850BE4.
+// LootBoxes (119) is also a JSON model. Device verification populated the
+// controller model with one entry and restored the veteran chest texture;
+// its previous empty poll hash reflected a missing hosted document.
 // Keep this allow-list deliberately closed: other hosted documents retain the
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters":
+	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes":
 		return true
 	default:
 		return false
