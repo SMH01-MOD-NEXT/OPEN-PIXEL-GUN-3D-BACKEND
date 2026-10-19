@@ -36,3 +36,20 @@ stock embedded configs. Do not label guessed defaults as original data.
 
 A decision is required on restoring original server data versus defining an
 explicit custom server economy before implementing those missing tables.
+
+## Single-reward roulette follow-up
+
+Config119 `o` is OpenAnimationType: None=0, Default=1, Roulette=2.
+`r` is RewardShowCaseType, not the animation selector. Stock LootBoxUI
+0x2B56518 selects the existing roulette view for value 2.
+
+Config157 is delivered inline as JSON. A single veteran rate draws once; all
+alternatives share one nonempty Item.LootGroup (`rg`). Stock universal provider
+0x1503020 groups candidates by that string and chooses within each group;
+separate groups caused cumulative rewards. An empty string instead follows an
+independent-chance path. Each candidate contains exactly one ItemParams reward.
+Weights are reconstructed equal weights, not recovered original probabilities.
+
+Full Go tests, API/SIO race tests and backend build passed. Recovery service
+restarted without app-data reset. User confirmed the chest now works normally.
+This confirms selection/presentation, not complete server economy persistence.
