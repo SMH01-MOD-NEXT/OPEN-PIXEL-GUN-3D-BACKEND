@@ -16,8 +16,8 @@ func TestShippingBoostersUsesInlineJSONWithoutChangingOtherContracts(t *testing.
 		t.Fatal("shipping Boosters is not hosted")
 	}
 	for _, key := range []string{"bs", "gm"} {
-		if !reflect.DeepEqual(hosted.document[key], []any{}) {
-			t.Fatalf("%s must be a non-null empty list, got %#v", key, hosted.document[key])
+		if list, ok := hosted.document[key].([]any); !ok || list == nil {
+			t.Fatalf("%s must be a non-null list, got %#v", key, hosted.document[key])
 		}
 	}
 	batches := s.configPushBatches(map[string]any{"Boosters": map[string]any{sioConfigHashKey: ""}})

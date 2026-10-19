@@ -1,1 +1,64 @@
-{"configId":"Boosters","e":false,"l":1,"s":1,"sd":"2026-01-01T00:00:00","ed":"2027-01-01T00:00:00","bs":[],"gm":[],"ms":{},"bes":{}}
+{
+  "configId": "Boosters",
+  "e": false,
+  "l": 1,
+  "s": 1,
+  "sd": "2026-01-01T00:00:00",
+  "ed": "2027-01-01T00:00:00",
+  "bs": [
+    {
+      "id": "booster1",
+      "lt": 1800,
+      "t": "offericons/booster/icon_booster1",
+      "st": "offericons/booster/icon_booster1_n",
+      "mi": "offerminiicons/icon_booster1_mini",
+      "bp": {
+        "3": 25
+      }
+    },
+    {
+      "id": "booster2",
+      "lt": 1800,
+      "t": "offericons/booster/icon_booster2",
+      "st": "offericons/booster/icon_booster2_n",
+      "mi": "offerminiicons/icon_booster2_mini",
+      "bp": {
+        "3": 50
+      }
+    },
+    {
+      "id": "booster3",
+      "lt": 1800,
+      "t": "offericons/booster/icon_booster3",
+      "st": "offericons/booster/icon_booster3_n",
+      "mi": "offerminiicons/icon_booster3_mini",
+      "bp": {
+        "3": 100
+      }
+    },
+    {
+      "id": "booster4",
+      "lt": 1800,
+      "t": "offericons/booster/icon_booster4",
+      "st": "offericons/booster/icon_booster4_n",
+      "mi": "offerminiicons/icon_booster4_mini",
+      "bp": {
+        "3": 200
+      }
+    }
+  ],
+  "gm": [
+    0,
+    2,
+    3,
+    4,
+    5,
+    8,
+    19,
+    28
+  ],
+  "ms": {},
+  "bes": {
+    "e": false
+  }
+}

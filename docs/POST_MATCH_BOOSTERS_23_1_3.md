@@ -37,3 +37,42 @@ are deliberately empty: no boost multipliers or events are fabricated.
 
 Private raw logs/screenshots and binaries are under ~/.cache/opg3d-recovery;
 do not commit them. Preserve unrelated working-tree recovery changes.
+
+## Four stock XP boosters restored
+
+Config167 now contains `booster1`–`booster4` settings, matching stock item type
+1520 and encoded indices 1030/2030/3030/4030. The `id` is the stock string ID,
+not the encoded numeric index. `bp` property 3 is FactorExp: additive bonuses
+25, 50, 100 and 200 percent, corresponding to 1.25x/1.5x/2x/3x total XP.
+
+Each row points to bundled ResourceManager paths:
+- `offericons/booster/icon_boosterN` (texture)
+- `offericons/booster/icon_boosterN_n` (simple texture)
+- `offerminiicons/icon_boosterN_mini` (mini icon)
+
+No client patch or replacement art is needed. Config loader stays inline JSON;
+bs/gm must remain non-null arrays to preserve the post-match repair. The original
+empty-list regression was updated to assert that invariant, and separate tests
+now verify the four complete rows, factor keys, paths and payload fingerprint.
+
+### Reconstruction boundaries
+
+No original Config167 server dump exists. Lifetime is explicitly set to a
+compatibility default of 1800 seconds (30 minutes) for each booster, not claimed
+as an original 23.1.3 duration. Supported mode IDs 0,2,3,4,5,8,19,28 select standard
+PvP modes from the stock enum; this list is also reconstructed, not historical
+proof. Seasonal booster events stay disabled. No migration gifts are invented.
+Original event schedules, migration ratios and exact lifetime/mode tables remain
+unrecovered. Searches for historical duration evidence did not establish them.
+
+### Validation
+
+- Full Go tests, API/SIO race tests and backend executable build pass.
+- Installed backend executable SHA-256 matches the tested build; recovery user
+  service is active.
+- Rooted read-only inspection of Config167 in the running client confirms four
+  settings with correct string IDs, paths, lifetimes and eight supported modes.
+- User explicitly confirmed booster pictures, activation/application, and chest
+  rewards all work. Further device actions stopped after confirmation.
+- App data/cache were not cleared. This change does not claim to repair the
+  separate incomplete server-side command/economy persistence implementation.
