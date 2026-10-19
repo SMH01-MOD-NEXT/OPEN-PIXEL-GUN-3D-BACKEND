@@ -1,0 +1,151 @@
+{
+  "targetVersion": "23.1.3",
+  "purpose": "Research reference only; not a runtime configuration or complete original economy dump",
+  "boosters": [
+    {
+      "id": "booster1",
+      "index": 1030,
+      "bonusExpPercent": 25,
+      "texture": "OfferIcons/Booster/icon_booster1",
+      "simpleTexture": "OfferIcons/Booster/icon_booster1_n",
+      "miniIcon": "OfferMiniIcons/icon_booster1_mini",
+      "lifeTimeSeconds": null,
+      "evidence": "Stock 23.1.3 APK/OBB textures and read-only live item registry"
+    },
+    {
+      "id": "booster2",
+      "index": 2030,
+      "bonusExpPercent": 50,
+      "texture": "OfferIcons/Booster/icon_booster2",
+      "simpleTexture": "OfferIcons/Booster/icon_booster2_n",
+      "miniIcon": "OfferMiniIcons/icon_booster2_mini",
+      "lifeTimeSeconds": null,
+      "evidence": "Stock 23.1.3 APK/OBB textures and read-only live item registry"
+    },
+    {
+      "id": "booster3",
+      "index": 3030,
+      "bonusExpPercent": 100,
+      "texture": "OfferIcons/Booster/icon_booster3",
+      "simpleTexture": "OfferIcons/Booster/icon_booster3_n",
+      "miniIcon": "OfferMiniIcons/icon_booster3_mini",
+      "lifeTimeSeconds": null,
+      "evidence": "Stock 23.1.3 APK/OBB textures and read-only live item registry"
+    },
+    {
+      "id": "booster4",
+      "index": 4030,
+      "bonusExpPercent": 200,
+      "texture": "OfferIcons/Booster/icon_booster4",
+      "simpleTexture": "OfferIcons/Booster/icon_booster4_n",
+      "miniIcon": "OfferMiniIcons/icon_booster4_mini",
+      "lifeTimeSeconds": null,
+      "evidence": "Stock 23.1.3 APK/OBB textures and read-only live item registry"
+    }
+  ],
+  "verifiedItemIndices": {
+    "Coins": 1015,
+    "GemsCurrency": 2015,
+    "ClanSilver": 8015,
+    "Coupons": 7015,
+    "avatar_red_skull_parts": 486019,
+    "thermal_scythe_parts": 499019
+  },
+  "veteranChest": {
+    "index": 1027,
+    "tag": "LootBox_Veteran_Red",
+    "level": 65,
+    "requiredXP": 500,
+    "requiredXPEvidence": "Stock Config 116 ExpOpen; corroborated by historical wiki",
+    "historicalBaseline": {
+      "revision": 383731,
+      "timestamp": "2022-01-07T22:39:07Z",
+      "describesVersion": "22.0.0",
+      "itemsPerOpening": 3,
+      "guaranteedPartsPrizes": 1,
+      "otherPrizes": 2,
+      "coinAmounts": [
+        22,
+        30,
+        38
+      ],
+      "gemAmounts": [
+        8,
+        12,
+        16
+      ],
+      "clanSilverAmount": 400,
+      "couponsAmount": 30,
+      "tier1": [
+        {
+          "name": "Project \"Red Button\"",
+          "parts": 10
+        },
+        {
+          "name": "Combat Overlords",
+          "parts": 10
+        },
+        {
+          "name": "Sentence",
+          "parts": 10
+        },
+        {
+          "name": "Red Skull avatar",
+          "parts": 4
+        }
+      ],
+      "tier2": [
+        {
+          "name": "Jet Dragon",
+          "parts": 10
+        },
+        {
+          "name": "Lives Harvester",
+          "parts": 10
+        },
+        {
+          "name": "Thermal Ultra Scythe",
+          "parts": 10
+        },
+        {
+          "name": "Veteran’s Mark graffiti",
+          "parts": 8
+        }
+      ],
+      "obsoleteRewardNotToShip": "3 matches of VIP; replacement by 23.1.3 is not established",
+      "dropWeights": null,
+      "verifiedAsExact2313Table": false
+    }
+  },
+  "sources": [
+    {
+      "url": "https://pixelgun.fandom.com/wiki/Veteran_Chest?oldid=383731",
+      "scope": "2022 baseline, not proof of unchanged 23.1.3 provider table"
+    },
+    {
+      "url": "https://pixelgun.fandom.com/wiki/Booster?oldid=398787",
+      "revisionTimestamp": "2023-06-05",
+      "scope": "Boosters replaced VIP in 22.7.0"
+    },
+    {
+      "url": "https://pixelgun.fandom.com/wiki/Pixel_Gun_3D_Guide?oldid=401541",
+      "revisionTimestamp": "2023-10-01",
+      "scope": "XP boosters do not increase minigame XP; not an exhaustive GameModes list"
+    },
+    {
+      "url": "https://gamerant.com/pixel-gun-3d-best-ways-to-level-up/",
+      "publishedDate": "2024-04-07",
+      "scope": "Mentions +200% for one hour; does not establish every booster tier lifetime for 23.1.3"
+    }
+  ],
+  "unresolved": [
+    "Original Boosters 167 lifetimes, complete game modes and VIP migration table",
+    "Original LootBoxesProviderUniversal 157 drop weights, eligibility filters and VIP replacement",
+    "Chest open command contract and idempotent authoritative reward persistence"
+  ],
+  "excluded": [
+    "Post-23.1.3 veteran wear set",
+    "Inferred uniform drop chances",
+    "Guessed booster5 or eventBooster1 settings"
+  ]
+}

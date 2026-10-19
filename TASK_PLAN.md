@@ -5313,3 +5313,11 @@ internet broadcasts are not routable; remote clients must use the public host.
 The Choreo form's `/Dockerfile` schema value was invalid (REST schemas must be
 OpenAPI JSON/YAML), and Choreo was not selected because its managed REST and
 WebSocket endpoints cannot share this backend's required port.
+
+## Original 23.1.3 economy restoration — approved
+- [x] User selected original 23.1.3 values; consult historical 2022–2024 sources, not a custom economy.
+- [x] Verify all four booster icons/factors against stock assets and map their live item indices.
+- [x] Record a dated 2022 veteran chest baseline and the 22.7.0 VIP replacement incompatibility; exclude post-target changes.
+- [ ] Recover exact target-version lifetimes, mode list, migration data and veteran reward weights; historical sources do not establish these.
+- [/] Map confirmed data to client item IDs and ConfigId 167/157 schemas. Booster indices and currency/selected parts indices verified; full veteran item mapping and eligibility filters remain open.
+- [ ] Implement verified configs and real reward persistence; validate on ADB device and run tests/build before commit.
