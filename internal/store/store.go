@@ -291,61 +291,19 @@ func (s *Store) SetNick(playerID, nick string) error {
 	return s.persistLocked()
 }
 
-// AddBan records a ban. An empty subject is rejected so a typo cannot ban
-// everyone at once.
-func (s *Store) AddBan(ban Ban) error {
-	switch ban.Kind {
-	case BanPlayer, BanDevice, BanIP:
-	default:
-		return ErrBadBanKind
-	}
-	ban.Subject = strings.TrimSpace(ban.Subject)
-	if ban.Subject == "" {
-		return errors.New("store: empty ban subject")
-	}
-	if ban.CreatedAt.IsZero() {
-		ban.CreatedAt = time.Now().UTC()
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if ban.Kind == BanPlayer {
-		ban.Subject = s.resolvePlayerIDLocked(ban.Subject)
-	}
-	s.state.Bans = append(s.state.Bans, ban)
-	return s.persistLocked()
-}
+// AddBan upserts a single ban; use AddBans for an atomic player/device change.
+func (s *Store) AddBan(ban Ban) error { return s.AddBans([]Ban{ban}) }
 
-// RemoveBans drops every ban matching kind and subject, returning the count.
+// RemoveBans removes matching records, including expired duplicates.
 func (s *Store) RemoveBans(kind, subject string) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	subject = strings.TrimSpace(subject)
-	if kind == BanPlayer {
-		subject = s.resolvePlayerIDLocked(subject)
-	}
-	kept := make([]Ban, 0, len(s.state.Bans))
-	removed := 0
-	for _, ban := range s.state.Bans {
-		if ban.Kind == kind && ban.Subject == subject {
-			removed++
-			continue
-		}
-		kept = append(kept, ban)
-	}
-	if removed == 0 {
-		return 0, nil
-	}
-	s.state.Bans = kept
-	return removed, s.persistLocked()
+	return s.RemoveBanSubjects([]Ban{{Kind: kind, Subject: subject}})
 }
 
-// Bans returns every recorded ban.
+// Bans returns detached records, including detached deadline pointers.
 func (s *Store) Bans() []Ban {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Ban, len(s.state.Bans))
-	copy(out, s.state.Bans)
-	return out
+	return copyBans(s.state.Bans)
 }
 
 // MatchBan returns the first active ban hitting any of the supplied
@@ -371,7 +329,7 @@ func (s *Store) MatchBan(playerID, deviceID, ip string) (Ban, bool) {
 			candidate = ip
 		}
 		if candidate != "" && candidate == subject {
-			matched := ban
+			matched := copyBan(ban)
 			matched.Subject = subject
 			return matched, true
 		}

@@ -4,7 +4,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -68,6 +67,9 @@ type accountResponse struct {
 // identifies the account, the server mints the player id and rotates the
 // session token. Nothing about the account lives on the device.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	s.banMu.RLock()
+	defer s.banMu.RUnlock()
+	discardTraceBody(w)
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
@@ -78,7 +80,21 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := clientIP(r)
-	if ban, banned := s.st.MatchBan("", req.DeviceID, ip); banned {
+	if existing, found := s.st.AccountByDevice(req.DeviceID); found {
+		if ban, banned := s.accountBan(existing, ip); banned {
+			// The shipped thin bootstrap must retain the backend origin so the
+			// stock encrypted HTTP auth can display AccountBlockedWindow (1402).
+			// This is identity discovery ONLY: no new/rotated session, progress or
+			// Photon access. User-Agent is a compatibility selector, not authority.
+			if r.UserAgent() == "opg3d-thin-client/23.1.3" {
+				s.writeJSON(w, http.StatusOK, accountResponse{PlayerID: existing.PlayerID, Session: existing.Session, Nick: existing.Nick})
+			} else {
+				s.writeBan(w, ban)
+			}
+			return
+		}
+	}
+	if ban, banned := s.st.MatchBan("", strings.TrimSpace(req.DeviceID), ip); banned {
 		s.writeBan(w, ban)
 		return
 	}
@@ -89,7 +105,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A ban on the resolved player id is only visible after resolution.
-	if ban, banned := s.st.MatchBan(account.PlayerID, "", ""); banned {
+	if ban, banned := s.accountBan(account, ip); banned {
 		s.writeBan(w, ban)
 		return
 	}
@@ -115,6 +131,8 @@ type refreshRequest struct {
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	s.banMu.RLock()
+	defer s.banMu.RUnlock()
 	var req refreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
@@ -135,6 +153,8 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 // with AES-256-GCM. SECURITY: the AppID is a credential; it is bound to the
 // requesting player id as additional authenticated data and never logged.
 func (s *Server) handlePhotonAppID(w http.ResponseWriter, r *http.Request) {
+	s.banMu.RLock()
+	defer s.banMu.RUnlock()
 	if len(s.cfg.AppIDKey) == 0 || len(s.settings.snapshot().PhotonAppIDs) == 0 {
 		s.writeError(w, http.StatusServiceUnavailable, "appid_unconfigured",
 			"set OPG3D_APPID_KEY and at least one OPG3D_PHOTON_APPID_*")
@@ -215,6 +235,8 @@ func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
 // ignores members it does not know and covering the aliases removes a class of
 // guesswork at no cost.
 func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
+	s.banMu.RLock()
+	defer s.banMu.RUnlock()
 	// Both wire formats contain reusable credentials; never copy the reply to logs.
 	discardTraceBody(w)
 	query := r.URL.Query()
@@ -243,21 +265,29 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		deviceID = "legacy-" + clientIP(r)
 	}
 	ip := clientIP(r)
-	if ban, banned := s.st.MatchBan("", deviceID, ip); banned {
-		s.writeBan(w, ban)
-		return
-	}
-
-	// The native bootstrap has already registered this device. Reuse its
-	// authenticated session: registering again rotates it and breaks AppID
-	// refreshes and every outstanding request carrying the native session.
+	// Resolve without mutating an existing banned account. Validate bootstrap
+	// credentials before disclosing even the stock ban response.
 	var account store.Account
 	var created bool
 	var err error
 	if query.Get("opg3d_player") != "" || query.Get("opg3d_session") != "" {
 		var ok bool
-		account, ok = s.authenticate(w, r, query.Get("opg3d_player"), query.Get("opg3d_session"))
+		account, err = s.st.Account(query.Get("opg3d_player"))
+		ok = err == nil && query.Get("opg3d_session") != "" && account.Session == query.Get("opg3d_session")
 		if !ok {
+			s.writeError(w, http.StatusUnauthorized, "bad_session", "unknown player id or session")
+			return
+		}
+	} else if existing, found := s.st.AccountByDevice(deviceID); found {
+		account = existing
+	}
+	if ban, banned := s.st.MatchBan("", deviceID, ip); banned {
+		s.writeLegacyBan(w, legacyFields, account, ban)
+		return
+	}
+	if account.PlayerID != "" {
+		if ban, banned := s.accountBan(account, ip); banned {
+			s.writeLegacyBan(w, legacyFields, account, ban)
 			return
 		}
 	} else {
@@ -267,10 +297,7 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if ban, banned := s.st.MatchBan(account.PlayerID, "", ""); banned {
-		s.writeBan(w, ban)
-		return
-	}
+
 	s.log.Event("account.legacy_auth", map[string]any{
 		"player_id": account.PlayerID,
 		"device_id": deviceID,
@@ -335,7 +362,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, playerID, 
 		s.writeError(w, http.StatusUnauthorized, "bad_session", "unknown player id or session")
 		return store.Account{}, false
 	}
-	if ban, banned := s.st.MatchBan(account.PlayerID, account.DeviceID, ip); banned {
+	if ban, banned := s.accountBan(account, ip); banned {
 		s.writeBan(w, ban)
 		return store.Account{}, false
 	}
@@ -396,19 +423,20 @@ func (s *Server) handleAdminAddBan(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "bad_json", err.Error())
 		return
 	}
-	ban := store.Ban{Kind: req.Kind, Subject: req.Subject, Reason: req.Reason}
-	if req.Minutes > 0 {
-		until := time.Now().UTC().Add(time.Duration(req.Minutes) * time.Minute)
-		ban.Until = &until
-	}
-	if err := s.st.AddBan(ban); err != nil {
-		status := http.StatusBadRequest
-		if !errors.Is(err, store.ErrBadBanKind) {
-			status = http.StatusInternalServerError
-		}
-		s.writeError(w, status, "ban_failed", err.Error())
+	until, err := banDeadline(req.Minutes)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "bad_duration", err.Error())
 		return
 	}
+	ban := store.Ban{Kind: req.Kind, Subject: req.Subject, Reason: req.Reason, Until: until}
+	s.banMu.Lock()
+	defer s.banMu.Unlock()
+	if err := s.st.AddBan(ban); err != nil {
+		s.writeBanMutationError(w, err)
+		return
+	}
+	s.enforceOnlineBans()
+
 	s.log.Event("admin.ban_added", map[string]any{
 		"kind": ban.Kind, "subject": ban.Subject, "reason": ban.Reason, "minutes": req.Minutes,
 	})
@@ -418,9 +446,11 @@ func (s *Server) handleAdminAddBan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminRemoveBan(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
 	subject := r.URL.Query().Get("subject")
+	s.banMu.Lock()
+	defer s.banMu.Unlock()
 	removed, err := s.st.RemoveBans(kind, subject)
 	if err != nil {
-		s.writeError(w, http.StatusInternalServerError, "unban_failed", err.Error())
+		s.writeBanMutationError(w, err)
 		return
 	}
 	s.log.Event("admin.ban_removed", map[string]any{"kind": kind, "subject": subject, "removed": removed})

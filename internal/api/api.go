@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/config"
@@ -37,10 +38,12 @@ const maxRequestBody = 1 << 20
 
 // Server implements http.Handler.
 type Server struct {
-	cfg *config.Config
-	log *logs.Logger
-	st  *store.Store
-	mux *http.ServeMux
+	// Serializes ban commits against encrypted gameplay dispatch.
+	banMu sync.RWMutex
+	cfg   *config.Config
+	log   *logs.Logger
+	st    *store.Store
+	mux   *http.ServeMux
 	// sio holds the live socket.io sessions of the config channel, which
 	// outlive the individual requests that carry them.
 	sio *sioHub

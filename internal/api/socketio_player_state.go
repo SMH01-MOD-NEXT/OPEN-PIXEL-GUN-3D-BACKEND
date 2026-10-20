@@ -22,6 +22,9 @@ func (s *Server) socketPlayerID(session *sioSession) (string, bool) {
 	if session == nil {
 		return "", false
 	}
+	if _, banned := s.socketBan(session); banned {
+		return "", false
+	}
 	_, _, playerID := session.identity()
 	if strings.TrimSpace(playerID) == "" {
 		return "", false

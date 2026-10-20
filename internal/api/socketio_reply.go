@@ -193,9 +193,8 @@ func decodedEventName(raw []byte) string {
 
 // answerDecodedEvent replies to an event that has just been decrypted.
 //
-// Only auth_v2 is answered. Every other event is recorded by name so the log
-// stays the list of what the client asks for and does not get, rather than
-// being answered with something invented here.
+// Ban commits and dispatch are serialized: no new gameplay mutation may
+// pass a successful ban response, including on an already authorized socket.
 func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, codec *sio.Codec, decoded [][]byte) {
 	if !s.cfg.SioReply || len(decoded) < 2 {
 		return
@@ -234,7 +233,20 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		return
 	}
 
-	body := answer(s, session, head, reqID)
+	s.banMu.RLock()
+	defer s.banMu.RUnlock()
+	if event == sioAuthEvent {
+		session.mu.Lock()
+		session.authNamespace = a.namespace
+		session.mu.Unlock()
+	}
+	var body map[string]any
+	_, banned := s.socketBan(session)
+	if banned && event != sioAuthEvent {
+		body = socketBanReply(reqID)
+	} else {
+		body = answer(s, session, head, reqID)
+	}
 	if body == nil {
 		// The builder declined to answer and logged why. Sending an invented
 		// payload instead can hang the client harder than silence, because a
@@ -244,7 +256,7 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 	if !s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body) {
 		return
 	}
-	if event == sioSubscribeEvent {
+	if event == sioSubscribeEvent && !banned {
 		// The poll is answered above for the facade that asked it; the
 		// documents themselves go to the config system, which listens on
 		// its own event. See socketio_configpush.go for the measurement.

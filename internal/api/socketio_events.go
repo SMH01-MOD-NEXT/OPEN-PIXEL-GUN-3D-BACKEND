@@ -327,6 +327,23 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	session.setAuthHash(head.text("hash"))
 
 	bootstrapID, remoteIP := session.bootstrapIdentity()
+	if _, banned := s.st.MatchBan(uniqID, device, remoteIP); banned {
+		session.setIdentity(uniqID, device, "")
+		return socketBanReply(reqID)
+	}
+	if account, err := s.st.Account(bootstrapID); err == nil {
+		if _, banned := s.accountBan(account, remoteIP); banned {
+			session.setIdentity(uniqID, device, "")
+			return socketBanReply(reqID)
+		}
+	}
+	if account, err := s.st.Account(uniqID); err == nil {
+		if _, banned := s.accountBan(account, remoteIP); banned {
+			session.setIdentity(uniqID, device, "")
+			return socketBanReply(reqID)
+		}
+	}
+
 	var account store.Account
 	var created bool
 	var err error
@@ -364,18 +381,17 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		})
 	}
 	if err != nil {
-		// Identity is not a precondition for the reply the client waits on, so
-		// a store failure is recorded and authorisation still completes. The
-		// alternative is a hung client over a bookkeeping problem.
-		s.log.Event("socket.identity_unbound", map[string]any{
-			"sid":     session.sid,
-			"uniq_id": uniqID,
-			"err":     err.Error(),
-		})
+		s.log.Event("socket.identity_unbound", map[string]any{"sid": session.sid, "err": err.Error()})
 		session.setIdentity(uniqID, device, "")
-		return authReplyBody(session, head, reqID)
+		body := sioDenied(reqID)
+		body["err_code"] = sioErrNotAuthorized
+		return body
 	}
 
+	if _, banned := s.accountBan(account, remoteIP); banned {
+		session.setIdentity(uniqID, device, "")
+		return socketBanReply(reqID)
+	}
 	session.setIdentity(uniqID, device, account.PlayerID)
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		session.setProgressWriteRevision(profile.ProgressRevision)
@@ -387,21 +403,6 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		"device":    device,
 		"created":   created,
 	})
-
-	if ban, banned := s.st.MatchBan(account.PlayerID, device, remoteIP); banned {
-		s.log.Event("socket.auth_banned", map[string]any{
-			"sid":       session.sid,
-			"player_id": account.PlayerID,
-			"kind":      ban.Kind,
-			"subject":   ban.Subject,
-			"reason":    ban.Reason,
-		})
-		body := authReplyBody(session, head, reqID)
-		body["result"] = "banned"
-		body["error"] = sioErrNotAuthorized
-		body["reason"] = ban.Reason
-		return body
-	}
 
 	if repaired, err := s.repairLegacyGameModeHubSlot(account.PlayerID); err != nil {
 		s.log.Event("socket.progress_slot_repair_failed", map[string]any{

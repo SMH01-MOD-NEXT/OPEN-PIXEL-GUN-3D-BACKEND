@@ -77,7 +77,7 @@ func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		row.Profile = &profile
 	}
-	if ban, banned := s.st.MatchBan(account.PlayerID, firstNonEmpty(account.SocketDevice, account.DeviceID), account.LastIP); banned {
+	if ban, banned := s.accountBan(account, account.LastIP); banned {
 		row.Banned = true
 		row.BanKind = ban.Kind
 		row.BanReason = ban.Reason
@@ -279,34 +279,28 @@ func (s *Server) handleAdminBanPlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var until *time.Time
-	if req.Minutes > 0 {
-		deadline := time.Now().UTC().Add(time.Duration(req.Minutes) * time.Minute)
-		until = &deadline
+	until, err := banDeadline(req.Minutes)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "bad_duration", err.Error())
+		return
 	}
-
-	subjects := []store.Ban{{
-		Kind:    store.BanPlayer,
-		Subject: account.PlayerID,
-		Reason:  req.Reason,
-		Until:   until,
-	}}
+	subjects := playerBanSubjects(account)
 	includeDevice := req.IncludeDevice == nil || *req.IncludeDevice
-	if device := firstNonEmpty(account.SocketDevice, account.DeviceID); includeDevice && device != "" {
-		subjects = append(subjects, store.Ban{
-			Kind:    store.BanDevice,
-			Subject: device,
-			Reason:  req.Reason,
-			Until:   until,
-		})
+	if !includeDevice {
+		subjects = subjects[:1]
 	}
+	for i := range subjects {
+		subjects[i].Reason = req.Reason
+		subjects[i].Until = until
+	}
+	s.banMu.Lock()
+	defer s.banMu.Unlock()
+	if err := s.st.AddBans(subjects); err != nil {
+		s.writeBanMutationError(w, err)
+		return
+	}
+	s.enforceOnlineBans()
 
-	for _, ban := range subjects {
-		if err := s.st.AddBan(ban); err != nil {
-			s.writeAdminError(w, err)
-			return
-		}
-	}
 	s.log.Event("admin.player_banned", map[string]any{
 		"player_id":      account.PlayerID,
 		"nick":           account.Nick,
@@ -318,8 +312,8 @@ func (s *Server) handleAdminBanPlayer(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bans": len(subjects)})
 }
 
-// handleAdminUnbanPlayer lifts every ban that could apply to this account, so
-// correcting a mistake takes one click rather than one click per subject.
+// handleAdminUnbanPlayer lifts player and both device bans atomically.
+// Shared IP bans remain explicit and are reported via still_banned.
 func (s *Server) handleAdminUnbanPlayer(w http.ResponseWriter, r *http.Request) {
 	account, err := s.st.Account(r.PathValue("id"))
 	if err != nil {
@@ -327,25 +321,21 @@ func (s *Server) handleAdminUnbanPlayer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	removed, err := s.st.RemoveBans(store.BanPlayer, account.PlayerID)
+	s.banMu.Lock()
+	defer s.banMu.Unlock()
+	removed, err := s.st.RemoveBanSubjects(playerBanSubjects(account))
 	if err != nil {
-		s.writeAdminError(w, err)
+		s.writeBanMutationError(w, err)
 		return
 	}
-	if device := firstNonEmpty(account.SocketDevice, account.DeviceID); device != "" {
-		lifted, err := s.st.RemoveBans(store.BanDevice, device)
-		if err != nil {
-			s.writeAdminError(w, err)
-			return
-		}
-		removed += lifted
-	}
+	_, stillBanned := s.accountBan(account, account.LastIP)
+
 	s.log.Event("admin.player_unbanned", map[string]any{
 		"player_id": account.PlayerID,
 		"nick":      account.Nick,
 		"removed":   removed,
 	})
-	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": removed})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": removed, "still_banned": stillBanned})
 }
 
 func (s *Server) handleAdminDeletePlayer(w http.ResponseWriter, r *http.Request) {

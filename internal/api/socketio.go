@@ -179,7 +179,10 @@ type sioSession struct {
 	// authHash is the account hash the client presented in auth_v2. It is kept
 	// because get_binded_ids is answered with id/hash pairs and the hash the
 	// client authorised with is the only one this server can name truthfully.
-	authHash string
+	// authNamespace is the Socket.IO namespace used by stock auth, not the HTTP path.
+	// Server-initiated revocations must use this same subscriber namespace.
+	authNamespace string
+	authHash      string
 
 	// pendingProgressRevision is the exact operator revision armed while
 	// answering get_last_command. progressSyncServed records that the stock

@@ -5330,3 +5330,13 @@ WebSocket endpoints cannot share this backend's required port.
 - [x] Run tests/race/build, deploy with fresh private backup, and verify the real device without clearing data.
 - [x] Document contracts, observed device verification and compatibility limitations.
 - [x] Commit isolated backend/frontend changes, preserving unrelated work.
+
+## Backend bans and unbans — current
+- [x] Trace existing enforcement and measured 23.1.3 ban/auth response contracts.
+- [x] Persist atomic scoped ban/unban operations and validate duration/subjects.
+- [x] Enforce active bans on authentication and existing gameplay sessions without changing frontend.
+- [x] Add expiry, restart, unban, isolation and rejected-write regression tests.
+- [x] Test/build, back up state, deploy and verify stock ban/recovery flow on device.
+- [x] Document verified behavior and commit isolated backend changes.
+
+Verification: stock HTTP ban window and unban/restart passed without progress loss. Online revocation reaches the real /sio subscriber and pauses stock auth; the already-open lobby does not automatically display the ban window. Photon-room kicks are outside this backend. See docs/BANS_23_1_3.md.
