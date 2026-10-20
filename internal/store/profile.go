@@ -586,6 +586,7 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any,
 	for key, value := range slots {
 		profile.ProgressSlots[key] = cloneAny(value)
 	}
+	mirrorRawSlots(profile)
 	if len(context) != 0 || profile.ProgressRevision == 0 {
 		projectReplacementSlotState(profile, slots)
 	}
@@ -644,6 +645,14 @@ func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]an
 		syncCoreSlotDocument(slots, level, experience, coins, gems)
 	}
 	profile.ProgressSlots = cloneAnyMap(slots)
+	for key := range profile.ProgressDocument {
+		if _, err := strconv.Atoi(key); err == nil {
+			if _, present := slots[key]; !present {
+				delete(profile.ProgressDocument, key)
+			}
+		}
+	}
+	mirrorRawSlots(profile)
 	projectReplacementSlotState(profile, slots)
 	reconcileProfileCounters(profile)
 	if account != nil && profile.Nick != "" {

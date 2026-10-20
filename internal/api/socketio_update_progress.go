@@ -2,6 +2,8 @@
 
 package api
 
+import "github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+
 // update_progress is not a generic request/reply operation. The transport
 // correlates the encrypted response with req_id, but the stock progress manager
 // then performs a second lookup in its own pending-command dictionary.
@@ -95,14 +97,13 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 		"command_id":               commandID,
 		"child_id":                 childID,
 		"applied_counter_commands": applied,
-		"note":                     "persisted measured counter commands before acknowledging i/ci",
+		"note":                     "persisted measured counter/inventory commands before acknowledging i/ci",
 	})
 	return body
 }
 
-// Only the four measured core schemas are forwarded. Analytics and inventory
-// retain their existing snapshot path; unknown schemas are never interpreted
-// as money or experience.
+// Only measured schemas are forwarded; unknown commands keep their lossless
+// snapshot path and are never interpreted using guessed inventory fields.
 func progressCounterCommands(head sioHead) []any {
 	var source []any
 	if payload, ok := head["p"].(map[string]any); ok {
@@ -121,7 +122,7 @@ func progressCounterCommands(head sioHead) []any {
 		if !ok {
 			continue
 		}
-		if id == 10 || id == 66 || id == 64 || id == 65 {
+		if store.SupportsProgressCommand(id) {
 			result = append(result, command)
 		}
 	}

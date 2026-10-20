@@ -83,11 +83,10 @@ func setMatchingCounter(slot map[string]any, key string, want int64) {
 	slot[key] = want
 }
 
-// ApplyProfileCounterCommands implements the measured 23.1.3 core commands:
-// 10 adds currency, 66 spends currency, 64 sets level, 65 sets absolute XP.
-// Inventory/other command schemas are not guessed; their existing full-slot
-// snapshot path is preserved. This is compatibility persistence, not anticheat
-// or a server-side reward/price validation system.
+// ApplyProfileCounterCommands atomically persists measured counters AND inventory
+// commands before acknowledgement. Its name is retained for API compatibility.
+// A purchase charge and its ownership change share one candidate and one fsync.
+// This compatibility reducer is not price validation or an anticheat system.
 func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteContext, commands []any) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,7 +127,7 @@ func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteCo
 		if !ok {
 			return 0, errors.New("store: invalid progress command id")
 		}
-		if id != 10 && id != 66 && id != 64 && id != 65 {
+		if !SupportsProgressCommand(id) {
 			continue
 		}
 		ci, _ := command["ci"].(string)
@@ -206,6 +205,10 @@ func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteCo
 				return 0, errors.New("store: invalid experience")
 			}
 			candidate.Experience = value
+		default:
+			if err := applyInventoryCommand(&candidate, id, data); err != nil {
+				return 0, err
+			}
 		}
 		candidate.ProgressCommandReceipts[key] = true
 		applied++
@@ -225,6 +228,7 @@ func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteCo
 	reconcileProfileCounters(&candidate)
 	// Carry non-base currency balances into both full-sync channels too.
 	candidate.ProgressDocument["3"] = cloneAnyMap(currencies)
+	mirrorRawSlots(&candidate)
 	candidate.UpdatedAt = time.Now().UTC()
 	before := *p
 	*p = candidate

@@ -1,0 +1,14 @@
+{
+  "client": "23.1.3",
+  "version_code": 268411,
+  "inputs": {
+    "stock2313-item-catalog-raw.json": "1d74eb71f7e52a33b86b820c7b106989cafef875a73983aaf3347d69dc7c032e",
+    "stock2313-localization.json": "1264f2085d5ce195b88b3388d0341761408427e21736f2f93783c21bf3bcc667",
+    "stock2313-item-records.json": "f5ca4195709a78ff789962583d1e281d59b5f6b1753e3c12a488353b46ba25a5",
+    "stock2313-wear-records.json": "df57bccbe69ed1870a186f3a862b891d57387e3e8366c2933fa8030e87205c10",
+    "stock2313-skin-records.json": "e3c2f09e078be7c7277901ecb7cff277adb531d0e627489c1026bf2fd9db370b",
+    "stock2313-target-component-records.json": "8e6a35050a0c9ccddd63d16cbbfbc77c323f8f499880848f9a4ed11132ee98d2",
+    "stock-embedded-configs/160.json": "67c6f272bbaa7f5c98c1f89bed4b8291627129e00e62916dc857cfa81dd87915"
+  },
+  "output_sha256": "1fb415b2ab8b68d5dd5160a3cd0b79de2c4c38e593de77cd82974639197d1d08"
+}

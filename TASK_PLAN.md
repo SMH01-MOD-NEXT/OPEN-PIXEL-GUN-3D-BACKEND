@@ -5340,3 +5340,17 @@ WebSocket endpoints cannot share this backend's required port.
 - [x] Document verified behavior and commit isolated backend changes.
 
 Verification: stock HTTP ban window and unban/restart passed without progress loss. Online revocation reaches the real /sio subscriber and pauses stock auth; the already-open lobby does not automatically display the ban window. Photon-room kicks are outside this backend. See docs/BANS_23_1_3.md.
+
+## Server-authoritative inventory and admin catalog (23.1.3)
+- [x] Inspect exact-version registry/localization and verified ownership contracts.
+- [x] Preserve full server slot snapshots; add transactional measured inventory commands.
+- [x] Add 7457-record catalog, 4613 stock names and explicit technical-ID fallback.
+- [x] Add per-player grant/revoke UI/API for 15 verified ownership categories.
+- [x] Verify CAS, stale-session fencing, equipped-item protection, disk rollback and idempotency.
+- [x] ADB: online/offline sync, Headphones Equip action, runtime skin ownership, server restart.
+- [x] Remove only temporary test grants; retain original inventory, counters and 87 slots.
+- [x] Full tests/vet/race/build passed; deployed and committed isolated task changes.
+- [ ] Remaining: names for 2844 technical records and unsupported ownership/delta schemas.
+- [ ] Remaining: per-category device and admin browser E2E; safe equipped-item revocation.
+
+Scope and honest verification limits: docs/INVENTORY_23_1_3.md.

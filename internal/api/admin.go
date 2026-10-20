@@ -29,6 +29,9 @@ import (
 
 // registerAdminRoutes mounts the operator API and console.
 func (s *Server) registerAdminRoutes() {
+	s.mux.HandleFunc("GET /api/v1/admin/catalog", s.admin(s.handleAdminCatalog))
+	s.mux.HandleFunc("GET /api/v1/admin/players/{id}/inventory", s.admin(s.handleAdminInventory))
+	s.mux.HandleFunc("POST /api/v1/admin/players/{id}/inventory", s.admin(s.handleAdminEditInventory))
 	s.mux.HandleFunc("GET /api/v1/admin/stats", s.admin(s.handleAdminStats))
 	s.mux.HandleFunc("GET /api/v1/admin/players", s.admin(s.handleAdminPlayers))
 	s.mux.HandleFunc("GET /api/v1/admin/players/{id}", s.admin(s.handleAdminPlayer))

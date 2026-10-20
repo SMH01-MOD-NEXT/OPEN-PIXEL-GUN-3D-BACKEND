@@ -28,7 +28,7 @@ func (s *Server) handleAdminConsole(w http.ResponseWriter, r *http.Request) {
 	// can be this tight.
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(adminConsoleHTML))
+	_, _ = w.Write([]byte(inventoryConsoleHTML()))
 }
 
 const adminConsoleHTML = `<!DOCTYPE html>
@@ -288,6 +288,8 @@ textarea.json{display:block;width:100%;min-height:150px;margin-top:5px;resize:ve
     });
   }
 
+  /* INVENTORY_PANEL */
+
   function showPlayer(id) {
     selected = id;
     Array.prototype.forEach.call(el('players').querySelectorAll('tr'), function (tr) {
@@ -298,6 +300,7 @@ textarea.json{display:block;width:100%;min-height:150px;margin-top:5px;resize:ve
     el('rcTarget').value = id;
 
     return api('GET', '/api/v1/admin/players/' + encodeURIComponent(id)).then(function (data) {
+      if (selected !== id) { return; }
       var p = data.player || {};
       var f = p.profile || {};
       var banLine = p.banned
@@ -318,6 +321,7 @@ textarea.json{display:block;width:100%;min-height:150px;margin-top:5px;resize:ve
         '<div class="row"><label>Монеты</label><input id="pfCoins" type="number" min="0" value="' + esc(f.coins || 0) + '"></div>' +
         '<div class="row"><label>Гемы</label><input id="pfGems" type="number" min="0" value="' + esc(f.gems || 0) + '"></div>' +
         '<div class="row"><button class="p" id="pfSave">Сохранить счётчики</button></div>' +
+        '<section id="inventoryPanel"></section>' +
         '<h3>Полное состояние</h3>' +
         '<p class="hint">Неизвестные серверу поля сохраняются. Каждый редактор должен содержать JSON-объект; пустой объект {} очищает соответствующий раздел.</p>' +
         '<div class="raw-grid">' +
@@ -334,6 +338,7 @@ textarea.json{display:block;width:100%;min-height:150px;margin-top:5px;resize:ve
         '<div class="row"><label style="min-width:auto"><input type="checkbox" id="bnDevice" checked style="flex:none"> также забанить устройство</label></div>' +
         '<div class="row"><button class="d" id="bnDo">Забанить</button><button class="g" id="bnUndo">Разбанить</button><span class="grow"></span><button class="d" id="pfDelete">Удалить аккаунт</button></div>';
 
+      mountInventory(id);
       el('pfSave').onclick = function () {
         run(api('PUT', '/api/v1/admin/players/' + encodeURIComponent(id) + '/profile', {
           nick: el('pfNick').value.trim(),
