@@ -48,3 +48,24 @@ func TestCatalogReturnedValuesCannotMutateRegistry(t *testing.T) {
 		t.Fatal("caller mutated registry")
 	}
 }
+
+func TestSearchWhitespaceTokensCaseAndInternalID(t *testing.T) {
+	for _, q := range []string{"  fUTuRe   Police  ", "police future", "727001"} {
+		found := false
+		for _, v := range Search(q, 10, false) {
+			if v.Index == 727001 {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing weapon for %q", q)
+		}
+	}
+	if len(Search("future nonexistent_word_please", 10, false)) != 0 {
+		t.Fatal("tokens must all match")
+	}
+	item, _ := Find(10, 727001)
+	if len(Search(item.ID, 10, false)) == 0 {
+		t.Fatal("internal id search failed")
+	}
+}

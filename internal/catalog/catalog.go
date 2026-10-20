@@ -78,13 +78,21 @@ func copyItems(src []Item) []Item {
 func All() []Item           { return copyItems(items) }
 func ForIndex(i int) []Item { return copyItems(byIndex[i]) }
 func Search(q string, t int, editable bool) []Item {
-	q = strings.ToLower(strings.TrimSpace(q))
+	terms := strings.Fields(strings.ToLower(q))
 	out := []Item{}
 	for _, v := range items {
 		if t != 0 && t != v.Type || editable && !v.Editable {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(v.Name+" "+v.ID+" "+strconv.Itoa(v.Index)), q) {
+		haystack := strings.ToLower(v.Name + " " + v.ID + " " + strconv.Itoa(v.Index))
+		matched := true
+		for _, term := range terms {
+			if !strings.Contains(haystack, term) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
 			continue
 		}
 		out = append(out, copyItem(v))

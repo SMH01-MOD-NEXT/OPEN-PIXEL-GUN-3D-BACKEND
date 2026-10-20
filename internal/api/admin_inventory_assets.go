@@ -7,26 +7,25 @@ import (
 	"strings"
 )
 
-//go:embed admin_assets/inventory.js admin_assets/inventory.ru.json
+//go:embed admin_assets/console.html admin_assets/console.css admin_assets/console.js admin_assets/console.ru.json
 var inventoryAssets embed.FS
 
 func inventoryConsoleHTML() string {
-	js, err := inventoryAssets.ReadFile("admin_assets/inventory.js")
-	if err != nil {
-		panic(err)
-	}
-	text, err := inventoryAssets.ReadFile("admin_assets/inventory.ru.json")
-	if err != nil {
-		panic(err)
+	read := func(name string) string {
+		b, e := inventoryAssets.ReadFile("admin_assets/" + name)
+		if e != nil {
+			panic(e)
+		}
+		return string(b)
 	}
 	var labels map[string]any
-	if err = json.Unmarshal(text, &labels); err != nil {
-		panic(err)
+	if e := json.Unmarshal([]byte(read("console.ru.json")), &labels); e != nil {
+		panic(e)
 	}
-	// json.Marshal escapes < > & in localizations, preventing script termination.
-	safe, err := json.Marshal(labels)
-	if err != nil {
-		panic(err)
+	// Escape script-closing text and HTML delimiters in translations.
+	safe, e := json.Marshal(labels)
+	if e != nil {
+		panic(e)
 	}
-	return strings.Replace(adminConsoleHTML, "/* INVENTORY_PANEL */", "var INVENTORY_TEXT = "+string(safe)+";\n"+string(js), 1)
+	return strings.NewReplacer("/* CONSOLE_CSS */", read("console.css"), "/* CONSOLE_LOCALE */", "const TEXT = "+string(safe)+";", "/* CONSOLE_JS */", read("console.js")).Replace(read("console.html"))
 }

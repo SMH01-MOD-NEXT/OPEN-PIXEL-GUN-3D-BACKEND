@@ -77,11 +77,13 @@ func TestAdminInventoryAuthCatalogAndScopedEdits(t *testing.T) {
 }
 func TestInventoryConsoleAssetsAreLocalizedAndEmbedded(t *testing.T) {
 	html := inventoryConsoleHTML()
-	if strings.Contains(html, "/* INVENTORY_PANEL */") || !strings.Contains(html, "mountInventory(id)") || !strings.Contains(html, "Пересинхронизац") && !strings.Contains(html, "пересинхронизац") {
-		t.Fatal("missing assets")
+	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `пересинхронизац`} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("console missing %s", marker)
+		}
 	}
-	if !strings.Contains(html, "if (selected !== id)") {
-		t.Fatal("stale player request guard")
+	if strings.Contains(html, "/* CONSOLE_") {
+		t.Fatal("unexpanded asset")
 	}
 }
 

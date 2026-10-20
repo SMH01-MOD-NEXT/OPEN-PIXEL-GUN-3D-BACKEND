@@ -213,7 +213,7 @@ func TestAdminConsoleExposesFullProfileEditor(t *testing.T) {
 		`id="pfLevel"`, `id="pfExp"`, `id="pfCoins"`, `id="pfGems"`,
 		`id="rawPrefs"`, `id="rawProgress"`, `id="rawDocument"`,
 		`id="rawSlots"`, `id="rawClientState"`, `id="doReconcile"`,
-		`/api/v1/admin/reconcile`, `/state`,
+		`"reconcile"`, `"source_id"`, `"target_id"`, `/state`,
 	} {
 		if !strings.Contains(rec.Body.String(), marker) {
 			t.Fatalf("admin console omitted %q", marker)

@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OPEN PG · Admin</title>
+    <style>
+      /* CONSOLE_CSS */
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">P</span>
+          <div>OPEN PG<small>BACKEND / 23.1.3</small></div>
+        </div>
+        <nav data-aria="menu" id="navigation">
+          <button data-route="overview" data-i18n="overview"></button
+          ><button data-route="players" data-i18n="players"></button
+          ><button data-route="catalog" data-i18n="catalog"></button
+          ><button data-route="support" data-i18n="support"></button
+          ><button data-route="logs" data-i18n="logs"></button>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="connection-dot" id="connectionDot"></span
+          ><span id="connectionState" data-i18n="offline"></span
+          ><button id="connectionOpen" data-i18n="connection"></button>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <div>
+            <h1 id="routeTitle"></h1>
+            <p id="routeHint"></p>
+          </div>
+          <div class="top-actions">
+            <button id="refresh" data-i18n="refresh"></button
+            ><button id="logout" data-i18n="logout"></button>
+          </div>
+        </header>
+        <p
+          id="status"
+          class="notice"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></p>
+        <main>
+          <section id="page-overview" class="page" hidden>
+            <div class="section-heading">
+              <h2 data-i18n="serverSummary"></h2>
+              <span class="badge">23.1.3</span>
+            </div>
+            <div id="stats" class="cards"></div>
+            <div class="quick-links">
+              <button data-route="players">
+                <strong data-i18n="managePlayers"></strong
+                ><span data-i18n="managePlayersHint"></span></button
+              ><button data-route="catalog">
+                <strong data-i18n="browseCatalog"></strong
+                ><span data-i18n="browseCatalogHint"></span>
+              </button>
+            </div>
+          </section>
+          <section id="page-players" class="page" hidden>
+            <div id="playerList">
+              <div class="toolbar">
+                <label class="search-field"
+                  ><span data-i18n="playerSearch"></span
+                  ><input
+                    id="q"
+                    type="search"
+                    data-placeholder="playerSearchPlaceholder" /></label
+                ><label class="check"
+                  ><input type="checkbox" id="onlyBanned" /><span
+                    data-i18n="onlyBanned"
+                  ></span></label
+                ><button class="primary" id="find" data-i18n="find"></button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th data-i18n="player"></th>
+                      <th data-i18n="level"></th>
+                      <th data-i18n="coins"></th>
+                      <th data-i18n="gems"></th>
+                      <th data-i18n="state"></th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="players"></tbody>
+                </table>
+              </div>
+              <p class="muted" id="playersHint"></p>
+            </div>
+            <div id="playerDetail" hidden>
+              <button
+                class="back"
+                id="backPlayers"
+                data-i18n="backPlayers"
+              ></button>
+              <div class="player-heading">
+                <div>
+                  <h2 id="playerName"></h2>
+                  <span class="mono" id="playerID"></span>
+                </div>
+                <span id="playerBan" class="badge"></span>
+              </div>
+              <div class="tabs" role="tablist" id="playerTabs">
+                <button
+                  data-tab="profile"
+                  data-i18n="profile"
+                  role="tab"
+                ></button
+                ><button
+                  data-tab="inventory"
+                  data-i18n="inventory"
+                  role="tab"
+                ></button
+                ><button
+                  data-tab="moderation"
+                  data-i18n="moderation"
+                  role="tab"
+                ></button
+                ><button
+                  data-tab="advanced"
+                  data-i18n="advanced"
+                  role="tab"
+                ></button>
+              </div>
+              <div id="tab-profile" class="tab-panel">
+                <div class="panel compact">
+                  <h3 data-i18n="counters"></h3>
+                  <form id="profileForm">
+                    <div class="form-grid">
+                      <label
+                        ><span data-i18n="nick"></span
+                        ><input id="pfNick" required maxlength="200" /></label
+                      ><label
+                        ><span data-i18n="level"></span
+                        ><input
+                          id="pfLevel"
+                          type="number"
+                          min="1"
+                          max="65"
+                          required /></label
+                      ><label
+                        ><span data-i18n="xp"></span
+                        ><input
+                          id="pfExp"
+                          type="number"
+                          min="0"
+                          step="1"
+                          required /></label
+                      ><label
+                        ><span data-i18n="coins"></span
+                        ><input
+                          id="pfCoins"
+                          type="number"
+                          min="0"
+                          step="1"
+                          required /></label
+                      ><label
+                        ><span data-i18n="gems"></span
+                        ><input
+                          id="pfGems"
+                          type="number"
+                          min="0"
+                          step="1"
+                          required
+                      /></label>
+                    </div>
+                    <p class="muted" data-i18n="syncHint"></p>
+                    <button
+                      class="primary"
+                      id="pfSave"
+                      data-i18n="saveProfile"
+                    ></button>
+                  </form>
+                </div>
+              </div>
+              <div id="tab-inventory" class="tab-panel" hidden>
+                <div class="toolbar">
+                  <label class="search-field"
+                    ><span data-i18n="ownedSearch"></span
+                    ><input
+                      id="ownedSearch"
+                      type="search"
+                      maxlength="200"
+                      data-placeholder="itemSearchPlaceholder" /></label
+                  ><label
+                    ><span data-i18n="category"></span
+                    ><select id="ownedType" class="type-select"></select></label
+                  ><button id="ownedReload" data-i18n="refresh"></button>
+                </div>
+                <div class="actionbar">
+                  <span id="ownedCount" class="muted"></span>
+                  <div>
+                    <button
+                      class="primary"
+                      id="openCatalog"
+                      data-i18n="giveItem"
+                    ></button
+                    ><button
+                      id="grantAllWeapons"
+                      data-i18n="grantAllWeapons"
+                    ></button
+                    ><button
+                      class="danger-outline"
+                      id="revokeAllWeapons"
+                      data-i18n="revokeAllWeapons"
+                    ></button
+                    ><button
+                      class="danger-outline"
+                      id="revokeAll"
+                      data-i18n="revokeAll"
+                    ></button>
+                  </div>
+                </div>
+                <p class="muted small-note" data-i18n="protectedHint"></p>
+                <p id="ownedStatus" class="inline-status" role="status"></p>
+                <div id="ownedItems" class="table-wrap"></div>
+                <div class="pager">
+                  <button id="ownedPrev" data-i18n="previous"></button
+                  ><span id="ownedPage"></span
+                  ><button id="ownedNext" data-i18n="next"></button>
+                </div>
+              </div>
+              <div id="tab-moderation" class="tab-panel" hidden>
+                <div class="panel compact">
+                  <h3 data-i18n="moderation"></h3>
+                  <p id="banDetails" class="muted"></p>
+                  <form id="banForm">
+                    <div class="form-grid">
+                      <label
+                        ><span data-i18n="reason"></span
+                        ><input id="bnReason" maxlength="500" /></label
+                      ><label
+                        ><span data-i18n="minutes"></span
+                        ><input
+                          id="bnMinutes"
+                          type="number"
+                          min="0"
+                          value="0"
+                          required
+                      /></label>
+                    </div>
+                    <label class="check"
+                      ><input id="bnDevice" type="checkbox" checked /><span
+                        data-i18n="banDevice"
+                      ></span
+                    ></label>
+                    <div class="button-row">
+                      <button class="danger" id="bnDo" data-i18n="ban"></button
+                      ><button
+                        type="button"
+                        id="bnUndo"
+                        data-i18n="unban"
+                      ></button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+              <div id="tab-advanced" class="tab-panel" hidden>
+                <div class="panel">
+                  <p class="warning" data-i18n="rawWarning"></p>
+                  <label
+                    ><span data-i18n="rawSection"></span
+                    ><select id="rawSection">
+                      <option>prefs</option>
+                      <option>progress</option>
+                      <option>progress_document</option>
+                      <option>progress_slots</option>
+                      <option>client_state</option>
+                    </select></label
+                  >
+                  <div id="rawEditors">
+                    <textarea id="rawPrefs" spellcheck="false"></textarea
+                    ><textarea
+                      id="rawProgress"
+                      hidden
+                      spellcheck="false"
+                    ></textarea
+                    ><textarea
+                      id="rawDocument"
+                      hidden
+                      spellcheck="false"
+                    ></textarea
+                    ><textarea
+                      id="rawSlots"
+                      hidden
+                      spellcheck="false"
+                    ></textarea
+                    ><textarea
+                      id="rawClientState"
+                      hidden
+                      spellcheck="false"
+                    ></textarea>
+                  </div>
+                  <div class="button-row">
+                    <button id="rawSave" data-i18n="saveRaw"></button
+                    ><button id="showMetadata" data-i18n="metadata"></button
+                    ><button
+                      id="pfDelete"
+                      class="danger-outline"
+                      data-i18n="deleteAccount"
+                    ></button>
+                  </div>
+                  <pre id="metadata" hidden></pre>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section id="page-catalog" class="page" hidden>
+            <div class="target-bar">
+              <div>
+                <span class="muted" data-i18n="grantTarget"></span
+                ><strong id="catalogTarget"></strong>
+              </div>
+              <button id="choosePlayer" data-i18n="choosePlayer"></button>
+            </div>
+            <div class="toolbar">
+              <label class="search-field"
+                ><span data-i18n="catalogSearch"></span
+                ><input
+                  id="catalogSearch"
+                  type="search"
+                  maxlength="200"
+                  data-placeholder="itemSearchPlaceholder" /></label
+              ><label
+                ><span data-i18n="category"></span
+                ><select id="catalogType" class="type-select"></select></label
+              ><button
+                class="primary"
+                id="catalogFind"
+                data-i18n="find"
+              ></button>
+            </div>
+            <p class="muted small-note" data-i18n="catalogHint"></p>
+            <p id="catalogStatus" class="inline-status" role="status"></p>
+            <div id="catalogItems" class="table-wrap"></div>
+            <div class="pager">
+              <button id="catalogPrev" data-i18n="previous"></button
+              ><span id="catalogCount"></span
+              ><button id="catalogNext" data-i18n="next"></button>
+            </div>
+          </section>
+          <section id="page-support" class="page" hidden>
+            <div class="tabs" id="supportTabs">
+              <button data-support="identity" data-i18n="changeID"></button
+              ><button data-support="transfer" data-i18n="transfer"></button
+              ><button data-support="reconcile" data-i18n="reconcile"></button>
+            </div>
+            <div id="support-identity" class="panel compact">
+              <h3 data-i18n="changeID"></h3>
+              <p class="muted" data-i18n="changeIDHint"></p>
+              <label><span data-i18n="oldID"></span><input id="cidOld" /></label
+              ><label
+                ><span data-i18n="newID"></span
+                ><input id="cidNew" inputmode="numeric" maxlength="9" /></label
+              ><button
+                class="primary"
+                id="doChangeId"
+                data-i18n="changeID"
+              ></button>
+            </div>
+            <div id="support-transfer" class="panel compact" hidden>
+              <h3 data-i18n="transfer"></h3>
+              <p class="warning" data-i18n="transferHint"></p>
+              <label
+                ><span data-i18n="fromID"></span><input id="trFrom" /></label
+              ><label><span data-i18n="toID"></span><input id="trTo" /></label
+              ><button
+                class="primary"
+                id="doTransfer"
+                data-i18n="transfer"
+              ></button>
+            </div>
+            <div id="support-reconcile" class="panel compact" hidden>
+              <h3 data-i18n="reconcile"></h3>
+              <p class="muted" data-i18n="reconcileHint"></p>
+              <label
+                ><span data-i18n="sourceID"></span
+                ><input id="rcSource" /></label
+              ><label
+                ><span data-i18n="targetID"></span
+                ><input id="rcTarget" /></label
+              ><button
+                class="primary"
+                id="doReconcile"
+                data-i18n="reconcile"
+              ></button>
+            </div>
+          </section>
+          <section id="page-logs" class="page" hidden>
+            <div class="toolbar">
+              <label class="search-field"
+                ><span data-i18n="logFilter"></span
+                ><input id="logFilter" type="search" /></label
+              ><button class="primary" id="logStart" data-i18n="start"></button
+              ><button id="logStop" disabled data-i18n="stop"></button
+              ><button id="logClear" data-i18n="clear"></button>
+            </div>
+            <div id="log" role="log" aria-live="off"></div>
+          </section>
+        </main>
+        <footer>
+          <span>OPEN PIXEL GUN 3D BACKEND</span><span data-i18n="footer"></span>
+        </footer>
+      </div>
+    </div>
+    <dialog id="connectionDialog" aria-labelledby="connectionTitle">
+      <form id="connectionForm">
+        <div class="dialog-heading">
+          <h2 id="connectionTitle" data-i18n="connection"></h2>
+          <button
+            type="button"
+            data-close="connectionDialog"
+            data-i18n="close"
+          ></button>
+        </div>
+        <p class="muted" data-i18n="tokenHint"></p>
+        <label
+          ><span data-i18n="adminToken"></span
+          ><input
+            id="token"
+            type="password"
+            autocomplete="current-password"
+            required
+        /></label>
+        <p id="connectionError" class="error" role="alert"></p>
+        <button class="primary" id="connect" data-i18n="connect"></button>
+      </form>
+    </dialog>
+    <dialog id="itemDialog" aria-labelledby="itemDialogTitle">
+      <form id="itemForm">
+        <div class="dialog-heading">
+          <h2 id="itemDialogTitle"></h2>
+          <button
+            type="button"
+            data-close="itemDialog"
+            data-i18n="cancel"
+          ></button>
+        </div>
+        <p id="itemTarget" class="target-caption"></p>
+        <p id="itemIdentity" class="mono muted"></p>
+        <div id="itemFields" class="form-grid">
+          <label id="quantityField"
+            ><span data-i18n="quantity"></span
+            ><input
+              id="itemQuantity"
+              type="number"
+              min="1"
+              max="1000000"
+              value="1"
+              required /></label
+          ><label id="levelField"
+            ><span data-i18n="level"></span
+            ><input
+              id="itemLevel"
+              type="number"
+              min="1"
+              max="65"
+              value="65"
+              required /></label
+          ><label id="rarityField"
+            ><span data-i18n="rarity"></span
+            ><select id="itemRarity"></select
+          ></label>
+        </div>
+        <p id="itemWarning" class="warning"></p>
+        <p id="itemError" class="error" role="alert"></p>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            data-close="itemDialog"
+            data-i18n="cancel"
+          ></button
+          ><button id="itemApply" class="primary" data-i18n="apply"></button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="bulkDialog" aria-labelledby="bulkTitle">
+      <form id="bulkForm">
+        <div class="dialog-heading">
+          <h2 id="bulkTitle"></h2>
+          <button
+            type="button"
+            data-close="bulkDialog"
+            data-i18n="cancel"
+          ></button>
+        </div>
+        <p id="bulkTarget" class="target-caption"></p>
+        <p class="muted" id="bulkDescription"></p>
+        <div id="bulkFields" class="form-grid">
+          <label
+            ><span data-i18n="level"></span
+            ><input
+              id="bulkLevel"
+              type="number"
+              min="1"
+              max="65"
+              value="65"
+              required /></label
+          ><label
+            ><span data-i18n="rarity"></span
+            ><select id="bulkRarity"></select
+          ></label>
+        </div>
+        <button id="bulkPreview" type="button" data-i18n="preview"></button>
+        <div id="bulkPlan" hidden>
+          <div id="bulkCounts" class="plan-counts"></div>
+          <p id="bulkSample" class="muted"></p>
+          <label
+            ><span id="bulkConfirmLabel"></span
+            ><input id="bulkConfirm" autocomplete="off" inputmode="numeric"
+          /></label>
+          <p class="warning" data-i18n="bulkSyncWarning"></p>
+        </div>
+        <p id="bulkError" class="error" role="alert"></p>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            data-close="bulkDialog"
+            data-i18n="cancel"
+          ></button
+          ><button
+            id="bulkApply"
+            class="danger"
+            disabled
+            data-i18n="applyBulk"
+          ></button>
+        </div>
+      </form>
+    </dialog>
+    <script>
+      /* CONSOLE_LOCALE */
+      /* CONSOLE_JS */
+    </script>
+  </body>
+</html>

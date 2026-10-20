@@ -5354,3 +5354,12 @@ Verification: stock HTTP ban window and unban/restart passed without progress lo
 - [ ] Remaining: per-category device and admin browser E2E; safe equipped-item revocation.
 
 Scope and honest verification limits: docs/INVENTORY_23_1_3.md.
+
+## Admin console redesign and bulk inventory operations
+- [x] Reproduce search behavior; separate player-owned search from global catalog.
+- [x] Replace long scrolling console with sidebar routes and player tabs.
+- [x] Add atomic bulk weapon grant/revoke and supported-inventory revoke with preview/CAS/confirmation.
+- [x] Test search, navigation, dialogs, narrow layout, errors and bulk rollback/isolation.
+- [x] Run Go/vet/race/build, deploy without mass-changing the live player, commit.
+
+Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed. Deployed console/search/read-only preview verified; live player inventory, revision and counters unchanged.
