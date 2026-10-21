@@ -81,14 +81,20 @@ that is separate from catalog item type 80 (pets), which uses the verified slot 
 
 `internal/catalog/stock2313.json` contains **7457 registry records** from the local
 stock Android 23.1.3 (versionCode 268411) APK/OBB, not current web/game data.
-**4613** records have stock English names; **2844** explicitly retain a technical
-ID rather than an invented name. **3398** records have a verified write adapter.
+**4613** records have stock English names; **94** pet records have UI-only labels
+derived from their codenames; **2750** explicitly retain a technical ID.
+**3398** records have a verified write adapter.
 These are registry records, not 7457 unique weapons or 7457 fully editable items.
 
 Sources: stock item registry (type enum TypeDefIndex 8931), weapon definition tags
 and localization keys, WearDescriptors, SkinsController SkinItem localization
 keys, gadget prefab components, and embedded Config160 wear-skin labels. Labels
 are joined by verified stock IDs, never inferred from a player's private prefs.
+Pet display labels follow the requested codename rule: strip the leading `pet_`,
+replace underscores with spaces, and title-case (e.g. `pet_fox` → `Fox`,
+`pet_alien_cat` → `Alien Cat`). Their `name_source` is `derived_codename`, not
+stock localization. This never changes the stored ID, numeric index or `53.p.n`
+custom nickname.
 
 `tools/build_stock2313_catalog.py` deterministically joins extraction outputs:
 
@@ -147,9 +153,45 @@ inventory was changed for this work; per-category in-game confirmation remains
 outstanding. Module ownership itself remains read-only pending a verified
 server-side storage/delta contract.
 
+## Pet administration completion (2026-10-21)
+
+The reported read-only pets were reproduced against the running server: its old
+binary returned `editable:false` for every pet despite the newer code in the
+repository. Rebuilt and deployed the backend with private state/config/binary
+backups, without clearing application data or changing the frontend.
+
+All 94 catalog pets now have editable ownership and derived UI labels. Existing
+pets are never reset by a repeat grant. A new pet remains level 1, zero cards,
+empty custom nickname; no UI display label is written into the nickname. Revoke
+still refuses an equipped pet. Refresh `/admin` to load the updated embedded UI,
+select a player, open the catalog, filter Pets, and use the grant action.
+
+Automated: full uncached Go suite, full race suite, vet and both command builds
+passed. Catalog reproduction is byte-for-byte. Regressions exercise all 94 pet
+identities through grant, disk reopen and revoke; nickname/card preservation,
+persistence rollback, strict baseline validation, retry/CAS and stale-upload
+fencing, and full-sync delivery/acknowledgement. Run
+`node tools/console_pets_test.cjs` for the dependency-free DOM/form harness;
+it executes the actual console functions but is not a real-browser E2E test.
+
+Live Android 23.1.3 (versionCode 268411): temporary Fox (`20003`) was granted,
+synced and acknowledged at revision 64. Read-only process-memory inspection of
+the stock slot-53 pet list confirmed its actual record (level 1, cards 0, blank
+nickname), not merely a catalog or server projection. The grant survived a backend
+restart. Targeted revoke was synced/acknowledged at revision 65, without restarting
+the Android process; read-only inspection confirmed Fox was absent afterwards.
+The final pet/egg slot exactly matched the original, and all original pet levels,
+cards and nicknames, currency, XP and 87 progress sections were retained.
+
+One unrelated live-client change occurred in slot 21 (`GatchaGifts`, field `c`)
+while the game was running; it was preserved, not overwritten with an old profile.
+All other final slots matched the pre-test baseline. No temporary pet remains.
+This proves the admin ownership lifecycle, not every stock pet purchase/upgrade
+or card delta command; those remain governed by the stated economy limits above.
+
 ## Remaining work
 
-- Resolve names for 2844 technical-ID records from additional exact-version assets.
+- Resolve names for 2750 technical-ID records from additional exact-version assets.
 - Verify remaining ownership adapters and delta schemas before enabling writes.
 - Define safe explicit unequip/revoke semantics for active items if desired.
 - Complete per-category device and admin-browser end-to-end tests.

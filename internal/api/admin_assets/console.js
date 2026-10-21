@@ -367,7 +367,9 @@
             "</strong>" +
             (item.name_source === "technical_id"
               ? "<small>" + esc(t("technical")) + "</small>"
-              : "") +
+              : item.name_source === "derived_codename"
+                ? "<small>" + esc(t("derivedPetName")) + "</small>"
+                : "") +
             (owned
               ? "<small>" +
                 esc(
@@ -521,7 +523,11 @@
     el("itemRarity").value =
       item.type === 80 ? 0 : item.rarity == null ? 5 : item.rarity;
     el("itemWarning").textContent = t(
-      action === "revoke" ? "revokeWarning" : "grantWarning",
+      action === "revoke"
+        ? "revokeWarning"
+        : item.type === 80
+          ? "petGrantWarning"
+          : "grantWarning",
     );
     el("itemError").textContent = "";
     el("itemDialog").showModal();

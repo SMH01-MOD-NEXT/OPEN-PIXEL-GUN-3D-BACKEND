@@ -22,6 +22,7 @@ for r in raw:
  if r['id'] in wear:
   w=wear[r['id']];label=lang.get(w['key']) or w['readable']
   if label:r.update(name=label,name_source='client_23.1.3_en' if w['key'] in lang else 'client_23.1.3_readable')
+ if t==80 and r['id'].startswith('pet_') and r['id'][4:]:r.update(name=r['id'][4:].replace('_',' ').title(),name_source='derived_codename')
  if t==70 and r['id'].lower() in gadgets and gadgets[r['id'].lower()] in lang:r.update(name=lang[gadgets[r['id'].lower()]],name_source='client_23.1.3_en')
  if t==65 and r['id'] in skins and skins[r['id']]['key'] in lang:r.update(name=lang[skins[r['id']]['key']],name_source='client_23.1.3_en')
  if t==1510 and i in wearskins and wearskins[i]['tt'] in lang:r.update(name=lang[wearskins[i]['tt']],name_source='client_23.1.3_en')
