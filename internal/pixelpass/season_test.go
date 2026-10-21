@@ -65,3 +65,33 @@ func TestFrozenStockContract(t *testing.T) {
 		t.Fatal("season boundaries")
 	}
 }
+
+func TestGeneratedTutorialHasNativeBase(t *testing.T) {
+	tutorial, ok := FindTask(TutorialTaskIndex)
+	if !ok || tutorial.TaskID != 9999 || tutorial.Type != 4 || tutorial.Needed != 1 || tutorial.Free != 1 || tutorial.Rewards[0] != "25015:0" {
+		t.Fatal("native generated tutorial contract", tutorial)
+	}
+	for _, task := range Tasks() {
+		if task.Index == TutorialTaskIndex {
+			t.Fatal("stock generates tutorial; must not duplicate in calendar")
+		}
+	}
+	found := 0
+	for _, raw := range Document()["tb"].([]any) {
+		base := raw.(map[string]any)
+		if base["i"] != TutorialTaskIndex {
+			continue
+		}
+		found++
+		action := base["as"].(map[string]any)
+		if action["type"] != "endMatch" || action["gamemode"] != "None" || action["neededcount"] != 1 || action["shouldwin"] != nil || base["d"] != "Key_6085" {
+			t.Fatal("tutorial must require exactly one completed match, not a win", base)
+		}
+	}
+	if found != 1 {
+		t.Fatal("missing/duplicate tutorial base", found)
+	}
+	if _, _, err := Reward("25015:0"); err == nil {
+		t.Fatal("tutorial zero reward must not relax generic economy validation")
+	}
+}

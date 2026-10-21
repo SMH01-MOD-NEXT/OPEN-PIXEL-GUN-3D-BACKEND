@@ -5445,3 +5445,19 @@ Cause: the native cohort selector reads ExpOpenForB (176); a missing row display
 JSON for 176, covering both non-null gate rows/polls/pushes/cache hashes.
 Full QA/build passed; PID 137267 deployed and live encrypted dual-cohort smoke
 passed. Profiles unchanged through deployment/smoke; no frontend changes.
+
+## Pixel Pass persistent zero-match lock — 2026-10-21
+- [x] Verify refreshed client config parsing and exact entry gate on the connected ADB device.
+- [x] Add the native-generated tutorial task base 9999 and validate its stock progress/zero-reward commands.
+- [x] Repair previously earned-match tutorial state and deliver it once through correlated full synchronization; retain receipts, crowns and premium ownership.
+- [x] Cover rank-one match unlock, zero reward/retry and mixed match batches, purchased-crown exclusion, stale snapshots/flags and durable one-time migration.
+- [x] Run go test, go vet, race tests, console regressions and both builds; deploy backed-up binary and run encrypted live config smoke.
+- [x] Verify the physical device opens Pixel Pass, displays calendar tasks and retains 20 crowns/unlock across restarts; user confirmed access.
+
+Root cause: stock CreateTutorial hardcodes task/base 9999 outside the calendar.
+Its absent base left GameTask null and rendered Play 0 matches. The XP gate was
+already passing; the earlier dual-cohort ExpOpen change alone could not fix it.
+Legacy local task caches additionally needed the existing full-download route.
+No frontend edits. The first free reward claimed normally (+55 coins, tier 1);
+20 crowns, premium status and prior task claims stayed intact, with no resets.
+Final deployed PID 152034; all QA/build/smoke checks passed.

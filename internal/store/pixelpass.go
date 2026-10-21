@@ -16,13 +16,14 @@ import (
 // PixelPassLedger is deliberately separate from uploaded slot snapshots. Stock
 // owns presentation/config references, but cannot overwrite acknowledged claims.
 type PixelPassLedger struct {
-	PremiumBonus int64          `json:"premium_bonus,omitempty"`
-	Closed       bool           `json:"closed,omitempty"`
-	State        map[string]any `json:"state"`
-	Tasks        map[string]any `json:"tasks"`
-	Claimed      map[string]any `json:"claimed_tasks"`
-	MatchDay     string         `json:"match_day"`
-	MatchCrowns  int64          `json:"match_crowns"`
+	TutorialVersion int            `json:"tutorial_version,omitempty"`
+	PremiumBonus    int64          `json:"premium_bonus,omitempty"`
+	Closed          bool           `json:"closed,omitempty"`
+	State           map[string]any `json:"state"`
+	Tasks           map[string]any `json:"tasks"`
+	Claimed         map[string]any `json:"claimed_tasks"`
+	MatchDay        string         `json:"match_day"`
+	MatchCrowns     int64          `json:"match_crowns"`
 }
 
 func (l *PixelPassLedger) clone() *PixelPassLedger {
@@ -35,10 +36,38 @@ func (l *PixelPassLedger) clone() *PixelPassLedger {
 	c.Claimed = cloneAnyMap(l.Claimed)
 	return &c
 }
+
+// migratePassTutorial stages a one-time full download for legacy accounts only.
+// New ledgers already carry this contract version and complete locally in battle.
+func migratePassTutorial(p *Profile) bool {
+	l := p.PixelPass
+	if l == nil || l.TutorialVersion != 0 || l.MatchCrowns <= 0 || ppInt(l.State, "i") != pixelpass.SeasonID {
+		return false
+	}
+	l.TutorialVersion = 1
+	p.ProgressRevision = nextProgressRevision(p.ProgressRevision)
+	return true
+}
+
+// reconcilePassTutorial repairs accounts that already earned match crowns while
+// the native tutorial base was missing. Never infer a match from total crowns:
+// premium packs, purchased levels and quests also add to that total. No money,
+// crowns, premium ownership or ordinary task claims are changed by this repair.
+func reconcilePassTutorial(l *PixelPassLedger) {
+	if l == nil || ppInt(l.State, "i") != pixelpass.SeasonID || l.MatchCrowns <= 0 {
+		return
+	}
+	if l.Tasks == nil {
+		l.Tasks = map[string]any{}
+	}
+	l.Tasks["5_9999"] = map[string]any{"p": int64(1), "c": int64(1), "r": int64(1)}
+}
+
 func projectPixelPass(p *Profile) {
 	if p.PixelPass == nil {
 		return
 	}
+	reconcilePassTutorial(p.PixelPass)
 	if p.ProgressSlots == nil {
 		p.ProgressSlots = map[string]any{}
 	}
@@ -169,7 +198,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 		return skip, nil
 	}
 	if p.PixelPass == nil {
-		p.PixelPass = &PixelPassLedger{State: map[string]any{"i": pixelpass.SeasonID, "lr": []any{}, "ctr": map[string]any{}}, Tasks: map[string]any{}, Claimed: map[string]any{}}
+		p.PixelPass = &PixelPassLedger{TutorialVersion: 1, State: map[string]any{"i": pixelpass.SeasonID, "lr": []any{}, "ctr": map[string]any{}}, Tasks: map[string]any{}, Claimed: map[string]any{}}
 		// A native boot snapshot may precede delivery/retry of standalone 322.
 		// Recover only the opaque cache reference, never its ownership/crowns.
 		old := objectAt(p.ProgressSlots, "74", "pp")
@@ -178,6 +207,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 		}
 	}
 	l := p.PixelPass
+	reconcilePassTutorial(l)
 
 	state := l.State
 	if ppInt(state, "i") != pixelpass.SeasonID {
@@ -329,7 +359,14 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 						v = ppInt(old, "p")
 					}
 				case "c", "r":
-					if v < ppInt(old, a) || v > 1 {
+					if v < 0 || v > 1 {
+						return nil, errPass
+					}
+					// An old device can echo the pre-repair tutorial flags.
+					if idx == pixelpass.TutorialTaskIndex && v < ppInt(old, a) {
+						v = ppInt(old, a)
+					}
+					if v < ppInt(old, a) {
 						return nil, errPass
 					}
 				default:
@@ -347,6 +384,14 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			tasks[k] = cloneAnyMap(old)
 		}
 	}
+	tutorialClaim := false
+	for _, raw := range commands {
+		c, _ := raw.(map[string]any)
+		d, _ := c["p"].(map[string]any)
+		if ppInt(c, "id") == 338 && ppInt(d, "t") == pixelpass.TutorialTaskIndex {
+			tutorialClaim = true
+		}
+	}
 	var totalReported int64
 	for _, raw := range commands {
 		c, _ := raw.(map[string]any)
@@ -354,7 +399,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 		if id == 326 {
 			d, _ := c["p"].(map[string]any)
 			v, ok := counterInt64(d["e"])
-			if !ok || v <= 0 || v > pixelpass.MaxCrowns {
+			if !ok || v < 0 || v == 0 && !tutorialClaim || v > pixelpass.MaxCrowns {
 				return nil, errPass
 			}
 			totalReported += v
@@ -472,7 +517,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			}
 		case 326:
 			n, ok := counterInt64(d["e"])
-			if !ok || n <= 0 || n > pixelpass.MaxCrowns {
+			if !ok || n < 0 || n == 0 && !tutorialClaim || n > pixelpass.MaxCrowns {
 				return nil, errPass
 			}
 			reported += n
@@ -530,7 +575,11 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 	for _, raw := range commands {
 		c, _ := raw.(map[string]any)
 		id, _ := counterInt64(c["id"])
-		if id == 338 || id == 324 {
+		d, _ := c["p"].(map[string]any)
+		// The generated tutorial pays zero crowns and can complete in the same
+		// end-of-match batch as the ordinary match reward. It has no crown echo
+		// that could be replayed as a new match.
+		if id == 324 || id == 338 && ppInt(d, "t") != pixelpass.TutorialTaskIndex {
 			semantic = true
 		}
 	}

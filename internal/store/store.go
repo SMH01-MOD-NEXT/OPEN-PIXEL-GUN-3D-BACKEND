@@ -148,6 +148,21 @@ func OpenWithOptions(dir string, opts Options) (*Store, error) {
 	default:
 		return nil, fmt.Errorf("store: read %s: %w", s.path, err)
 	}
+	// Legacy devices keep their local task cache on the ordinary synchronize
+	// route. Deliver this repair once via the existing correlated full-download
+	// revision flow. Preserve command receipts: this is not an account reset.
+	repairedTutorial := false
+	for _, p := range s.state.Profiles {
+		if migratePassTutorial(p) {
+			repairedTutorial = true
+		}
+		projectPixelPass(p)
+	}
+	if repairedTutorial {
+		if err := s.persistLocked(); err != nil {
+			return nil, fmt.Errorf("store: persist Pixel Pass tutorial repair: %w", err)
+		}
+	}
 	return s, nil
 }
 

@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// Stock creates the Tutorial task itself, outside the calendar task list.
+const TutorialTaskIndex = 9999
 const SeasonID = 1
 const PremiumPrice int64 = 600
 const PackPrice int64 = 1200
@@ -98,6 +100,10 @@ func Tasks() []Task {
 	return tasks
 }
 func FindTask(index int) (Task, bool) {
+	if index == TutorialTaskIndex {
+		// Native CreateTutorial uses the first cell threshold as its crown reward.
+		return Task{TutorialTaskIndex, 0, TutorialTaskIndex, 4, 1, 1, 0, []string{fmt.Sprintf("25015:%d", Levels()[0].Exp)}}, true
+	}
 	for _, t := range Tasks() {
 		if t.Index == index {
 			return t, true
@@ -138,6 +144,9 @@ func Document() map[string]any {
 		}
 		bases = append(bases, map[string]any{"i": j + 1, "tx": "", "d": spec.key, "sp": true, "as": action, "ts": map[string]any{}, "r": []any{}})
 	}
+	// Without this base, stock leaves its generated tutorial GameTask null:
+	// the lobby renders "Play 0 matches" and can never unlock the pass.
+	bases = append(bases, map[string]any{"i": TutorialTaskIndex, "tx": "", "d": "Key_6085", "sp": true, "as": map[string]any{"type": "endMatch", "version": 1, "neededcount": 1, "gamemode": "None"}, "ts": map[string]any{}, "r": []any{}})
 	matches := []any{}
 	for _, mode := range []int{0, 1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 33, 35, 36, 37, 40, 41} {
 		matches = append(matches, map[string]any{"g": mode, "p": []int{20, 15, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10}, "s": 50})

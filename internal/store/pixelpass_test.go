@@ -279,3 +279,119 @@ func TestPixelPassDuplicateChildrenAreReducedOnce(t *testing.T) {
 		t.Fatal("duplicate child reduced twice")
 	}
 }
+
+func TestPixelPassTutorialUnlockAfterMatchAndRepairAcrossRestart(t *testing.T) {
+	s, dir, ctx := passSetup(t)
+	passApply(t, s, ctx, counterCommand(64, "intro-rank-one", map[string]any{"l": 1}))
+	before, _ := s.Profile(socketUniqID)
+	if len(objectAt(before.ProgressSlots, "33", "5_9999")) != 0 {
+		t.Fatal("new account unlocked before match")
+	}
+	passApply(t, s, ctx, counterCommand(326, "intro-match", map[string]any{"e": 20}))
+	p, _ := s.Profile(socketUniqID)
+	for _, doc := range []map[string]any{p.ProgressSlots, p.ProgressDocument} {
+		intro := objectAt(doc, "33", "5_9999")
+		if ppInt(intro, "p") != 1 || ppInt(intro, "c") != 1 || ppInt(intro, "r") != 1 {
+			t.Fatal("match did not unlock tutorial", intro)
+		}
+	}
+	if p.Level != 1 || p.Coins != before.Coins || p.Gems != before.Gems || ppInt(p.PixelPass.State, "e") != 20 || ppInt(p.PixelPass.State, "p") != 0 {
+		t.Fatal("unlock changed rank/economy/ownership")
+	}
+	beforeRepairReceipts := p.ProgressCommandReceipts
+	// Recreate the deployed pre-fix ledger: match crowns exist, intro is absent.
+	s.mu.Lock()
+	for _, profile := range s.state.Profiles {
+		if profile.PixelPass != nil {
+			profile.PixelPass.TutorialVersion = 0
+			delete(profile.PixelPass.Tasks, "5_9999")
+			delete(objectAt(profile.ProgressSlots, "33"), "5_9999")
+			delete(objectAt(profile.ProgressDocument, "33"), "5_9999")
+		}
+	}
+	err := s.persistLocked()
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ = s.Profile(socketUniqID)
+	if ppInt(objectAt(p.ProgressSlots, "33", "5_9999"), "r") != 1 || ppInt(p.PixelPass.State, "e") != 20 {
+		t.Fatal("historical match not repaired before first read")
+	}
+	if p.ProgressRevision != before.ProgressRevision+1 || !reflect.DeepEqual(p.ProgressCommandReceipts, beforeRepairReceipts) {
+		t.Fatal("repair must arm exactly one full download without clearing receipts")
+	}
+	ctx.Revision = p.ProgressRevision
+	if _, err := s.AcknowledgeProfileProgressRevision(p.PlayerID, ctx.Device, ctx.Revision); err != nil {
+		t.Fatal(err)
+	}
+	// Stale flags/snapshots cannot re-lock the pass or reject unrelated gameplay.
+	passApply(t, s, ctx, counterCommand(150, "stale-intro", map[string]any{"5_9999": map[string]any{"p": 0, "c": 0, "r": 0}}))
+	_, err = s.ReplaceProfileProgressSlots(socketUniqID, map[string]any{"33": map[string]any{"5_9999": map[string]any{"p": 0}}}, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ = s.Profile(socketUniqID)
+	if ppInt(objectAt(p.ProgressSlots, "33", "5_9999"), "r") != 1 || ppInt(p.PixelPass.State, "e") != 20 {
+		t.Fatal("repaired unlock not durable")
+	}
+	if p.ProgressRevision != ctx.Revision {
+		t.Fatal("repair repeated revision bump after restart")
+	}
+}
+
+func TestPixelPassTutorialNativeZeroRewardClaim(t *testing.T) {
+	s, _, ctx := passSetup(t)
+	before, _ := s.Profile(socketUniqID)
+	for _, suffix := range []string{"first", "retry"} {
+		passApply(t, s, ctx,
+			counterCommand(150, "intro-p"+suffix, map[string]any{"5_9999": map[string]any{"p": 1, "c": 1}}),
+			counterCommand(337, "intro-prepare"+suffix, map[string]any{"t": 9999, "r": []any{"25015:0"}}),
+			counterCommand(326, "intro-zero"+suffix, map[string]any{"e": 0}),
+			counterCommand(338, "intro-claim"+suffix, map[string]any{"t": 9999}),
+			counterCommand(152, "intro-r"+suffix, map[string]any{"5_9999": map[string]any{"r": 1}}))
+	}
+	p, _ := s.Profile(socketUniqID)
+	if ppInt(objectAt(p.ProgressSlots, "33", "5_9999"), "r") != 1 || ppInt(p.PixelPass.State, "e") != 0 || p.Coins != before.Coins || p.Gems != before.Gems {
+		t.Fatal("zero tutorial reward/replay changed economy")
+	}
+	if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, []any{counterCommand(326, "unrelated-zero", map[string]any{"e": 0})}, passNow); err == nil {
+		t.Fatal("allowed generic zero-crown report")
+	}
+}
+
+func TestPixelPassBoughtCrownsDoNotRepairTutorial(t *testing.T) {
+	s, dir, ctx := passSetup(t)
+	passApply(t, s, ctx, counterCommand(66, "intro-pack-pay", map[string]any{"c": pixelpass.Currency, "v": 1200}), counterCommand(326, "intro-pack-exp", map[string]any{"e": 1000}), counterCommand(324, "intro-pack", map[string]any{}))
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.Profile(socketUniqID)
+	if len(objectAt(p.ProgressSlots, "33", "5_9999")) != 0 {
+		t.Fatal("purchased crowns counted as a match")
+	}
+}
+
+func TestPixelPassTutorialCanClaimAlongsideMatchReward(t *testing.T) {
+	s, _, ctx := passSetup(t)
+	passApply(t, s, ctx,
+		counterCommand(150, "intro-match-p", map[string]any{"5_9999": map[string]any{"p": 1, "c": 1}}),
+		counterCommand(337, "intro-match-prepare", map[string]any{"t": 9999, "r": []any{"25015:0"}}),
+		counterCommand(326, "intro-match-zero", map[string]any{"e": 0}),
+		counterCommand(338, "intro-match-claim", map[string]any{"t": 9999}),
+		counterCommand(326, "intro-real-match", map[string]any{"e": 20}),
+		counterCommand(152, "intro-match-r", map[string]any{"5_9999": map[string]any{"r": 1}}))
+	p, _ := s.Profile(socketUniqID)
+	if ppInt(p.PixelPass.State, "e") != 20 || p.PixelPass.MatchCrowns != 20 || ppInt(objectAt(p.ProgressSlots, "33", "5_9999"), "r") != 1 {
+		t.Fatal("tutorial swallowed/rejected native match reward")
+	}
+}
