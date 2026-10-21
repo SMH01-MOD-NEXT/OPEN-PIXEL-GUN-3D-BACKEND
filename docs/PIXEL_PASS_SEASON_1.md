@@ -114,3 +114,25 @@ outer i for durable receipts, with regression coverage. The client can also
 upload the saved config reference in slot 74 before command delivery; only that
 reference is recovered on first ledger creation, never unverified premium,
 crowns or claimed rewards.
+
+## Zero-match lobby lock correction
+
+The exact client has two ExpOpen configs: **ExpOpen=116** and
+**ExpOpenForB=176**. Both are polled by the actual reconnecting client; the
+provider at 0x366900C–0x366902C selects one using a cohort flag. The embedded
+116/176 documents are identical. Hosting only 116 does not unlock cohort B.
+
+The Pixel Pass row lookup (0x1A0D51C → 0x3669480) can then return null.
+Its UI threshold getter 0x18EE3D4 defaults to zero for a null row, while its
+entry predicate 0x18EEF7C → 0x20DF334 returns false for null. This explains
+“play 0 matches” combined with an entry that stays locked after a match;
+it is not a zero-crown problem and not a missing tutorial quest.
+
+The backend now hosts ExpOpenForB as a strict alias of the canonical ExpOpen
+catalog, with inline JSON delivery for both IDs. Both cohorts have the actual
+feature.pixelpass row with threshold zero; unrelated gates stay untouched.
+There is no season-ID change, account migration, artificial match completion,
+crown reset, premium reset or frontend edit. Regression tests cover both
+cohorts' non-null row, zero threshold, equal catalogs/hashes, poll cache hits
+and inline push bodies. Physical UI confirmation still requires restarting
+the client so its config provider ingests the newly supplied 176 document.

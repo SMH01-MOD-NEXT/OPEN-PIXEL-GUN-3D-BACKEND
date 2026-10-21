@@ -104,6 +104,15 @@ func hostedConfigFile(name string) (string, bool) {
 // cannot be used is logged, because that is an operator mistake which would
 // otherwise look exactly like a document nobody hosts.
 func (s *Server) hostedConfigFromFile(name string) (hostedConfig, bool) {
+	// 23.1.3 ExpOpenSystem selects ConfigId 116 OR 176 (ExpOpenForB)
+	// at 0x366900C-0x366902C. A missing 176 leaves the pass row null:
+	// the label defaults to 0 matches, but the entry gate returns false.
+	// Both embedded documents are identical. Keep one canonical gate catalog
+	// so a cohort cannot silently lose feature.pixelpass or get a stale limit.
+	if name == "ExpOpenForB" {
+		return s.hostedConfigFromFile("ExpOpen")
+	}
+
 	if name == pixelpass.ConfigName {
 		body := pixelpass.JSON()
 		return hostedConfig{document: pixelpass.Document(), body: body, hash: s.hostedConfigHash(body)}, true

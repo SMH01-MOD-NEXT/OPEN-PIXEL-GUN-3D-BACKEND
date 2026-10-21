@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/pixelpass"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -53,6 +54,69 @@ func TestPixelPassShippingExpGate(t *testing.T) {
 		t.Fatal("pixelpass gate missing")
 	}
 }
+
+// The stock lobby displays zero when the row is null, but its entry
+// predicate returns false for null (0x18EE3D4 and 0x20DF334). Therefore
+// checking just the number in ExpOpen cannot establish that cohort B opens.
+func TestPixelPassUnlockBothNativeExpOpenCohorts(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+	canonical, ok := s.hostedConfigDocument("ExpOpen")
+	if !ok {
+		t.Fatal("missing ExpOpen")
+	}
+	names := map[string]any{}
+	for _, name := range []string{"ExpOpen", "ExpOpenForB"} {
+		t.Run(name, func(t *testing.T) {
+			hosted, ok := s.hostedConfigDocument(name)
+			if !ok {
+				t.Fatal("native cohort has no gate document")
+			}
+			if !reflect.DeepEqual(hosted.document, canonical.document) || hosted.hash != canonical.hash {
+				t.Fatal("cohort gates diverged")
+			}
+			rowCount := 0
+			for _, raw := range hosted.document["eos"].([]any) {
+				row := raw.(map[string]any)
+				if row["t"] == "feature.pixelpass" {
+					rowCount++
+					threshold, ok := row["e"].(float64)
+					if !ok || threshold != 0 {
+						t.Fatal("rank-one/zero-match unlock not configured")
+					}
+					// Captured stock predicate: row != null && progress >= row.e.
+					for _, progress := range []float64{0, 1, 20, 60} {
+						if progress < threshold {
+							t.Fatal("native entry remains locked")
+						}
+					}
+				}
+			}
+			if rowCount != 1 {
+				t.Fatal("missing/ambiguous pass row", rowCount)
+			}
+			reply, changed := s.hostedConfigReply(name, "")
+			if !changed || reply[sioConfigBodyKey] != string(canonical.body) {
+				t.Fatal("poll failed", name)
+			}
+			if _, changed = s.hostedConfigReply(name, hosted.hash); changed {
+				t.Fatal("stable cache not accepted")
+			}
+			names[name] = map[string]any{sioConfigHashKey: ""}
+		})
+	}
+	batches := s.configPushBatches(names)
+	if len(batches) != 1 || len(batches[0].documents) != 0 || len(batches[0].entries) != 2 {
+		t.Fatal("both cohorts must receive inline JSON")
+	}
+	for name := range names {
+		entry := batches[0].entries[name].(map[string]any)
+		if entry[sioPushBodyKey] != string(canonical.body) {
+			t.Fatal("wrong native JSON branch", name)
+		}
+	}
+}
+
 func TestPixelPassStockUpdateProgressTransaction(t *testing.T) {
 	// The contract itself has fixed lifecycle dates; store tests inject a clock
 	// and cover the full season deterministically, including expiration.

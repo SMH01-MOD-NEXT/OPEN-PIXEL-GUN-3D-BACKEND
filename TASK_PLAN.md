@@ -5434,3 +5434,14 @@ Verification: full Go tests/vet/race, both console suites and both CLI builds pa
 Live encrypted config push smoke passed; final deployment PID 135330 is healthy.
 Native standalone commands use stable outer i when ci is absent (live shape verified).
 No frontend changes; no ADB device available for physical UI/gameplay verification.
+
+## Pixel Pass zero-match unlock regression — 2026-10-21
+- [x] Trace the native lobby/tutorial unlock gate and compare the live season/task slots.
+- [x] Correct the backend-only season/gate contract without resetting crowns or purchases.
+- [x] Add regression coverage, run QA, rebuild, back up and redeploy; commit isolated fix.
+
+Cause: the native cohort selector reads ExpOpenForB (176); a missing row displays
+0 matches but the predicate returns false. Added canonical ExpOpen alias + inline
+JSON for 176, covering both non-null gate rows/polls/pushes/cache hashes.
+Full QA/build passed; PID 137267 deployed and live encrypted dual-cohort smoke
+passed. Profiles unchanged through deployment/smoke; no frontend changes.
