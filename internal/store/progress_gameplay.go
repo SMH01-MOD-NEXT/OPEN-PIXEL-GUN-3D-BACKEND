@@ -44,6 +44,7 @@ func allowProfileClientWrite(p *Profile, contexts []ProgressWriteContext) (bool,
 // reconcileProfileCounters removes the old flat-document override of newer
 // gameplay projections. All channels now expose the same money, level and XP.
 func reconcileProfileCounters(p *Profile) {
+	projectPixelPass(p)
 	if p.Progress == nil {
 		p.Progress = map[string]any{}
 	}
@@ -88,6 +89,10 @@ func setMatchingCounter(slot map[string]any, key string, want int64) {
 // A purchase charge and its ownership change share one candidate and one fsync.
 // This compatibility reducer is not price validation or an anticheat system.
 func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteContext, commands []any) (int, error) {
+	return s.applyProfileCounterCommandsAt(playerID, ctx, commands, time.Now().UTC())
+}
+
+func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWriteContext, commands []any, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
@@ -117,8 +122,39 @@ func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteCo
 		currencies = map[string]any{"Coins": candidate.Coins, "GemsCurrency": candidate.Gems}
 		candidate.ProgressSlots["3"] = currencies
 	}
-	applied := 0
+	// Remove durable retries AND duplicate children inside this batch before
+	// the semantic pass reducer can observe any deltas.
+	active := make([]any, 0, len(commands))
+	seen := map[string]bool{}
 	for _, raw := range commands {
+		c, ok := raw.(map[string]any)
+		if !ok {
+			return 0, errors.New("store: invalid progress command")
+		}
+		id, _ := counterInt64(c["id"])
+		d, _ := c["p"].(map[string]any)
+		ci, _ := c["ci"].(string)
+		encoded, err := json.Marshal(struct {
+			ID   int64
+			Data map[string]any
+		}{id, d})
+		if err != nil {
+			return 0, err
+		}
+		digest := sha256.Sum256(append([]byte(device+":"+ci+":"), encoded...))
+		receipt := fmt.Sprintf("%x", digest[:])
+		if !candidate.ProgressCommandReceipts[receipt] && !seen[receipt] {
+			seen[receipt] = true
+			active = append(active, raw)
+		}
+	}
+	commands = active
+	skip, err := reducePixelPass(&candidate, commands, now)
+	if err != nil {
+		return 0, err
+	}
+	applied := 0
+	for commandPosition, raw := range commands {
 		command, ok := raw.(map[string]any)
 		if !ok {
 			return 0, errors.New("store: invalid progress command")
@@ -155,6 +191,11 @@ func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteCo
 		// Never silently evict receipts and make a replay charge money twice.
 		if len(candidate.ProgressCommandReceipts) >= 100000 {
 			return 0, errors.New("store: counter receipt limit reached; operator review required")
+		}
+		if skip[commandPosition] {
+			candidate.ProgressCommandReceipts[key] = true
+			applied++
+			continue
 		}
 		switch id {
 		case 10, 66:

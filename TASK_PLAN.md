@@ -5422,3 +5422,15 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Validate 54 weapons against both exact catalog and hashed raw client records; test all 65 levels/three paths, boundaries, coverage, hashes and isolation. Full Go tests, race, vet, console harnesses and both builds passed.
 - [x] Deploy with private rollback backup; PID 122743 healthy on :8080, state SHA256 unchanged. ADB has no connected device, so new client delivery/battle verification remains unavailable.
 - [x] Prepare isolated Conventional Commit; retain all pre-existing TASK_PLAN worktree edits.
+
+## Backend-only season 1 Pixel Pass — 2026-10-21
+- [x] Inspect exact 23.1.3 config, progress, quest, purchase and claim protocols (frontend read-only).
+- [x] Implement one compatible season, free/premium tracks, crown progression and tasks; premium priced in Pixel Pass currency.
+- [x] Add transactional persistence, retry/anti-replay and invalid-input regression coverage.
+- [x] Run full QA/build, document contracts and verification limits.
+- [x] Back up, deploy, verify service/configs and commit isolated backend changes.
+
+Verification: full Go tests/vet/race, both console suites and both CLI builds passed.
+Live encrypted config push smoke passed; final deployment PID 135330 is healthy.
+Native standalone commands use stable outer i when ci is absent (live shape verified).
+No frontend changes; no ADB device available for physical UI/gameplay verification.

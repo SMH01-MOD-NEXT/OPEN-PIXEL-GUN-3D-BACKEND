@@ -1,0 +1,2942 @@
+{
+  "id": 7,
+  "esr": 500,
+  "sr": [
+    "1027:1"
+  ],
+  "ie": true,
+  "eos": [
+    {
+      "e": 0,
+      "t": "map.teamfight.dust_entering",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 0,
+      "t": "map.teamfight.paradise",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 15,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 15,
+      "t": "gamemode.arena",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 15,
+      "t": "map.teamfight.nuclearcity",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 30,
+      "t": "map.teamfight.white_house",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 35,
+      "t": "gamemode.minigames",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 35,
+      "t": "gamemode.campaign",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 35,
+      "t": "feature.taskbook",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 45,
+      "t": "gamemode.battleroyale",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 45,
+      "t": "map.battleroyale.battle_royale_arcade_2",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 45,
+      "t": "feature.pets",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 45,
+      "t": "feature.threechests",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 60,
+      "t": "feature.battlepass",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 0,
+      "t": "feature.pixelpass",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 60,
+      "t": "map.battleroyale.battle_royale_09",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 65,
+      "t": "feature.weapon_info_banner",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "feature.roulette",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "feature.cardroulette",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "feature.trader",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "feature.misc",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "gamemode.defendthetower",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "map.teamfight.shipped",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "map.battleroyale.freeplay_city_br.squad",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 65,
+      "t": "map.battleroyale.freeplay_city_br",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 70,
+      "t": "gamemode.redlight",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 75,
+      "t": "feature.friends",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 75,
+      "t": "feature.squad",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 80,
+      "t": "gamemode.deathmatch",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 75,
+      "t": "feature.mailbox",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 80,
+      "t": "map.battleroyale.battle_royale_arcade_3",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 80,
+      "t": "gamemode.dater",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 85,
+      "t": "feature.adschest",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 85,
+      "t": "feature.AdsPixelPassStore",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 85,
+      "t": "feature.adscampaign",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 90,
+      "t": "gamemode.hidefrommonster",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 90,
+      "t": "gamemode.imposter",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 100,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20"
+      ]
+    },
+    {
+      "e": 120,
+      "t": "feature.private",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 140,
+      "t": "feature.tournament",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 140,
+      "t": "feature.vip",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 170,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 170,
+      "t": "feature.subscription20",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 170,
+      "t": "feature.eggsdelivery",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 170,
+      "t": "gamemode.timebattle",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 200,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "2015:10"
+      ]
+    },
+    {
+      "e": 225,
+      "t": "gamemode.freeplay",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 250,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20"
+      ]
+    },
+    {
+      "e": 280,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 280,
+      "t": "feature.craft",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.deadlygames",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.deathescape",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.glider",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.racing",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.sniper",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 280,
+      "t": "gamemode.spleef",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 310,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 345,
+      "t": "gamemode.flagcapture",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 345,
+      "t": "gamemode.capturepoint",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 395,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 395,
+      "t": "feature.modules",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 395,
+      "t": "feature.clans",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 395,
+      "t": "gamemode.monsterhunter",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 395,
+      "t": "feature.rouletteads",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 420,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:5",
+        "330009:5",
+        "329009:5"
+      ]
+    },
+    {
+      "e": 515,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 515,
+      "t": "gamemode.duel",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 515,
+      "t": "feature.loadout",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 515,
+      "t": "gamemode.speedrun",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 525,
+      "t": "feature.piggy",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 555,
+      "t": "gamemode.siege",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 640,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 640,
+      "t": "gamemode.teamduel",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 690,
+      "t": "gamemode.rotation",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 690,
+      "t": "feature.brawl",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 770,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 800,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:10"
+      ]
+    },
+    {
+      "e": 840,
+      "t": "gamemode.dungeons",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 840,
+      "t": "map.dungeons.5023",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 840,
+      "t": "map.dungeons.5023.easy",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 840,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:10",
+        "310009:10"
+      ]
+    },
+    {
+      "e": 875,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "135005:1"
+      ]
+    },
+    {
+      "e": 910,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 910,
+      "t": "feature.gallery",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 960,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1030:1"
+      ]
+    },
+    {
+      "e": 1010,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1055,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1110,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "318009:10"
+      ]
+    },
+    {
+      "e": 1160,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1210,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1265,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:40"
+      ]
+    },
+    {
+      "e": 1320,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1370,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:20",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1430,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "324009:10"
+      ]
+    },
+    {
+      "e": 1485,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1540,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:25",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1600,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 1660,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1715,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:25",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1715,
+      "t": "map.dungeons.5024",
+      "vpr": false,
+      "r": []
+    },
+    {
+      "e": 1715,
+      "t": "map.dungeons.5024.easy",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1715,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "318009:10",
+        "324009:10"
+      ]
+    },
+    {
+      "e": 1780,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "326009:5"
+      ]
+    },
+    {
+      "e": 1840,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 1900,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:30",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 1965,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50"
+      ]
+    },
+    {
+      "e": 2030,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 2095,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:30",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 2165,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "343009:5"
+      ]
+    },
+    {
+      "e": 2235,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 2300,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:35",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 2375,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 2445,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 2515,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:40",
+        "2015:5"
+      ]
+    },
+    {
+      "e": 2595,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "317009:10"
+      ]
+    },
+    {
+      "e": 2675,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "793001:1"
+      ]
+    },
+    {
+      "e": 2750,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:40",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 2835,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1030:1"
+      ]
+    },
+    {
+      "e": 2920,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:10"
+      ]
+    },
+    {
+      "e": 3000,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:45",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 3090,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "310009:10"
+      ]
+    },
+    {
+      "e": 3180,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 3270,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 3270,
+      "t": "map.dungeons.5023.medium",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 3320,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "310009:10",
+        "317009:10"
+      ]
+    },
+    {
+      "e": 3370,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 3465,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 3560,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 3665,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "332009:5"
+      ]
+    },
+    {
+      "e": 3770,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 3870,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 3980,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50"
+      ]
+    },
+    {
+      "e": 4090,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 4195,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 4310,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "317009:10"
+      ]
+    },
+    {
+      "e": 4425,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:10"
+      ]
+    },
+    {
+      "e": 4540,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 4665,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 4785,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 4905,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 4905,
+      "t": "map.dungeons.5024.medium",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 4950,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "317009:20"
+      ]
+    },
+    {
+      "e": 5050,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "343009:5"
+      ]
+    },
+    {
+      "e": 5165,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 5290,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 5425,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 5560,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 5690,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 5830,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "324009:10"
+      ]
+    },
+    {
+      "e": 5970,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "58005:1"
+      ]
+    },
+    {
+      "e": 6110,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 6260,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1030:2"
+      ]
+    },
+    {
+      "e": 6405,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:20"
+      ]
+    },
+    {
+      "e": 6550,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 6705,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "324009:10"
+      ]
+    },
+    {
+      "e": 6860,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 7010,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 7010,
+      "t": "map.dungeons.5023.hard",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 7100,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "324009:20"
+      ]
+    },
+    {
+      "e": 7200,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 7350,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 7485,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:55",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 7650,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "332009:5"
+      ]
+    },
+    {
+      "e": 7815,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 7980,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:55",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 8155,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "3012:1"
+      ]
+    },
+    {
+      "e": 8325,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "55007:1"
+      ]
+    },
+    {
+      "e": 8495,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:55",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 8675,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "326009:5"
+      ]
+    },
+    {
+      "e": 8855,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:20"
+      ]
+    },
+    {
+      "e": 9030,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:60",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 9215,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "2015:20"
+      ]
+    },
+    {
+      "e": 9400,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 9580,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:60",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 9770,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "343009:5"
+      ]
+    },
+    {
+      "e": 9960,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 10150,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:60",
+        "2015:10"
+      ]
+    },
+    {
+      "e": 10150,
+      "t": "map.dungeons.5024.hard",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 10250,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "324009:20"
+      ]
+    },
+    {
+      "e": 10350,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 10545,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 10740,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:65",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 10945,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "330009:5"
+      ]
+    },
+    {
+      "e": 11150,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "91005:1"
+      ]
+    },
+    {
+      "e": 11350,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:65",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 11560,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1030:3"
+      ]
+    },
+    {
+      "e": 11770,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:30"
+      ]
+    },
+    {
+      "e": 11975,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:65",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 12190,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:5"
+      ]
+    },
+    {
+      "e": 12405,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 12620,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:70",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 12845,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 13065,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 13285,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:70",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 13515,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "332009:5"
+      ]
+    },
+    {
+      "e": 13745,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 13970,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:70",
+        "2015:15"
+      ]
+    },
+    {
+      "e": 14205,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "2015:20"
+      ]
+    },
+    {
+      "e": 14440,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "852001:1"
+      ]
+    },
+    {
+      "e": 14670,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 14910,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "326009:5"
+      ]
+    },
+    {
+      "e": 15150,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:30"
+      ]
+    },
+    {
+      "e": 15390,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 15640,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 15885,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 16130,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 16385,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "343009:5"
+      ]
+    },
+    {
+      "e": 16640,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 16890,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 17150,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50"
+      ]
+    },
+    {
+      "e": 17410,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 17665,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 17930,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "330009:5"
+      ]
+    },
+    {
+      "e": 18195,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "21005:1"
+      ]
+    },
+    {
+      "e": 18460,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 18735,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "2030:1"
+      ]
+    },
+    {
+      "e": 19005,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:40"
+      ]
+    },
+    {
+      "e": 19275,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 19555,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:5"
+      ]
+    },
+    {
+      "e": 19835,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 20110,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 20395,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 20680,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 20960,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 21250,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "332009:5"
+      ]
+    },
+    {
+      "e": 21540,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 21830,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 22130,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50"
+      ]
+    },
+    {
+      "e": 22425,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 22720,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:75",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 23025,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "326009:5"
+      ]
+    },
+    {
+      "e": 23330,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:40"
+      ]
+    },
+    {
+      "e": 23630,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:80",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 23940,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 24250,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 24555,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:80",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 24870,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "343009:5"
+      ]
+    },
+    {
+      "e": 25185,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 25500,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:80",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 25825,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:50"
+      ]
+    },
+    {
+      "e": 26145,
+      "t": "",
+      "vpr": true,
+      "r": []
+    },
+    {
+      "e": 26465,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:80",
+        "2015:20"
+      ]
+    },
+    {
+      "e": 26795,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "330009:5"
+      ]
+    },
+    {
+      "e": 27125,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "141005:1"
+      ]
+    },
+    {
+      "e": 27450,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:100",
+        "2015:30"
+      ]
+    },
+    {
+      "e": 27785,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "2030:2"
+      ]
+    },
+    {
+      "e": 28120,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:50"
+      ]
+    },
+    {
+      "e": 28450,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:100",
+        "2015:30"
+      ]
+    },
+    {
+      "e": 28790,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "304009:5"
+      ]
+    },
+    {
+      "e": 29130,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:50"
+      ]
+    },
+    {
+      "e": 29470,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:100",
+        "2015:30"
+      ]
+    },
+    {
+      "e": 29820,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "35012:1"
+      ]
+    },
+    {
+      "e": 30165,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:50"
+      ]
+    },
+    {
+      "e": 30510,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:100",
+        "2015:30"
+      ]
+    },
+    {
+      "e": 30865,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "332009:5",
+        "35012:1"
+      ]
+    },
+    {
+      "e": 31220,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:50"
+      ]
+    },
+    {
+      "e": 31570,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "1015:100",
+        "2015:30"
+      ]
+    },
+    {
+      "e": 31930,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "326009:5",
+        "35012:1"
+      ]
+    },
+    {
+      "e": 32290,
+      "t": "",
+      "vpr": true,
+      "r": [
+        "7015:50"
+      ]
+    },
+    {
+      "e": 32645,
+      "t": "feature.thirdloadout",
+      "vpr": true,
+      "r": [
+        "1015:500",
+        "2015:100"
+      ]
+    }
+  ],
+  "ms": {
+    "1": [],
+    "2": [
+      "Coins:Coins:0",
+      "Gems:GemsCurrency:0"
+    ],
+    "3": [
+      "Coins:Coins:0",
+      "Gems:GemsCurrency:0"
+    ],
+    "4": [
+      "Coins:Coins:20",
+      "Gems:GemsCurrency:0"
+    ],
+    "5": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "6": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "7": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "8": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "9": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "10": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "11": [
+      "Coins:Coins:40",
+      "Gems:GemsCurrency:10"
+    ],
+    "12": [
+      "Coins:Coins:80",
+      "Gems:GemsCurrency:10"
+    ],
+    "13": [
+      "Coins:Coins:80",
+      "Gems:GemsCurrency:10"
+    ],
+    "14": [
+      "Coins:Coins:80",
+      "Gems:GemsCurrency:10"
+    ],
+    "15": [
+      "Coins:Coins:80",
+      "Gems:GemsCurrency:10"
+    ],
+    "16": [
+      "Coins:Coins:80",
+      "Gems:GemsCurrency:10"
+    ],
+    "17": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "18": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "19": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "20": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "21": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "22": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "23": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "24": [
+      "Coins:Coins:130",
+      "Gems:GemsCurrency:10"
+    ],
+    "25": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "26": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "27": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "28": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "29": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "30": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "31": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "32": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "33": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "34": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "35": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "36": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:10"
+    ],
+    "37": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "38": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "39": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "40": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "41": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "42": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "43": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "44": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:30"
+    ],
+    "45": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:50"
+    ],
+    "46": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:50"
+    ],
+    "47": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:50"
+    ],
+    "48": [
+      "Coins:Coins:180",
+      "Gems:GemsCurrency:50"
+    ],
+    "49": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "50": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "51": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "52": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "53": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "54": [
+      "Coins:Coins:230",
+      "Gems:GemsCurrency:50"
+    ],
+    "55": [
+      "Coins:Coins:280",
+      "Gems:GemsCurrency:50"
+    ],
+    "56": [
+      "Coins:Coins:280",
+      "Gems:GemsCurrency:50"
+    ],
+    "57": [
+      "Coins:Coins:280",
+      "Gems:GemsCurrency:50"
+    ],
+    "58": [
+      "Coins:Coins:280",
+      "Gems:GemsCurrency:50"
+    ],
+    "59": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "60": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "61": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "62": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "63": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "64": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ],
+    "65": [
+      "Coins:Coins:330",
+      "Gems:GemsCurrency:50"
+    ]
+  },
+  "cs": {
+    "feature.adschest": {
+      "t": "feature.adschest",
+      "nk": "",
+      "dk": "",
+      "mk": "Key_11109",
+      "i": "feature_lottery",
+      "pt": "",
+      "bgc": "#1B8BFF"
+    },
+    "feature.battlepass": {
+      "t": "feature.battlepass",
+      "nk": "Key_5725",
+      "dk": "Key_11324",
+      "mk": "Key_11109",
+      "i": "feature_battlepass",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.clans": {
+      "t": "feature.clans",
+      "nk": "Key_0072",
+      "dk": "Key_4354",
+      "mk": "Key_11109",
+      "i": "feature_clans",
+      "pt": "LevelLoadingsPreview/Loading_clan_fortress01_preview",
+      "bgc": "#1B8BFF"
+    },
+    "feature.craft": {
+      "t": "feature.craft",
+      "nk": "Key_3198",
+      "dk": "Key_11312",
+      "mk": "Key_11109",
+      "i": "feature_craft",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.friends": {
+      "t": "feature.friends",
+      "nk": "Key_0073",
+      "dk": "Key_11310",
+      "mk": "Key_11109",
+      "i": "feature_friends",
+      "pt": "LevelLoadingsPreview/Loading_battle_royale_arcade_2_preview",
+      "bgc": "#1B8BFF"
+    },
+    "feature.gallery": {
+      "t": "feature.gallery",
+      "nk": "Key_7547",
+      "dk": "Key_11315",
+      "mk": "Key_11109",
+      "i": "feature_almanach",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.loadout": {
+      "t": "feature.loadout",
+      "nk": "Key_10630",
+      "dk": "Key_11316",
+      "mk": "Key_11109",
+      "i": "feature_loadouts",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.mailbox": {
+      "t": "feature.mailbox",
+      "nk": "Key_8062",
+      "dk": "Key_11308",
+      "mk": "Key_11109",
+      "i": "feature_mailbox",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.modules": {
+      "t": "feature.modules",
+      "nk": "Key_7131",
+      "dk": "Key_11321",
+      "mk": "Key_11109",
+      "i": "feature_modules",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.pets": {
+      "t": "feature.pets",
+      "nk": "Key_2445",
+      "dk": "Key_11598",
+      "mk": "Key_11109",
+      "i": "feature_pets",
+      "pt": "GameEvents/EventGUI_SharedResources/Pets_illustration",
+      "bgc": "#1B8BFF"
+    },
+    "feature.piggy": {
+      "t": "feature.piggy",
+      "nk": "Key_10424",
+      "dk": "Key_11306",
+      "mk": "Key_11109",
+      "i": "feature_piggy",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.subscription20": {
+      "t": "feature.subscription20",
+      "nk": "Key_10424",
+      "dk": "Key_11306",
+      "mk": "Key_11109",
+      "i": "feature_piggy",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.private": {
+      "t": "feature.private",
+      "nk": "Key_9476",
+      "dk": "Key_11596",
+      "mk": "Key_11109",
+      "i": "feature_squad",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.cardroulette": {
+      "t": "feature.cardroulette",
+      "nk": "Key_11296",
+      "dk": "Key_11297",
+      "mk": "Key_11109",
+      "i": "feature_superset",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.roulette": {
+      "t": "feature.roulette",
+      "nk": "Key_11296",
+      "dk": "Key_11297",
+      "mk": "Key_11109",
+      "i": "feature_superset",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.squad": {
+      "t": "feature.squad",
+      "nk": "Key_3377",
+      "dk": "Key_11311",
+      "mk": "Key_11109",
+      "i": "feature_squad",
+      "pt": "LevelLoadingsPreview/Loading_battle_royale_arcade_2_squad_preview",
+      "bgc": "#1B8BFF"
+    },
+    "feature.taskbook": {
+      "t": "feature.taskbook",
+      "nk": "Key_7596",
+      "dk": "Key_11305",
+      "mk": "Key_11109",
+      "i": "feature_taskbook",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.threechests": {
+      "t": "feature.threechests",
+      "nk": "Key_3900",
+      "dk": "Key_11314",
+      "mk": "Key_11109",
+      "i": "feature_lottery",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.tournament": {
+      "t": "feature.tournament",
+      "nk": "Key_11457",
+      "dk": "Key_11663",
+      "mk": "Key_11109",
+      "i": "feature_tournament",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.trader": {
+      "t": "feature.trader",
+      "nk": "Key_6792",
+      "dk": "Key_11307",
+      "mk": "Key_11109",
+      "i": "feature_traider",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.eggsdelivery": {
+      "t": "feature.eggsdelivery",
+      "nk": "Key_11554",
+      "dk": "Key_11595",
+      "mk": "Key_11109",
+      "i": "feature_pets",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.vip": {
+      "t": "feature.vip",
+      "nk": "Key_4053",
+      "dk": "Key_11313",
+      "mk": "Key_11109",
+      "i": "feature_vip",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.rouletteads": {
+      "t": "feature.rouletteads",
+      "nk": "Key_13513",
+      "dk": "Key_13536",
+      "mk": "Key_11109",
+      "i": "feature_superset",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.AdsPixelPassStore": {
+      "t": "feature.AdsPixelPassStore",
+      "nk": "Key_13513",
+      "dk": "Key_13536",
+      "mk": "Key_11109",
+      "i": "feature_superset",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "feature.adscampaign": {
+      "t": "feature.adscampaign",
+      "nk": "Key_13513",
+      "dk": "Key_13536",
+      "mk": "Key_11109",
+      "i": "feature_superset",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.arena": {
+      "t": "gamemode.arena",
+      "nk": "Key_0456",
+      "dk": "Key_11599",
+      "mk": "Key_8584",
+      "i": "gamemode_minigames",
+      "pt": "MiniGames/Preview/Arena_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.battleroyale": {
+      "t": "gamemode.battleroyale",
+      "nk": "Key_5420",
+      "dk": "Key_11318",
+      "mk": "Key_11110",
+      "i": "gamemode_battleroyale",
+      "pt": "LevelLoadingsPreview/Loading_battle_royale_arcade_2_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.campaign": {
+      "t": "gamemode.campaign",
+      "nk": "Key_0018",
+      "dk": "Key_3735",
+      "mk": "Key_8584",
+      "i": "gamemode_campaign",
+      "pt": "LevelLoadingsPreview/Loading_Farm_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.capturepoint": {
+      "t": "gamemode.capturepoint",
+      "nk": "Key_1263",
+      "dk": "Key_11320",
+      "mk": "Key_11110",
+      "i": "gamemode_capturepoint",
+      "pt": "LevelLoadingsPreview/Loading_mine_new_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.deathmatch": {
+      "t": "gamemode.deathmatch",
+      "nk": "Key_0104",
+      "dk": "Key_0550",
+      "mk": "Key_11110",
+      "i": "gamemode_deathmatch",
+      "pt": "LevelLoadingsPreview/Loading_Knife2_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.duel": {
+      "t": "gamemode.duel",
+      "nk": "Key_2428",
+      "dk": "Key_6124",
+      "mk": "Key_11110",
+      "i": "gamemode_teamduel",
+      "pt": "LevelLoadingsPreview/Loading_Ghost_town_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.dungeons": {
+      "t": "gamemode.dungeons",
+      "nk": "Key_7042",
+      "dk": "Key_11323",
+      "mk": "Key_11110",
+      "i": "gamemode_dungeons",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_dead_city_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.flagcapture": {
+      "t": "gamemode.flagcapture",
+      "nk": "Key_0113",
+      "dk": "Key_11319",
+      "mk": "Key_11110",
+      "i": "gamemode_flagcapture",
+      "pt": "LevelLoadingsPreview/Loading_Two_Castles_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.freeplay": {
+      "t": "gamemode.freeplay",
+      "nk": "Key_10204",
+      "dk": "Key_10205",
+      "mk": "Key_11110",
+      "i": "gamemode_freeplay",
+      "pt": "LevelLoadingsPreview/Loading_battle_royale_free_play_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.hidefrommonster": {
+      "t": "gamemode.hidefrommonster",
+      "nk": "Key_14587",
+      "dk": "Key_14590",
+      "mk": "Key_8584",
+      "i": "gamemode_hidefrommonster",
+      "pt": "MiniGames/Preview/HideFromMonster_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.imposter": {
+      "t": "gamemode.imposter",
+      "nk": "Key_10118",
+      "dk": "Key_11317",
+      "mk": "Key_8584",
+      "i": "gamemode_imposter",
+      "pt": "MiniGames/Preview/Imposter_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.redlight": {
+      "t": "gamemode.redlight",
+      "nk": "Key_12722",
+      "dk": "Key_12723",
+      "mk": "Key_8584",
+      "i": "gamemod_redlight",
+      "pt": "MiniGames/Preview/RedLight_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.minigames": {
+      "t": "gamemode.minigames",
+      "nk": "Key_2930",
+      "dk": "Key_10695",
+      "mk": "Key_11110",
+      "i": "gamemode_minigames",
+      "pt": "LevelLoadingsPreview/Loading_Speedrun_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.monsterhunter": {
+      "t": "gamemode.monsterhunter",
+      "nk": "Key_10048",
+      "dk": "Key_11597",
+      "mk": "Key_8584",
+      "i": "gamemode_minigames",
+      "pt": "MiniGames/Preview/MonsterHunter_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.siege": {
+      "t": "gamemode.siege",
+      "nk": "Key_3634",
+      "dk": "Key_3635",
+      "mk": "Key_11110",
+      "i": "gamemode_teamduel",
+      "pt": "LevelLoadingsPreview/Loading_Duel_ghost_town_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.armrace": {
+      "t": "gamemode.armrace",
+      "nk": "Key_11325",
+      "dk": "Key_11487",
+      "mk": "Key_11110",
+      "i": "mode_event",
+      "pt": "LevelLoadingsPreview/Loading_ToyFactory3_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.rotation": {
+      "t": "gamemode.rotation",
+      "nk": "Key_11325",
+      "dk": "Key_11487",
+      "mk": "Key_11110",
+      "i": "mode_event",
+      "pt": "LevelLoadingsPreview/Loading_ToyFactory3_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.defendthetower": {
+      "t": "gamemode.defendthetower",
+      "nk": "Key_11325",
+      "dk": "Key_11487",
+      "mk": "Key_11110",
+      "i": "mode_event",
+      "pt": "LevelLoadingsPreview/Loading_ToyFactory3_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.dater": {
+      "t": "gamemode.dater",
+      "nk": "Key_1075",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_dater",
+      "pt": "MiniGames/Preview/Dater_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.deadlygames": {
+      "t": "gamemode.deadlygames",
+      "nk": "Key_0121",
+      "dk": "Key_0553",
+      "mk": "Key_0553",
+      "i": "gamemode_deadlygames",
+      "pt": "MiniGames/Preview/DeadlyGames_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.deathescape": {
+      "t": "gamemode.deathescape",
+      "nk": "Key_3164",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_deathescape",
+      "pt": "MiniGames/Preview/DeathEscape_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.glider": {
+      "t": "gamemode.glider",
+      "nk": "Key_7063",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_glider",
+      "pt": "MiniGames/Preview/Glider_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.racing": {
+      "t": "gamemode.racing",
+      "nk": "Key_7066",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_racing",
+      "pt": "MiniGames/Preview/Racing_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.sniper": {
+      "t": "gamemode.sniper",
+      "nk": "Key_5064",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_sniper",
+      "pt": "MiniGames/Preview/Sniper_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.speedrun": {
+      "t": "gamemode.speedrun",
+      "nk": "Key_3165",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_speedrun",
+      "pt": "MiniGames/Preview/SpeedRun_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.spleef": {
+      "t": "gamemode.spleef",
+      "nk": "Key_3166",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_spleef",
+      "pt": "MiniGames/Preview/Spleef_preview",
+      "bgc": "#1B8BFF"
+    },
+    "gamemode.timebattle": {
+      "t": "gamemode.timebattle",
+      "nk": "Key_0135",
+      "dk": "Key_12721",
+      "mk": "Key_8584",
+      "i": "gamemode_timebattle",
+      "pt": "MiniGames/Preview/TimeBattle_preview",
+      "bgc": "#1B8BFF"
+    },
+    "feature.brawl": {
+      "t": "feature.brawl",
+      "nk": "Key_11325",
+      "dk": "Key_7846",
+      "mk": "Key_11110",
+      "i": "gamemode_brawl",
+      "pt": "LevelLoadingsPreview/Loading_Hill_preview",
+      "bgc": "#1B8BFF"
+    },
+    "feature.pixelpass": {
+      "t": "feature.pixelpass",
+      "nk": "Key_11700",
+      "dk": "Key_12262",
+      "mk": "Key_11109",
+      "i": "feature_battlepass",
+      "pt": "NguiWindows/ProgressRoadUI/bg_contentcell_progressroad",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5023": {
+      "t": "map.dungeons.5023",
+      "nk": "Key_7049",
+      "dk": "Key_12191",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_dead_city_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5023.easy": {
+      "t": "map.dungeons.5023.easy",
+      "nk": "Key_7049",
+      "dk": "Key_12283",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_dead_city_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5023.medium": {
+      "t": "map.dungeons.5023.medium",
+      "nk": "Key_7049",
+      "dk": "Key_12284",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_dead_city_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5023.hard": {
+      "t": "map.dungeons.5023.hard",
+      "nk": "Key_7049",
+      "dk": "Key_12285",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_dead_city_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5024": {
+      "t": "map.dungeons.5024",
+      "nk": "Key_7324",
+      "dk": "Key_12192",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_magical_valley_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5024.easy": {
+      "t": "map.dungeons.5024.easy",
+      "nk": "Key_7324",
+      "dk": "Key_12286",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_magical_valley_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5024.medium": {
+      "t": "map.dungeons.5024.medium",
+      "nk": "Key_7324",
+      "dk": "Key_12287",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_magical_valley_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.dungeons.5024.hard": {
+      "t": "map.dungeons.5024.hard",
+      "nk": "Key_7324",
+      "dk": "Key_12288",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dungeon_magical_valley_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.pool": {
+      "t": "map.teamfight.pool",
+      "nk": "Key_0452",
+      "dk": "Key_10947",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Pool_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.Pool_entering": {
+      "t": "map.teamfight.Pool_entering",
+      "nk": "Key_0452",
+      "dk": "Key_10947",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Pool_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.dust_entering": {
+      "t": "map.teamfight.dust_entering",
+      "nk": "Key_0504",
+      "dk": "Key_10957",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_Dust_entering_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.nuclearcity": {
+      "t": "map.teamfight.nuclearcity",
+      "nk": "Key_0532",
+      "dk": "Key_10950",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_NuclearCity_entering_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.NuclearCity_entering": {
+      "t": "map.teamfight.NuclearCity_entering",
+      "nk": "Key_0532",
+      "dk": "Key_10950",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_NuclearCity_entering_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.valhalla": {
+      "t": "map.teamfight.valhalla",
+      "nk": "Key_10470",
+      "dk": "Key_10924",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_valhalla_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.shipped": {
+      "t": "map.teamfight.shipped",
+      "nk": "Key_11301",
+      "dk": "Key_11348",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_shipped_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.olympus": {
+      "t": "map.teamfight.olympus",
+      "nk": "Key_9361",
+      "dk": "Key_10933",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_olympus_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.parkour": {
+      "t": "map.teamfight.parkour",
+      "nk": "Key_0513",
+      "dk": "Key_10956",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_parkour_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.Ghost_town2": {
+      "t": "map.teamfight.Ghost_town2",
+      "nk": "Key_2403",
+      "dk": "Key_10946",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_ghost_town2_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.white_house": {
+      "t": "map.teamfight.white_house",
+      "nk": "Key_3673",
+      "dk": "Key_13711",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_white_house_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.new_hangar": {
+      "t": "map.teamfight.new_hangar",
+      "nk": "Key_11377",
+      "dk": "Key_11715",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_new_hangar_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.teamfight.Aztec_old": {
+      "t": "map.teamfight.Aztec_old",
+      "nk": "Key_0508",
+      "dk": "Key_11716",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_aztec_old_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.olympus": {
+      "t": "map.deathmatch.olympus",
+      "nk": "Key_9361",
+      "dk": "Key_10933",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_olympus_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.parkour": {
+      "t": "map.deathmatch.parkour",
+      "nk": "Key_0513",
+      "dk": "Key_10956",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_parkour_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.Ghost_town2": {
+      "t": "map.deathmatch.Ghost_town2",
+      "nk": "Key_2403",
+      "dk": "Key_10946",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_ghost_town2_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.rust": {
+      "t": "map.deathmatch.rust",
+      "nk": "Key_11445",
+      "dk": "Key_11446",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_rust_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.new_hangar": {
+      "t": "map.deathmatch.new_hangar",
+      "nk": "Key_11377",
+      "dk": "Key_11715",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_new_hangar_preview",
+      "bgc": "#1B8BFF"
+    },
+    "map.deathmatch.Aztec_old": {
+      "t": "map.deathmatch.Aztec_old",
+      "nk": "Key_0508",
+      "dk": "Key_11716",
+      "mk": "Key_11111",
+      "i": "map_default",
+      "pt": "LevelLoadingsPreview/Loading_aztec_old_preview",
+      "bgc": "#1B8BFF"
+    }
+  },
+  "configId": "ExpOpen"
+}

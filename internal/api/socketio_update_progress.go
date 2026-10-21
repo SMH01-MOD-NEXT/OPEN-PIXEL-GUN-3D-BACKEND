@@ -110,7 +110,19 @@ func progressCounterCommands(head sioHead) []any {
 		source, _ = payload["c"].([]any)
 	}
 	if source == nil {
-		source = []any{map[string]any(head)}
+		// Native standalone SaveConfig(322), observed on the live 23.1.3
+		// channel, has outer i but NO child ci. Reuse its stable outer ID
+		// internally for receipts; never invent a child ID in the wire reply.
+		command := make(map[string]any, len(head)+1)
+		for k, v := range head {
+			command[k] = v
+		}
+		if ci, _ := command["ci"].(string); ci == "" {
+			if outer := head.text("i"); outer != "" {
+				command["ci"] = "outer:" + outer
+			}
+		}
+		source = []any{command}
 	}
 	var result []any
 	for _, raw := range source {

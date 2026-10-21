@@ -48,6 +48,9 @@ type Profile struct {
 	Coins      int64  `json:"coins"`
 	Gems       int64  `json:"gems"`
 
+	// PixelPass is the server-owned season ledger, not a client snapshot field.
+	PixelPass *PixelPassLedger `json:"pixel_pass_ledger,omitempty"`
+
 	// Prefs mirrors the client's own key/value state verbatim. The 23.1.3
 	// client owns these keys, so they are kept as they arrive instead of being
 	// mapped onto a server-side schema that would silently drop whatever this
@@ -102,6 +105,7 @@ type Profile struct {
 // clone deep copies a profile, including the client-owned nested maps.
 func (p *Profile) clone() Profile {
 	out := *p
+	out.PixelPass = p.PixelPass.clone()
 	if p.Prefs != nil {
 		out.Prefs = make(map[string]string, len(p.Prefs))
 		for key, value := range p.Prefs {

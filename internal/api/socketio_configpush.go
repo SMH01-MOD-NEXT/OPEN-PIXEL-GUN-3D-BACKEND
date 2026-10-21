@@ -47,11 +47,14 @@ const sioConfigPushEvent = "config_info_versions"
 // LootBoxes (119) is also a JSON model. Device verification populated the
 // controller model with one entry and restored the veteran chest texture;
 // its previous empty poll hash reflected a missing hosted document.
+// PixelPass (123, JsonObject) and ExpOpen (116) have the same (id,1,true)
+// JSON configuration attribute and generic text deserializer; raw JSON bytes
+// must not be presented as a binary/MessagePack attachment.
 // Keep this allow-list deliberately closed: other hosted documents retain the
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots":
+	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots", "PixelPass", "ExpOpen":
 		return true
 	default:
 		return false

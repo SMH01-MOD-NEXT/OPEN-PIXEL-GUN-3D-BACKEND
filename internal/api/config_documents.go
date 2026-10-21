@@ -44,6 +44,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/pixelpass"
 )
 
 const (
@@ -102,6 +104,11 @@ func hostedConfigFile(name string) (string, bool) {
 // cannot be used is logged, because that is an operator mistake which would
 // otherwise look exactly like a document nobody hosts.
 func (s *Server) hostedConfigFromFile(name string) (hostedConfig, bool) {
+	if name == pixelpass.ConfigName {
+		body := pixelpass.JSON()
+		return hostedConfig{document: pixelpass.Document(), body: body, hash: s.hostedConfigHash(body)}, true
+	}
+
 	file, ok := hostedConfigFile(name)
 	if !ok {
 		return hostedConfig{}, false
