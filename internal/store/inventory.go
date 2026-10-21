@@ -145,6 +145,9 @@ func setList(root map[string]any, path []string, a []any) error {
 	return nil
 }
 func inventoryValue(p Profile, item catalog.Item) (qty, level, rarity int64) {
+	if item.Type == 1150 {
+		return moduleInventoryValue(p, item)
+	}
 	key := strconv.Itoa(item.Index)
 	if item.Type == 80 {
 		record, ok := petProgressRecord(p, item.Index)
@@ -375,8 +378,15 @@ func (s *Store) EditInventory(playerID string, edit InventoryEdit) (Profile, boo
 	if edit.Action != "grant" && edit.Action != "revoke" {
 		return Profile{}, false, errors.New("store: invalid inventory action")
 	}
-	if edit.Quantity < 1 || edit.Quantity > 1000000 || edit.Level < 1 || edit.Level > 65 || edit.Rarity < 0 || edit.Rarity > 5 {
+	maxLevel := int64(65)
+	if edit.Type == 1150 {
+		maxLevel = 10
+	}
+	if edit.Quantity < 1 || edit.Quantity > 1000000 || edit.Level < 1 || edit.Level > maxLevel || edit.Rarity < 0 || edit.Rarity > 5 {
 		return Profile{}, false, errors.New("store: invalid quantity, level or rarity")
+	}
+	if edit.Type == 1150 && (edit.Action != "grant" || edit.Quantity != 1 || edit.Rarity != 0) {
+		return Profile{}, false, errors.New("store: module grants require quantity 1 and rarity 0; revocation is unsupported")
 	}
 	if item.Type == 80 && edit.Action == "grant" && (edit.Quantity != 1 || edit.Level != 1 || edit.Rarity != 0) {
 		return Profile{}, false, errors.New("store: pet grants require quantity 1, level 1 and rarity 0")
@@ -459,6 +469,9 @@ func editPetInventorySlots(p *Profile, item catalog.Item, action string) error {
 }
 
 func editInventorySlots(p *Profile, item catalog.Item, e InventoryEdit) error {
+	if item.Type == 1150 {
+		return editModuleInventorySlots(p, item, e)
+	}
 	if item.Type == 80 {
 		return editPetInventorySlots(p, item, e.Action)
 	}

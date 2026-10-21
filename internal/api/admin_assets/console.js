@@ -399,7 +399,7 @@
                 ">" +
                 esc(t(owned ? "edit" : "grant")) +
                 "</button>" +
-                (owned
+                (owned && item.type !== 1150
                   ? '<button class="danger-outline" data-item="' +
                     i +
                     '" data-action="revoke" ' +
@@ -518,18 +518,22 @@
     el("quantityField").hidden =
       action === "revoke" || ![1070, 1155, 1520].includes(item.type);
     el("levelField").hidden =
-      action === "revoke" || ![10, 20, 70].includes(item.type);
+      action === "revoke" || ![10, 20, 70, 1150].includes(item.type);
     el("rarityField").hidden = action === "revoke" || item.type !== 10;
     el("itemQuantity").value = item.quantity || 1;
-    el("itemLevel").value = item.type === 80 ? 1 : item.level || 65;
+    el("itemLevel").max = item.type === 1150 ? "10" : "65";
+    el("itemLevel").value =
+      item.type === 80 ? 1 : item.type === 1150 ? item.level || 1 : item.level || 65;
     el("itemRarity").value =
-      item.type === 80 ? 0 : item.rarity == null ? 5 : item.rarity;
+      item.type === 80 || item.type === 1150 ? 0 : item.rarity == null ? 5 : item.rarity;
     el("itemWarning").textContent = t(
       action === "revoke"
         ? "revokeWarning"
         : item.type === 80
           ? "petGrantWarning"
-          : "grantWarning",
+          : item.type === 1150
+            ? "moduleGrantWarning"
+            : "grantWarning",
     );
     el("itemError").textContent = "";
     el("itemDialog").showModal();

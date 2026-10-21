@@ -24,7 +24,7 @@ The player Inventory tab exposes single-item grant/edit/revoke plus:
 6. **Revoke all weapons:** removes supported, unequipped weapons.
 7. **Clear inventory:** removes supported, unequipped inventory entries across categories. This is deliberately **not an account/progress reset**. Equipped items and unverified/unknown formats are retained.
 
-Module catalog entries have readable UI labels derived from their stock IDs, but remain read-only until the client ownership-storage schema has been verified. The derived label never changes the stored ID.
+Module catalog entries have readable labels derived from stock IDs. The console exposes individual grant/update operations at levels 1–10; ownership is written to slot `27.modules_v2` and level to slot `37[index]`. Module revocation and bulk module grants are disabled. The minimal ownership record still needs an in-client relaunch/round-trip check on a backed-up profile before it is considered client-verified. Labels never change the stored ID.
 
 Bulk actions require a fresh server preview, display affected/preserved/skipped counts, and require the exact canonical player ID before applying. Editing parameters invalidates the preview. Each apply checks both progress revision and profile update timestamp and binds the preview token to the recipient, parameters and affected entries. A conflict requires another preview; the console never silently retries destructive operations.
 

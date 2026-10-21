@@ -49,13 +49,18 @@ assert.equal(el('itemDialog').open,true);
  context.fox={...fox,name:'<script>alert(1)</script>'};
  vm.runInContext('drawItems([fox],"catalogItems",false);',context);
  assert.ok(!el('catalogItems').innerHTML.includes('<script>'));
- const moduleItem={type:1150,index:326009,id:'mod_regenerator_armor',name:'Armor Regeneration',name_source:'derived_id',editable:false};
+ const moduleItem={type:1150,index:326009,id:'mod_regenerator_armor',name:'Armor Regeneration',name_source:'derived_id',editable:true};
  context.moduleItem=moduleItem;
  vm.runInContext('drawItems([moduleItem],"catalogItems",false);',context);
  assert.match(el('catalogItems').innerHTML,/Armor Regeneration/);
  assert.ok(el('catalogItems').innerHTML.includes(TEXT.derivedModuleName));
- assert.ok(el('catalogItems').innerHTML.includes(TEXT.readOnly));
- assert.ok(!el('catalogItems').innerHTML.includes('data-action="grant"'));
+ assert.ok(el('catalogItems').innerHTML.includes('data-action="grant"'));
+ assert.ok(!el('catalogItems').innerHTML.includes(TEXT.readOnly));
+ vm.runInContext('openItem(moduleItem,"grant");',context);
+ assert.equal(el('levelField').hidden,false);
+ assert.equal(el('itemLevel').max,'10');
+ assert.equal(el('itemLevel').value,1);
+ assert.equal(el('itemWarning').textContent,TEXT.moduleGrantWarning);
  for(const [button,title,fields,rarity] of [
   ['grantAllWeapons','grantAllWeapons',false,false],
   ['grantAllWear','grantAllWear',true,true],
@@ -80,5 +85,5 @@ assert.equal(el('itemDialog').open,true);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(posted.confirm_player_id,'test-player');
  assert.equal(posted.plan_token,'preview-token');
- console.log('PASS: pet editing, readable read-only module labels, bulk-grant forms and confirmation, equipped protection and escaping');
+ console.log('PASS: pet and module editing, readable module labels, module level limits, bulk-grant forms and confirmation, equipped protection and escaping');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -110,7 +110,7 @@ func TestAdminCatalogExposesAndGrantsPet(t *testing.T) {
 	t.Fatal("pet not returned by admin inventory", result.Items)
 }
 
-func TestAdminModuleCatalogRemainsReadOnlyUntilStorageVerified(t *testing.T) {
+func TestAdminModuleCatalogAndGrant(t *testing.T) {
 	s, _ := newTestServer(t)
 	response := do(t, s, http.MethodGet, "/api/v1/admin/catalog?q=mod_regenerator_armor&type=1150", nil, adminAuthHeader)
 	if response.Code != http.StatusOK {
@@ -122,13 +122,31 @@ func TestAdminModuleCatalogRemainsReadOnlyUntilStorageVerified(t *testing.T) {
 			Editable bool   `json:"editable"`
 		} `json:"items"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || result.Items[0].Name != "Armor Regeneration" || result.Items[0].Editable {
-		t.Fatal("module should have a readable label without an unverified grant adapter", response.Code, response.Body, err)
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || result.Items[0].Name != "Armor Regeneration" || !result.Items[0].Editable {
+		t.Fatal("module should expose its readable label and editable storage adapter", response.Code, response.Body, err)
 	}
 	response = do(t, s, http.MethodGet, "/api/v1/admin/catalog?q=mod_regenerator_armor&type=1150&editable=1", nil, adminAuthHeader)
-	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "mod_regenerator_armor") {
-		t.Fatal("read-only modules leaked into editable catalog", response.Code, response.Body)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "mod_regenerator_armor") {
+		t.Fatal("editable module missing from catalog", response.Code, response.Body)
 	}
+	identity, _, err := s.st.AdoptSocketIdentity("612672166", "module-inventory-device", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := s.st.Profile(identity.PlayerID)
+	edit := store.InventoryEdit{Type: 1150, Index: 326009, Action: "grant", Quantity: 1, Level: 7, Revision: profile.ProgressRevision, UpdatedAt: profile.UpdatedAt}
+	path := "/api/v1/admin/players/" + identity.PlayerID + "/inventory"
+	response = do(t, s, http.MethodPost, path, edit, adminAuthHeader)
+	if response.Code != http.StatusOK {
+		t.Fatal("module grant", response.Code, response.Body)
+	}
+	profile, _ = s.st.Profile(identity.PlayerID)
+	for _, item := range store.Inventory(profile) {
+		if item.Type == 1150 && item.Index == 326009 && item.Quantity == 1 && item.Level == 7 {
+			return
+		}
+	}
+	t.Fatal("module grant not returned by inventory", store.Inventory(profile))
 }
 
 func TestInventoryConsoleAssetsAreLocalizedAndEmbedded(t *testing.T) {

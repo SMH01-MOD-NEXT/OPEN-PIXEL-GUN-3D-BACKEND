@@ -39,16 +39,21 @@ func init() {
 	}
 	byKey = map[string]Item{}
 	byIndex = map[int][]Item{}
-	for _, v := range items {
+	for i := range items {
+		v := &items[i]
 		if v.Index <= 0 || v.ID == "" || v.Name == "" {
 			panic("invalid stock catalog record")
+		}
+		// Route module grants through the dedicated ModuleStorage adapter.
+		if v.Type == 1150 {
+			v.Editable = true
 		}
 		key := Key(v.Type, v.Index)
 		if _, ok := byKey[key]; ok {
 			panic("duplicate catalog key: " + key)
 		}
-		byKey[key] = v
-		byIndex[v.Index] = append(byIndex[v.Index], v)
+		byKey[key] = *v
+		byIndex[v.Index] = append(byIndex[v.Index], *v)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Type != items[j].Type {

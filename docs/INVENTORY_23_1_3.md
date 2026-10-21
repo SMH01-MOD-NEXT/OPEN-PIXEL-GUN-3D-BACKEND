@@ -64,10 +64,14 @@ Pocket Harpoon has two editable gadget definitions (indices `63007` and `76007`)
 both persist through the same measured slot-16 gadget adapter. The similarly named
 `44007` record has a different stock display label and is not relabeled.
 
-Other catalog categories, including lobby/fort objects, modules themselves and
-weapon skins, remain **read-only** until their ownership schemas are verified.
-Unknown IDs in inspected ownership containers remain visible read-only; unknown
-raw sections remain preserved even without an inventory projection.
+Other catalog categories, including lobby/fort objects and weapon skins, remain
+**read-only** until their ownership schemas are verified. Module entries now have
+an individual grant/update adapter: identity fields go to slot `27.modules_v2`,
+and the selected level (1–10) goes to slot `37[index]`. Module revocation and
+bulk module grants are disabled. The minimal record's in-client round-trip is
+still pending; use only a backed-up profile for that validation. Unknown IDs in
+inspected ownership containers remain visible read-only; unknown raw sections
+remain preserved even without an inventory projection.
 
 Measured command reducers: `10,25,33,64,65,66,81,84,85,120,132,139,191,197`.
 A measured purchase batch (currency charge + weapon ownership) commits together
