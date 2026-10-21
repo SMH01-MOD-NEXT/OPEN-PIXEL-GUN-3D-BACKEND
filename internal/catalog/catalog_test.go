@@ -80,3 +80,32 @@ func TestSearchWhitespaceTokensCaseAndInternalID(t *testing.T) {
 		t.Fatal("internal id search failed")
 	}
 }
+
+func TestModuleCatalogLabelsRemainReadableAndReadOnly(t *testing.T) {
+	modules := Search("", 1150, false)
+	if len(modules) != 42 {
+		t.Fatalf("module definitions: %d", len(modules))
+	}
+	for _, item := range modules {
+		if item.Editable || item.NameSource != "derived_id" || item.Name == item.ID || item.Category != "Module" {
+			t.Fatalf("module must have a readable derived label and remain read-only: %+v", item)
+		}
+		if len(Search(item.ID, 1150, false)) == 0 || len(Search(item.Name, 1150, false)) == 0 {
+			t.Fatalf("module is not searchable by ID and label: %+v", item)
+		}
+	}
+	if editable := Search("", 1150, true); len(editable) != 0 {
+		t.Fatalf("unverified module adapter advertised as editable: %d", len(editable))
+	}
+	for index, name := range map[int]string{
+		304009: "Kinetic Primary",
+		326009: "Armor Regeneration",
+		327009: "Armor Camouflage",
+		328009: "Bandolier Primary",
+	} {
+		item, ok := Find(1150, index)
+		if !ok || item.Editable || item.Name != name {
+			t.Fatalf("module %d: %+v; want read-only %q", index, item, name)
+		}
+	}
+}

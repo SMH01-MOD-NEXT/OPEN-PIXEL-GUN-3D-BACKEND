@@ -17,8 +17,14 @@ Player-owned inventory and global catalog have independent query/category/page s
 The player Inventory tab exposes single-item grant/edit/revoke plus:
 
 1. **Grant all weapons:** adds missing editable weapon definitions only. Existing weapons, including their levels and rarity, remain unchanged.
-2. **Revoke all weapons:** removes supported, unequipped weapons.
-3. **Clear inventory:** removes supported, unequipped inventory entries across categories. This is deliberately **not an account/progress reset**. Equipped items and unverified/unknown formats are retained.
+2. **Grant all wear:** adds missing masks, hats, boots and capes.
+3. **Grant all armor:** adds missing armor at the selected level; already-owned armor is preserved.
+4. **Grant all gadgets:** adds missing gadgets at the selected level; already-owned gadgets are preserved.
+5. **Grant all pets:** adds missing pets at stock level 1, with no cards or custom nickname; existing pet progress is preserved.
+6. **Revoke all weapons:** removes supported, unequipped weapons.
+7. **Clear inventory:** removes supported, unequipped inventory entries across categories. This is deliberately **not an account/progress reset**. Equipped items and unverified/unknown formats are retained.
+
+Module catalog entries have readable UI labels derived from their stock IDs, but remain read-only until the client ownership-storage schema has been verified. The derived label never changes the stored ID.
 
 Bulk actions require a fresh server preview, display affected/preserved/skipped counts, and require the exact canonical player ID before applying. Editing parameters invalidates the preview. Each apply checks both progress revision and profile update timestamp and binds the preview token to the recipient, parameters and affected entries. A conflict requires another preview; the console never silently retries destructive operations.
 

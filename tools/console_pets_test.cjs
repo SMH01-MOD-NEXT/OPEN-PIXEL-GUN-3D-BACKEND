@@ -14,14 +14,15 @@ const el = id => {
 };
 let posted;
 const context = vm.createContext({assert, TEXT, el, all:()=>[], discard:()=>true, report:e=>{throw e;}, status:()=>{}, base:id=>'/players/'+id,
- showPlayer:async()=>{}, api:async(method,url,body)=>{posted=body;return {changed:true};},
+ showPlayer:async()=>{}, api:async(method,url,body)=>{posted=body;if(method==='GET')return {revision:4,updated_at:'timestamp'};if(url.endsWith('/inventory/bulk/preview'))return {player_id:'test-player',action:body.action,changes:94,preserved_owned:0,skipped_equipped:0,skipped_unsupported:0,sample:[],plan_token:'preview-token'};return {changed:true,plan:{changes:94}};},
  category:item=>TEXT.types[String(item.type)],
  t:(key,values={})=>Object.entries(values).reduce((s,[k,v])=>s.split('{'+k+'}').join(String(v)),TEXT[key]||key),
  esc:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))});
 const slice=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
-vm.runInContext('let busy=false, selected="test-player", snapshot={revision:4,updated_at:"timestamp",items:[]}, player={nick:"Test"}, itemContext=null;'+
+vm.runInContext('let busy=false, selected="test-player", snapshot={revision:4,updated_at:"timestamp",items:[]}, player={nick:"Test"}, itemContext=null, bulkContext=null;'+
  slice('  function drawItems(', '  function renderOwned(')+
  slice('  function openItem(', '  function invalidateBulk('),context);
+vm.runInContext(slice('  function invalidateBulk(', '  el("profileForm").oninput'),context);
 const fox={type:80,index:20003,id:'pet_fox',name:'Fox',name_source:'derived_codename',editable:true};
 context.fox=fox;
 vm.runInContext('drawItems([fox],"catalogItems",false); openItem(fox,"grant");',context);
@@ -48,5 +49,36 @@ assert.equal(el('itemDialog').open,true);
  context.fox={...fox,name:'<script>alert(1)</script>'};
  vm.runInContext('drawItems([fox],"catalogItems",false);',context);
  assert.ok(!el('catalogItems').innerHTML.includes('<script>'));
- console.log('PASS: pet buttons, identity, derived label, baseline form/payload, existing-pet defaults, equipped protection, revoke guidance and escaping');
+ const moduleItem={type:1150,index:326009,id:'mod_regenerator_armor',name:'Armor Regeneration',name_source:'derived_id',editable:false};
+ context.moduleItem=moduleItem;
+ vm.runInContext('drawItems([moduleItem],"catalogItems",false);',context);
+ assert.match(el('catalogItems').innerHTML,/Armor Regeneration/);
+ assert.ok(el('catalogItems').innerHTML.includes(TEXT.derivedModuleName));
+ assert.ok(el('catalogItems').innerHTML.includes(TEXT.readOnly));
+ assert.ok(!el('catalogItems').innerHTML.includes('data-action="grant"'));
+ for(const [button,title,fields,rarity] of [
+  ['grantAllWeapons','grantAllWeapons',false,false],
+  ['grantAllWear','grantAllWear',true,true],
+  ['grantAllArmor','grantAllArmor',false,true],
+  ['grantAllGadgets','grantAllGadgets',false,true],
+ ]) {
+  el(button).onclick();
+  assert.equal(el('bulkTitle').textContent,TEXT[title]);
+  assert.equal(el('bulkFields').hidden,fields);
+  assert.equal(el('bulkRarityField').hidden,rarity);
+ }
+ el('grantAllPets').onclick();
+ assert.equal(el('bulkTitle').textContent,TEXT.grantAllPets);
+ assert.equal(el('bulkDescription').textContent,TEXT.bulkGrantPetsHint);
+ assert.equal(el('bulkFields').hidden,true);
+ await el('bulkPreview').onclick();
+ assert.deepEqual(posted && JSON.parse(JSON.stringify(posted)), {action:'grant_pets',level:1,rarity:0,revision:4,updated_at:'timestamp'});
+ el('bulkConfirm').value='test-player';
+ el('bulkConfirm').oninput();
+ assert.equal(el('bulkApply').disabled,false);
+ el('bulkForm').onsubmit({preventDefault(){}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(posted.confirm_player_id,'test-player');
+ assert.equal(posted.plan_token,'preview-token');
+ console.log('PASS: pet editing, readable read-only module labels, bulk-grant forms and confirmation, equipped protection and escaping');
 })().catch(e=>{console.error(e);process.exitCode=1;});

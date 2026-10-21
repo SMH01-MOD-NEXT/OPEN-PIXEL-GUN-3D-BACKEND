@@ -16,7 +16,7 @@ import (
 )
 
 // Bulk actions never reset the entire profile and never invent ownership adapters.
-// Grant adds missing weapons only. Revoke leaves equipped and unsupported items.
+// Grants add only missing items. Revoke leaves equipped and unsupported items.
 type InventoryBulkEdit struct {
 	Action          string    `json:"action"`
 	Level           int64     `json:"level"`
@@ -39,25 +39,46 @@ type InventoryBulkPlan struct {
 	PlanToken          string         `json:"plan_token"`
 }
 
+func bulkGrantTypes(action string) map[int]bool {
+	switch action {
+	case "grant_weapons":
+		return map[int]bool{10: true}
+	case "grant_wear":
+		return map[int]bool{30: true, 40: true, 50: true, 60: true}
+	case "grant_armor":
+		return map[int]bool{20: true}
+	case "grant_gadgets":
+		return map[int]bool{70: true}
+	case "grant_pets":
+		return map[int]bool{80: true}
+	default:
+		return nil
+	}
+}
+
 func inventoryBulkPlan(p Profile, e InventoryBulkEdit) (InventoryBulkPlan, []catalog.Item, error) {
 	plan := InventoryBulkPlan{PlayerID: p.PlayerID, Action: e.Action, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt, Sample: []catalog.Item{}}
-	if e.Action != "grant_weapons" && e.Action != "revoke_weapons" && e.Action != "revoke_all" {
+	grantTypes := bulkGrantTypes(e.Action)
+	if grantTypes == nil && e.Action != "revoke_weapons" && e.Action != "revoke_all" {
 		return plan, nil, errors.New("store: invalid bulk action")
 	}
 	if e.Level < 1 || e.Level > 65 || e.Rarity < 0 || e.Rarity > 5 {
 		return plan, nil, errors.New("store: invalid bulk level or rarity")
 	}
+	if e.Action == "grant_pets" && (e.Level != 1 || e.Rarity != 0) {
+		return plan, nil, errors.New("store: bulk pet grants require level 1 and rarity 0")
+	}
 	if e.Revision != p.ProgressRevision || !e.UpdatedAt.Equal(p.UpdatedAt) {
 		return plan, nil, ErrInventoryConflict
 	}
 	changes := []catalog.Item{}
-	if e.Action == "grant_weapons" {
+	if grantTypes != nil {
 		for _, item := range catalog.All() {
-			if item.Type != 10 {
+			if !grantTypes[item.Type] {
 				continue
 			}
-			// Require a stock weapon definition as well as a registry index.
-			if !item.Editable || item.WeaponCategory == nil {
+			// Weapons need a stock weapon definition as well as a registry index.
+			if !item.Editable || item.Type == 10 && item.WeaponCategory == nil {
 				plan.SkippedUnsupported++
 				continue
 			}
@@ -133,7 +154,7 @@ func (s *Store) EditInventoryBulk(playerID string, e InventoryBulkEdit) (Profile
 		candidate.ProgressSlots = map[string]any{}
 	}
 	action := "revoke"
-	if e.Action == "grant_weapons" {
+	if bulkGrantTypes(e.Action) != nil {
 		action = "grant"
 	}
 	for _, item := range items {

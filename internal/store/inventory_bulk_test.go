@@ -17,6 +17,9 @@ func bulkFor(p Profile, action string) InventoryBulkEdit {
 func confirmedBulk(t *testing.T, s *Store, p Profile, action string) InventoryBulkEdit {
 	t.Helper()
 	e := bulkFor(p, action)
+	if action == "grant_wear" || action == "grant_pets" {
+		e.Level, e.Rarity = 1, 0
+	}
 	plan, err := s.PreviewInventoryBulk(p.PlayerID, e)
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +106,77 @@ func TestInventoryBulkGrantAtomicPreservesAndPersists(t *testing.T) {
 		t.Fatal("bulk not durable")
 	}
 }
+func TestInventoryBulkGrantWearArmorGadgetsAndPets(t *testing.T) {
+	cases := []struct {
+		action string
+		types  map[int]bool
+		level  int64
+	}{
+		{"grant_wear", map[int]bool{30: true, 40: true, 50: true, 60: true}, 1},
+		{"grant_armor", map[int]bool{20: true}, 3},
+		{"grant_gadgets", map[int]bool{70: true}, 3},
+		{"grant_pets", map[int]bool{80: true}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.action, func(t *testing.T) {
+			s, _, _ := syncedGameplayStore(t)
+			p, _ := s.Profile(socketUniqID)
+			p.ProgressSlots = map[string]any{}
+			var selected catalog.Item
+			total := 0
+			for _, item := range catalog.All() {
+				if tc.types[item.Type] && item.Editable {
+					total++
+					if selected.Index == 0 {
+						selected = item
+					}
+				}
+			}
+			if selected.Index == 0 || total < 2 {
+				t.Fatal("bulk category unexpectedly empty", tc.action, total)
+			}
+			preservedLevel := int64(1)
+			if selected.Type == 20 || selected.Type == 70 {
+				preservedLevel = 12
+			}
+			if err := editInventorySlots(&p, selected, InventoryEdit{Action: "grant", Quantity: 1, Level: preservedLevel}); err != nil {
+				t.Fatal("seed existing item", err)
+			}
+			stored := p.clone()
+			s.state.Profiles[p.PlayerID] = &stored
+
+			e := bulkFor(p, tc.action)
+			e.Level, e.Rarity = tc.level, 0
+			plan, err := s.PreviewInventoryBulk(p.PlayerID, e)
+			if err != nil || plan.Changes != total-1 || plan.PreservedOwned != 1 {
+				t.Fatalf("preview: %+v, err=%v, total=%d", plan, err, total)
+			}
+			e.PlanToken, e.ConfirmPlayerID = plan.PlanToken, p.PlayerID
+			got, applied, changed, err := s.EditInventoryBulk(p.PlayerID, e)
+			if err != nil || !changed || applied.Changes != total-1 || got.ProgressRevision != p.ProgressRevision+1 {
+				t.Fatalf("apply: changed=%v plan=%+v err=%v", changed, applied, err)
+			}
+			for _, item := range catalog.All() {
+				if tc.types[item.Type] && item.Editable {
+					if quantity, _, _ := inventoryValue(got, item); quantity == 0 {
+						t.Fatalf("missing granted item %d:%d", item.Type, item.Index)
+					}
+				}
+			}
+			if selected.Type == 20 || selected.Type == 70 || selected.Type == 80 {
+				if _, level, _ := inventoryValue(got, selected); level != preservedLevel {
+					t.Fatalf("already-owned item level changed: got %d want %d", level, preservedLevel)
+				}
+			}
+			fresh := confirmedBulk(t, s, got, tc.action)
+			noop, duplicate, changed, err := s.EditInventoryBulk(p.PlayerID, fresh)
+			if err != nil || changed || duplicate.Changes != 0 || noop.ProgressRevision != got.ProgressRevision {
+				t.Fatalf("duplicate bulk grant was not idempotent: changed=%v plan=%+v err=%v", changed, duplicate, err)
+			}
+		})
+	}
+}
+
 func TestInventoryBulkRevokeSkipsEquippedAndUnknown(t *testing.T) {
 	for _, action := range []string{"revoke_weapons", "revoke_all"} {
 		t.Run(action, func(t *testing.T) {

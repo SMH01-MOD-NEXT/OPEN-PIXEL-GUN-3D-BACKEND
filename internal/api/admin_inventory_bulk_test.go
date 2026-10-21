@@ -78,6 +78,43 @@ func TestAdminBulkAuthPreviewConfirmationAndIsolation(t *testing.T) {
 	}
 }
 
+func TestAdminBulkGrantPetsThroughPreviewAndApply(t *testing.T) {
+	s, _ := newTestServer(t)
+	identity, _, err := s.st.AdoptSocketIdentity("612672167", "bulk-pets-device", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.st.Profile(identity.PlayerID)
+	edit := store.InventoryBulkEdit{Action: "grant_pets", Level: 1, Rarity: 0, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	base := "/api/v1/admin/players/" + identity.PlayerID + "/inventory/bulk/"
+	preview := do(t, s, http.MethodPost, base+"preview", edit, adminAuthHeader)
+	var plan store.InventoryBulkPlan
+	if err := json.Unmarshal(preview.Body.Bytes(), &plan); err != nil || preview.Code != http.StatusOK || plan.Changes != 94 {
+		t.Fatal("pet bulk preview", preview.Code, preview.Body, err)
+	}
+	edit.PlanToken, edit.ConfirmPlayerID = plan.PlanToken, identity.PlayerID
+	applied := do(t, s, http.MethodPost, base+"apply", edit, adminAuthHeader)
+	if applied.Code != http.StatusOK {
+		t.Fatal(applied.Code, applied.Body)
+	}
+	got, _ := s.st.Profile(identity.PlayerID)
+	if got.ProgressRevision != p.ProgressRevision+1 {
+		t.Fatal("bulk pet grant must advance one revision", got.ProgressRevision)
+	}
+	ownedPets := 0
+	for _, item := range store.Inventory(got) {
+		if item.Type == 80 {
+			if item.Level != 1 || item.Quantity != 1 {
+				t.Fatalf("invalid bulk pet record: %+v", item)
+			}
+			ownedPets++
+		}
+	}
+	if ownedPets != 94 {
+		t.Fatalf("bulk pet inventory: %d", ownedPets)
+	}
+}
+
 func TestAdminBulkPersistenceFailureDoesNotRelogin(t *testing.T) {
 	s, _ := newTestServer(t)
 	dir := t.TempDir()

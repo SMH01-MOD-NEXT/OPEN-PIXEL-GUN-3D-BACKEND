@@ -369,7 +369,9 @@
               ? "<small>" + esc(t("technical")) + "</small>"
               : item.name_source === "derived_codename"
                 ? "<small>" + esc(t("derivedPetName")) + "</small>"
-                : "") +
+                : item.name_source === "derived_id"
+                  ? "<small>" + esc(t("derivedModuleName")) + "</small>"
+                  : "") +
             (owned
               ? "<small>" +
                 esc(
@@ -584,6 +586,10 @@
     el("bulkTitle").textContent = t(
       {
         grant_weapons: "grantAllWeapons",
+        grant_wear: "grantAllWear",
+        grant_armor: "grantAllArmor",
+        grant_gadgets: "grantAllGadgets",
+        grant_pets: "grantAllPets",
         revoke_weapons: "revokeAllWeapons",
         revoke_all: "revokeAll",
       }[action],
@@ -593,9 +599,20 @@
       nick: player.nick || "",
     });
     el("bulkDescription").textContent = t(
-      action === "grant_weapons" ? "bulkGrantHint" : "bulkRevokeHint",
+      {
+        grant_weapons: "bulkGrantHint",
+        grant_wear: "bulkGrantWearHint",
+        grant_armor: "bulkGrantArmorHint",
+        grant_gadgets: "bulkGrantGadgetsHint",
+        grant_pets: "bulkGrantPetsHint",
+      }[action] || "bulkRevokeHint",
     );
-    el("bulkFields").hidden = action !== "grant_weapons";
+    const chooseLevel = ["grant_weapons", "grant_armor", "grant_gadgets"].includes(action);
+    el("bulkFields").hidden = !chooseLevel;
+    el("bulkLevelField").hidden = !chooseLevel;
+    el("bulkRarityField").hidden = action !== "grant_weapons";
+    el("bulkLevel").max = "65";
+    el("bulkLevel").value = action === "grant_weapons" ? 65 : 1;
     el("bulkError").textContent = "";
     el("bulkDialog").showModal();
   }
@@ -606,8 +623,10 @@
       const inv = await api("GET", base(c.id) + "/inventory");
       c.edit = {
         action: c.action,
-        level: Number(el("bulkLevel").value),
-        rarity: Number(el("bulkRarity").value),
+        level: ["grant_weapons", "grant_armor", "grant_gadgets"].includes(c.action)
+          ? Number(el("bulkLevel").value)
+          : 1,
+        rarity: c.action === "grant_weapons" ? Number(el("bulkRarity").value) : 0,
         revision: inv.revision,
         updated_at: inv.updated_at,
       };
@@ -678,6 +697,10 @@
     }).then(() => el("bulkConfirm").oninput());
   };
   el("grantAllWeapons").onclick = () => openBulk("grant_weapons");
+  el("grantAllWear").onclick = () => openBulk("grant_wear");
+  el("grantAllArmor").onclick = () => openBulk("grant_armor");
+  el("grantAllGadgets").onclick = () => openBulk("grant_gadgets");
+  el("grantAllPets").onclick = () => openBulk("grant_pets");
   el("revokeAllWeapons").onclick = () => openBulk("revoke_weapons");
   el("revokeAll").onclick = () => openBulk("revoke_all");
   el("profileForm").oninput = () => (dirty = true);

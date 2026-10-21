@@ -110,9 +110,30 @@ func TestAdminCatalogExposesAndGrantsPet(t *testing.T) {
 	t.Fatal("pet not returned by admin inventory", result.Items)
 }
 
+func TestAdminModuleCatalogRemainsReadOnlyUntilStorageVerified(t *testing.T) {
+	s, _ := newTestServer(t)
+	response := do(t, s, http.MethodGet, "/api/v1/admin/catalog?q=mod_regenerator_armor&type=1150", nil, adminAuthHeader)
+	if response.Code != http.StatusOK {
+		t.Fatal(response.Code, response.Body)
+	}
+	var result struct {
+		Items []struct {
+			Name     string `json:"name"`
+			Editable bool   `json:"editable"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || len(result.Items) != 1 || result.Items[0].Name != "Armor Regeneration" || result.Items[0].Editable {
+		t.Fatal("module should have a readable label without an unverified grant adapter", response.Code, response.Body, err)
+	}
+	response = do(t, s, http.MethodGet, "/api/v1/admin/catalog?q=mod_regenerator_armor&type=1150&editable=1", nil, adminAuthHeader)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "mod_regenerator_armor") {
+		t.Fatal("read-only modules leaked into editable catalog", response.Code, response.Body)
+	}
+}
+
 func TestInventoryConsoleAssetsAreLocalizedAndEmbedded(t *testing.T) {
 	html := inventoryConsoleHTML()
-	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `item.type === 80 ? 1 : item.level || 65`, `пересинхронизац`} {
+	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `grantAllWear`, `grantAllArmor`, `grantAllGadgets`, `grantAllPets`, `derivedModuleName`, `пересинхронизац`} {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("console missing %s", marker)
 		}

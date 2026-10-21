@@ -208,6 +208,22 @@
                       data-i18n="grantAllWeapons"
                     ></button
                     ><button
+                      id="grantAllWear"
+                      data-i18n="grantAllWear"
+                    ></button
+                    ><button
+                      id="grantAllArmor"
+                      data-i18n="grantAllArmor"
+                    ></button
+                    ><button
+                      id="grantAllGadgets"
+                      data-i18n="grantAllGadgets"
+                    ></button
+                    ><button
+                      id="grantAllPets"
+                      data-i18n="grantAllPets"
+                    ></button
+                    ><button
                       class="danger-outline"
                       id="revokeAllWeapons"
                       data-i18n="revokeAllWeapons"
@@ -495,7 +511,7 @@
         <p id="bulkTarget" class="target-caption"></p>
         <p class="muted" id="bulkDescription"></p>
         <div id="bulkFields" class="form-grid">
-          <label
+          <label id="bulkLevelField"
             ><span data-i18n="level"></span
             ><input
               id="bulkLevel"
@@ -504,7 +520,7 @@
               max="65"
               value="65"
               required /></label
-          ><label
+          ><label id="bulkRarityField"
             ><span data-i18n="rarity"></span
             ><select id="bulkRarity"></select
           ></label>
