@@ -90,6 +90,29 @@ func listStorage(t int) []string {
 	}
 	return nil
 }
+
+// petProgressRecords returns the measured stock list without materializing a
+// missing slot or coercing malformed data into an editable shape.
+func petProgressRecords(p Profile) []any {
+	slot := objectAt(p.ProgressSlots, "53")
+	pets, _ := slot["p"].([]any)
+	return pets
+}
+
+// petProgressRecord locates an owned pet in the 23.1.3 slot 53/p record list.
+func petProgressRecord(p Profile, index int) (map[string]any, bool) {
+	for _, raw := range petProgressRecords(p) {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, ok := counterInt64(record["i"]); ok && id == int64(index) {
+			return record, true
+		}
+	}
+	return nil, false
+}
+
 func listValue(root map[string]any, path []string) ([]any, error) {
 	parent := root
 	if len(path) > 1 {
@@ -123,6 +146,14 @@ func setList(root map[string]any, path []string, a []any) error {
 }
 func inventoryValue(p Profile, item catalog.Item) (qty, level, rarity int64) {
 	key := strconv.Itoa(item.Index)
+	if item.Type == 80 {
+		record, ok := petProgressRecord(p, item.Index)
+		if !ok {
+			return 0, 0, 0
+		}
+		level, _ = counterInt64(record["l"])
+		return 1, level, 0
+	}
 	if path, ok := itemStorage(item.Type); ok {
 		value := objectAt(p.ProgressSlots, path...)[key]
 		if item.Type == 10 {
@@ -214,6 +245,18 @@ func Inventory(p Profile) []InventoryItem {
 			addUnknown(group.typ, index, quantity, group.expected)
 		}
 	}
+	// Pet records are dictionaries in slot 53/p, not numeric list entries.
+	for _, raw := range petProgressRecords(p) {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		index, ok := counterInt64(record["i"])
+		if !ok || index <= 0 || index > 2147483647 {
+			continue
+		}
+		addUnknown(80, int(index), 1, []int{80})
+	}
 	for _, group := range []struct {
 		typ      int
 		path     []string
@@ -259,6 +302,10 @@ func equippedInventoryItem(p Profile, item catalog.Item) bool {
 	}
 	eq := objectAt(p.ProgressSlots, "9")
 	switch item.Type {
+	case 80:
+		if n, ok := counterInt64(eq["6"]); ok && n == id {
+			return true
+		}
 	case 10:
 		for _, v := range objectAt(eq, "2") {
 			text, _ := v.(string)
@@ -331,6 +378,9 @@ func (s *Store) EditInventory(playerID string, edit InventoryEdit) (Profile, boo
 	if edit.Quantity < 1 || edit.Quantity > 1000000 || edit.Level < 1 || edit.Level > 65 || edit.Rarity < 0 || edit.Rarity > 5 {
 		return Profile{}, false, errors.New("store: invalid quantity, level or rarity")
 	}
+	if item.Type == 80 && edit.Action == "grant" && (edit.Quantity != 1 || edit.Level != 1 || edit.Rarity != 0) {
+		return Profile{}, false, errors.New("store: pet grants require quantity 1, level 1 and rarity 0")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
@@ -370,7 +420,48 @@ func (s *Store) EditInventory(playerID string, edit InventoryEdit) (Profile, boo
 	}
 	return p.clone(), true, nil
 }
+func editPetInventorySlots(p *Profile, item catalog.Item, action string) error {
+	slot, err := ensureObject(p.ProgressSlots, "53")
+	if err != nil {
+		return err
+	}
+	var pets []any
+	if raw, exists := slot["p"]; exists && raw != nil {
+		var ok bool
+		pets, ok = raw.([]any)
+		if !ok {
+			return errors.New("store: incompatible pet inventory list")
+		}
+	}
+	out := make([]any, 0, len(pets)+1)
+	found := false
+	for _, raw := range pets {
+		record, ok := raw.(map[string]any)
+		if ok {
+			if id, valid := counterInt64(record["i"]); valid && id == int64(item.Index) {
+				found = true
+				if action == "revoke" {
+					continue
+				}
+			}
+		}
+		out = append(out, raw)
+	}
+	if action == "grant" && !found {
+		// These are the observed slot 53/p fields: id, cards, level and custom name.
+		// A newly granted pet starts at level 1 with no cards or custom nickname.
+		out = append(out, map[string]any{
+			"c": int64(0), "i": int64(item.Index), "l": int64(1), "n": "",
+		})
+	}
+	slot["p"] = out
+	return nil
+}
+
 func editInventorySlots(p *Profile, item catalog.Item, e InventoryEdit) error {
+	if item.Type == 80 {
+		return editPetInventorySlots(p, item, e.Action)
+	}
 	key := strconv.Itoa(item.Index)
 	if path, ok := itemStorage(item.Type); ok {
 		m, err := ensureObject(p.ProgressSlots, path...)

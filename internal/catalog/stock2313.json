@@ -15504,7 +15504,7 @@
     "name": "pet_alien_cat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15513,7 +15513,7 @@
     "name": "pet_armadillo",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15522,7 +15522,7 @@
     "name": "pet_arnold_3000",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15531,7 +15531,7 @@
     "name": "pet_bat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15540,7 +15540,7 @@
     "name": "pet_bear",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15549,7 +15549,7 @@
     "name": "pet_blocston_dogmatics",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15558,7 +15558,7 @@
     "name": "pet_boar",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15567,7 +15567,7 @@
     "name": "pet_cat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15576,7 +15576,7 @@
     "name": "pet_cat_2",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15585,7 +15585,7 @@
     "name": "pet_cat_3",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15594,7 +15594,7 @@
     "name": "pet_chick01",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15603,7 +15603,7 @@
     "name": "pet_chicken",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15612,7 +15612,7 @@
     "name": "pet_combat_robb_e",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15621,7 +15621,7 @@
     "name": "pet_crab",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15630,7 +15630,7 @@
     "name": "pet_cyberphoenix",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15639,7 +15639,7 @@
     "name": "pet_dachshund",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15648,7 +15648,7 @@
     "name": "pet_deer",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15657,7 +15657,7 @@
     "name": "pet_dinosaur",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15666,7 +15666,7 @@
     "name": "pet_dog",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15675,7 +15675,7 @@
     "name": "pet_eagle",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15684,7 +15684,7 @@
     "name": "pet_eaglespirit",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15693,7 +15693,7 @@
     "name": "pet_fighting_turtle",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15702,7 +15702,7 @@
     "name": "pet_flappy_fish",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15711,7 +15711,7 @@
     "name": "pet_fox",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15720,7 +15720,7 @@
     "name": "pet_goat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15729,7 +15729,7 @@
     "name": "pet_green_novice",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15738,7 +15738,7 @@
     "name": "pet_griffin",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15747,7 +15747,7 @@
     "name": "pet_griffin_owl",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15756,7 +15756,7 @@
     "name": "pet_headbug",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15765,7 +15765,7 @@
     "name": "pet_horse",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15774,7 +15774,7 @@
     "name": "pet_horse_figure",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15783,7 +15783,7 @@
     "name": "pet_husky",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15792,7 +15792,7 @@
     "name": "pet_hyena",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15801,7 +15801,7 @@
     "name": "pet_ice_dragon_egg",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15810,7 +15810,7 @@
     "name": "pet_kangaroo",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15819,7 +15819,7 @@
     "name": "pet_knitted_pony",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15828,7 +15828,7 @@
     "name": "pet_lion",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15837,7 +15837,7 @@
     "name": "pet_lucky_duck",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15846,7 +15846,7 @@
     "name": "pet_magical_dragon",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15855,7 +15855,7 @@
     "name": "pet_mammoth",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15864,7 +15864,7 @@
     "name": "pet_mecha_cat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15873,7 +15873,7 @@
     "name": "pet_meerkat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15882,7 +15882,7 @@
     "name": "pet_monkey",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15891,7 +15891,7 @@
     "name": "pet_ostrich",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15900,7 +15900,7 @@
     "name": "pet_owl",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15909,7 +15909,7 @@
     "name": "pet_panda",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15918,7 +15918,7 @@
     "name": "pet_panther",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15927,7 +15927,7 @@
     "name": "pet_parrot",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15936,7 +15936,7 @@
     "name": "pet_penguin",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15945,7 +15945,7 @@
     "name": "pet_pga_statue",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15954,7 +15954,7 @@
     "name": "pet_phoenix",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15963,7 +15963,7 @@
     "name": "pet_pocket_demon",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15972,7 +15972,7 @@
     "name": "pet_porcupine",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15981,7 +15981,7 @@
     "name": "pet_pterodactyl",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15990,7 +15990,7 @@
     "name": "pet_rabbit",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -15999,7 +15999,7 @@
     "name": "pet_raccoon",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16008,7 +16008,7 @@
     "name": "pet_ram",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16017,7 +16017,7 @@
     "name": "pet_raven",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16026,7 +16026,7 @@
     "name": "pet_red_panda",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16035,7 +16035,7 @@
     "name": "pet_rhino",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16044,7 +16044,7 @@
     "name": "pet_robo_dog",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16053,7 +16053,7 @@
     "name": "pet_sabertooth_tiger",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16062,7 +16062,7 @@
     "name": "pet_sacred_scarab",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16071,7 +16071,7 @@
     "name": "pet_sheep",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16080,7 +16080,7 @@
     "name": "pet_skunk",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16089,7 +16089,7 @@
     "name": "pet_small_floppa",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16098,7 +16098,7 @@
     "name": "pet_snake",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16107,7 +16107,7 @@
     "name": "pet_squirrel",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16116,7 +16116,7 @@
     "name": "pet_stone",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16125,7 +16125,7 @@
     "name": "pet_stone_elemental",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16134,7 +16134,7 @@
     "name": "pet_tactical_ferret",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16143,7 +16143,7 @@
     "name": "pet_tiger",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16152,7 +16152,7 @@
     "name": "pet_trex",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16161,7 +16161,7 @@
     "name": "pet_tukan",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16170,7 +16170,7 @@
     "name": "pet_turkey",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16179,7 +16179,7 @@
     "name": "pet_unicorn",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16188,7 +16188,7 @@
     "name": "pet_vacuum_helpbro_2000",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16197,7 +16197,7 @@
     "name": "pet_wolf",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16206,7 +16206,7 @@
     "name": "pet_zazou",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16215,7 +16215,7 @@
     "name": "pet_zombie_head",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16224,7 +16224,7 @@
     "name": "pet_zombiecat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16233,7 +16233,7 @@
     "name": "pet_support_piglet",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16242,7 +16242,7 @@
     "name": "pet_firefly_cat",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16251,7 +16251,7 @@
     "name": "pet_elementals_helper",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16260,7 +16260,7 @@
     "name": "pet_tankmouse",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16269,7 +16269,7 @@
     "name": "pet_backwater_dweller",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16278,7 +16278,7 @@
     "name": "pet_shiny_companion",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16287,7 +16287,7 @@
     "name": "pet_8_bit_boi",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16296,7 +16296,7 @@
     "name": "pet_blue_buddy",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16305,7 +16305,7 @@
     "name": "pet_wise_owl",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16314,7 +16314,7 @@
     "name": "pet_stingray_3000",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16323,7 +16323,7 @@
     "name": "pet_bullfinch_the_giver",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16332,7 +16332,7 @@
     "name": "pet_festive_black_rabbit",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 80,
@@ -16341,7 +16341,7 @@
     "name": "pet_servants_right_hand",
     "name_source": "technical_id",
     "category": "Pet",
-    "editable": false
+    "editable": true
   },
   {
     "type": 83,

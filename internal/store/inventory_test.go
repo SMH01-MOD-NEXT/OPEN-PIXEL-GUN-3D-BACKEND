@@ -7,14 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
 func editFor(p Profile, typ, index int, action string) InventoryEdit {
-	return InventoryEdit{Type: typ, Index: index, Action: action, Quantity: 7, Level: 23, Rarity: 4, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	edit := InventoryEdit{Type: typ, Index: index, Action: action, Quantity: 7, Level: 23, Rarity: 4, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	if typ == 80 {
+		edit.Quantity, edit.Level, edit.Rarity = 1, 1, 0
+	}
+	return edit
 }
 func TestInventoryAdaptersPersistGrantAndRevoke(t *testing.T) {
-	for _, typ := range []int{10, 20, 30, 40, 50, 60, 65, 70, 1070, 1080, 1155, 1350, 1470, 1510, 1520} {
+	for _, typ := range []int{10, 20, 30, 40, 50, 60, 65, 70, 80, 1070, 1080, 1155, 1350, 1470, 1510, 1520} {
 		t.Run(catalog.Key(typ, 0), func(t *testing.T) {
 			s, dir, _ := syncedGameplayStore(t)
 			p, _ := s.Profile(socketUniqID)
@@ -44,6 +49,9 @@ func TestInventoryAdaptersPersistGrantAndRevoke(t *testing.T) {
 			}
 			if typ == 10 && (level != 23 || r != 4) {
 				t.Fatal("weapon data")
+			}
+			if typ == 80 && level != 1 {
+				t.Fatal("new pet must start at level 1", level)
 			}
 			if typ == 1070 || typ == 1155 || typ == 1520 {
 				if q != 7 {
@@ -176,9 +184,10 @@ func TestInventoryUnknownOwnershipIsVisibleReadOnly(t *testing.T) {
 		"28": map[string]any{"0": map[string]any{"999999001": map[string]any{"l": 5, "r": 0}}},
 		"26": map[string]any{"s": map[string]any{"999999023": 1}},
 		"13": map[string]any{"w": []any{999999002, 999999002}},
+		"53": map[string]any{"p": []any{map[string]any{"i": int64(999999003), "c": int64(0), "l": int64(1), "n": ""}}},
 	}}
 	got := Inventory(p)
-	if len(got) != 3 {
+	if len(got) != 4 {
 		t.Fatalf("unknown owned items hidden/duplicated: %d", len(got))
 	}
 	for _, item := range got {
@@ -187,6 +196,112 @@ func TestInventoryUnknownOwnershipIsVisibleReadOnly(t *testing.T) {
 		}
 	}
 }
+func TestPetInventoryUsesProgressRecordsAndProtectsEquippedPet(t *testing.T) {
+	s, _, _ := syncedGameplayStore(t)
+	p, _ := s.Profile(socketUniqID)
+	activeID, grantID := 1003, 2003
+	p.ProgressSlots["53"] = map[string]any{
+		"e": []any{map[string]any{"future": true}},
+		"p": []any{map[string]any{"c": int64(4), "i": int64(activeID), "l": int64(7), "n": "Retained"}},
+	}
+	p.ProgressSlots["9"] = map[string]any{"6": int64(activeID), "future": "preserved"}
+	stored := p.clone()
+	s.state.Profiles[socketUniqID] = &stored
+
+	activeItem, ok := catalog.Find(80, activeID)
+	if !ok || !activeItem.Editable {
+		t.Fatal("pet is not grantable in catalog", activeItem)
+	}
+	for _, inv := range Inventory(p) {
+		if inv.Type == 80 && inv.Index == activeID && !inv.Equipped {
+			t.Fatal("equipped pet was not marked equipped")
+		}
+	}
+	if _, _, err := s.EditInventory(socketUniqID, editFor(p, 80, activeID, "revoke")); !errors.Is(err, ErrEquippedItem) {
+		t.Fatal("equipped pet revoke was not rejected", err)
+	}
+
+	grantItem, ok := catalog.Find(80, grantID)
+	if !ok {
+		t.Fatal("missing pet test item")
+	}
+	invalid := editFor(p, 80, grantItem.Index, "grant")
+	invalid.Level = 2
+	if _, _, err := s.EditInventory(socketUniqID, invalid); err == nil {
+		t.Fatal("accepted non-baseline pet grant")
+	}
+	got, changed, err := s.EditInventory(socketUniqID, editFor(p, 80, grantItem.Index, "grant"))
+	if err != nil || !changed {
+		t.Fatal("pet grant", changed, err)
+	}
+	record, ok := petProgressRecord(got, grantID)
+	if !ok {
+		t.Fatal("pet record was not added")
+	}
+	if record["i"] != int64(grantID) || record["c"] != int64(0) || record["l"] != int64(1) || record["n"] != "" {
+		t.Fatal("unexpected new-pet defaults", record)
+	}
+	if objectAt(got.ProgressSlots, "53")["e"].([]any)[0].(map[string]any)["future"] != true || objectAt(got.ProgressSlots, "9")["6"] != int64(activeID) {
+		t.Fatal("pet grant damaged unrelated/equipped progress")
+	}
+	if _, changed, err := s.EditInventory(socketUniqID, editFor(got, 80, grantID, "grant")); err != nil || changed {
+		t.Fatal("duplicate pet grant must be idempotent", changed, err)
+	}
+	current, _ := s.Profile(socketUniqID)
+	removed, changed, err := s.EditInventory(socketUniqID, editFor(current, 80, grantID, "revoke"))
+	if err != nil || !changed {
+		t.Fatal("pet revoke", changed, err)
+	}
+	if _, ok := petProgressRecord(removed, grantID); ok {
+		t.Fatal("revoked pet remains")
+	}
+	if _, ok := petProgressRecord(removed, activeID); !ok {
+		t.Fatal("revoke damaged another pet")
+	}
+}
+
+func TestPocketHarpoonVariantsGrantThroughGadgetSlot(t *testing.T) {
+	s, _, _ := syncedGameplayStore(t)
+	p, _ := s.Profile(socketUniqID)
+	p.ProgressSlots["16"] = map[string]any{"future": "preserved"}
+	stored := p.clone()
+	s.state.Profiles[socketUniqID] = &stored
+	for _, index := range []int{63007, 76007} {
+		item, ok := catalog.Find(70, index)
+		if !ok || !item.Editable || item.Category != "Gadget" {
+			t.Fatalf("Pocket Harpoon catalog entry is not editable: %+v", item)
+		}
+		var changed bool
+		var err error
+		p, changed, err = s.EditInventory(socketUniqID, editFor(p, 70, index, "grant"))
+		if err != nil || !changed {
+			t.Fatalf("grant gadget %d: changed=%v err=%v", index, changed, err)
+		}
+		qty, level, _ := inventoryValue(p, item)
+		if qty != 1 || level != 23 || objectAt(p.ProgressSlots, "16")[strconv.Itoa(index)] != int64(23) {
+			t.Fatalf("gadget %d not persisted in slot 16", index)
+		}
+	}
+	if objectAt(p.ProgressSlots, "16")["future"] != "preserved" {
+		t.Fatal("gadget grant dropped unknown slot fields")
+	}
+}
+
+func TestPetInventoryMalformedListRejectedWithoutMutation(t *testing.T) {
+	s, _, _ := syncedGameplayStore(t)
+	p, _ := s.Profile(socketUniqID)
+	p.ProgressSlots["53"] = map[string]any{"p": "not-a-list"}
+	stored := p.clone()
+	s.state.Profiles[socketUniqID] = &stored
+	if _, _, err := s.EditInventory(socketUniqID, editFor(p, 80, 1003, "grant")); err == nil {
+		t.Fatal("accepted malformed pet list")
+	}
+	after, _ := s.Profile(socketUniqID)
+	if !reflect.DeepEqual(p, after) {
+		t.Fatal("malformed pet grant mutated profile")
+	}
+}
+
 func TestInventoryMirrorsOnlyExistingInitProjections(t *testing.T) {
 	s, _, ctx := syncedGameplayStore(t)
 	p, _ := s.Profile(socketUniqID)

@@ -75,9 +75,44 @@ func TestAdminInventoryAuthCatalogAndScopedEdits(t *testing.T) {
 		}
 	}
 }
+func TestAdminCatalogExposesAndGrantsPet(t *testing.T) {
+	s, _ := newTestServer(t)
+	identity, _, err := s.st.AdoptSocketIdentity("612672165", "pet-inventory-device", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, s, http.MethodGet, "/api/v1/admin/catalog?q=pet_alien_cat&type=80&editable=1", nil, adminAuthHeader)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "pet_alien_cat") {
+		t.Fatal(resp.Code, resp.Body)
+	}
+	p, _ := s.st.Profile(identity.PlayerID)
+	edit := store.InventoryEdit{Type: 80, Index: 1003, Action: "grant", Quantity: 1, Level: 1, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	path := "/api/v1/admin/players/" + identity.PlayerID + "/inventory"
+	resp = do(t, s, http.MethodPost, path, edit, adminAuthHeader)
+	if resp.Code != http.StatusOK {
+		t.Fatal(resp.Code, resp.Body)
+	}
+	var result struct {
+		Changed bool                  `json:"changed"`
+		Items   []store.InventoryItem `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed {
+		t.Fatal("pet grant did not change inventory", result)
+	}
+	for _, item := range result.Items {
+		if item.Type == 80 && item.Index == 1003 && item.Quantity == 1 && item.Level == 1 {
+			return
+		}
+	}
+	t.Fatal("pet not returned by admin inventory", result.Items)
+}
+
 func TestInventoryConsoleAssetsAreLocalizedAndEmbedded(t *testing.T) {
 	html := inventoryConsoleHTML()
-	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `пересинхронизац`} {
+	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `item.type === 80 ? 1 : item.level || 65`, `пересинхронизац`} {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("console missing %s", marker)
 		}

@@ -20,7 +20,8 @@ Open `/admin`, select one player, then **Инвентарь · клиент 23.1
 Search by item name, numeric index, internal ID and category. Names extracted from
 stock localization are English; UI labels are in `inventory.ru.json`.
 Quantity means **set the stored quantity**, not add it. Level and rarity apply to
-weapon records; armor/gadgets use level. Confirmations include the target player
+weapon records; armor/gadgets use level. Pet grants use a fixed stock baseline
+(quantity 1, level 1, rarity 0, zero cards and no custom nickname). Confirmations include the target player
 and exact item type/index. Full indices must be used: `727001`, not ordinal `727`.
 
 Authenticated routes:
@@ -51,29 +52,37 @@ its raw editors cannot accidentally restore a pre-edit snapshot.
 | 30/40/50/60 | Masks/hats/boots/capes | `13.w` integer list |
 | 65 | Character skins | `10` integer list |
 | 70 | Gadgets | `16[index] = level` |
+| 80 | Pets | `53.p` record list (`{i:index,c:cards,l:level,n:nickname}`) |
 | 1070 | Weapon parts | `24[index] = quantity` |
 | 1080 | Royale items | `11` integer list |
 | 1155/1520 | Module points / applicable consumables | `26.c[type][index]` |
 | 1350/1470/1510 | Armor skins / graffiti / wear skins | `26.s[index] = 1` |
 
-Other catalog categories, including pets, lobby/fort objects, modules themselves
-and weapon skins, are currently **read-only**, not silently mapped to a guessed
-slot. Unknown IDs in inspected ownership containers remain visible read-only;
-unknown raw sections remain preserved even without an inventory projection.
+Pet ownership records preserve all existing fields; new records use the observed
+23.1.3 shape and the equipped pet reference at `9.6` is protected from revoke.
+Pocket Harpoon has two editable gadget definitions (indices `63007` and `76007`);
+both persist through the same measured slot-16 gadget adapter. The similarly named
+`44007` record has a different stock display label and is not relabeled.
+
+Other catalog categories, including lobby/fort objects, modules themselves and
+weapon skins, remain **read-only** until their ownership schemas are verified.
+Unknown IDs in inspected ownership containers remain visible read-only; unknown
+raw sections remain preserved even without an inventory projection.
 
 Measured command reducers: `10,25,33,64,65,66,81,84,85,120,132,139,191,197`.
 A measured purchase batch (currency charge + weapon ownership) commits together
 before ACK. Receipts survive restart and prevent retry double-charging. Malformed
 batches and disk errors do not partially apply. Unsupported commands retain the
 pre-existing snapshot path, **not an assertion of durable delta interpretation**.
-Command 80 remains unsupported pending a verified payload contract.
+Progress command id 80 remains unsupported pending a verified delta-payload contract;
+that is separate from catalog item type 80 (pets), which uses the verified slot adapter above.
 
 ## Catalog provenance and limits
 
 `internal/catalog/stock2313.json` contains **7457 registry records** from the local
 stock Android 23.1.3 (versionCode 268411) APK/OBB, not current web/game data.
 **4613** records have stock English names; **2844** explicitly retain a technical
-ID rather than an invented name. **3304** records have a verified write adapter.
+ID rather than an invented name. **3398** records have a verified write adapter.
 These are registry records, not 7457 unique weapons or 7457 fully editable items.
 
 Sources: stock item registry (type enum TypeDefIndex 8931), weapon definition tags
@@ -121,6 +130,22 @@ record required precise test cleanup through the existing raw-state API because
 an original survival loadout implicitly references that free weapon; no loadout
 was edited. Not every category's UI has been individually exercised, and the
 admin panel has not been end-to-end browser tested.
+
+## Verification addendum (2026-10-21)
+
+Added the type-80 pet adapter using measured stock slot data: ownership lives in
+slot `53.p` as records with fields `c/i/l/n`; the equipped pet is referenced by
+slot `9.6`. New admin grants are level 1 with zero cards and an empty nickname;
+other pet records and unknown slot fields are preserved. The admin catalog now
+exposes all 94 stock pet entries as editable. Regression tests cover persist/reopen,
+revoke, idempotency, equipped-pet rejection, malformed pet lists, unknown pet IDs,
+and both Pocket Harpoon indices.
+
+Full `go test -count=1 ./...`, `go test -race -count=1 ./...`, `go vet ./...`,
+and builds of both backend commands passed. A device is connected, but no live
+inventory was changed for this work; per-category in-game confirmation remains
+outstanding. Module ownership itself remains read-only pending a verified
+server-side storage/delta contract.
 
 ## Remaining work
 

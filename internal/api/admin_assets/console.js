@@ -517,8 +517,9 @@
       action === "revoke" || ![10, 20, 70].includes(item.type);
     el("rarityField").hidden = action === "revoke" || item.type !== 10;
     el("itemQuantity").value = item.quantity || 1;
-    el("itemLevel").value = item.level || 65;
-    el("itemRarity").value = item.rarity == null ? 5 : item.rarity;
+    el("itemLevel").value = item.type === 80 ? 1 : item.level || 65;
+    el("itemRarity").value =
+      item.type === 80 ? 0 : item.rarity == null ? 5 : item.rarity;
     el("itemWarning").textContent = t(
       action === "revoke" ? "revokeWarning" : "grantWarning",
     );

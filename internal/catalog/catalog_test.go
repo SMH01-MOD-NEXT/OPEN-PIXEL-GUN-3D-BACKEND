@@ -25,6 +25,17 @@ func TestStockRegistryIdentity(t *testing.T) {
 	if len(Search("future police", 10, true)) != 1 {
 		t.Fatal("name lookup")
 	}
+	pet, ok := Find(80, 1003)
+	if !ok || !pet.Editable || pet.Category != "Pet" {
+		t.Fatal("pet ownership catalog entry is not editable", pet)
+	}
+	foundPocketHarpoon := map[int]bool{}
+	for _, item := range Search("pocket harpoon", 70, true) {
+		foundPocketHarpoon[item.Index] = true
+	}
+	if !foundPocketHarpoon[63007] || !foundPocketHarpoon[76007] {
+		t.Fatal("missing editable Pocket Harpoon variants", foundPocketHarpoon)
+	}
 	if len(Search("727001", 10, true)) != 1 {
 		t.Fatal("id lookup")
 	}

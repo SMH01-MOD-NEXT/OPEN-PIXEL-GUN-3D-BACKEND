@@ -9,7 +9,7 @@ parser.add_argument('--output',type=pathlib.Path,required=True)
 args=parser.parse_args();C=args.inputs
 raw=json.load(open(C/'stock2313-item-catalog-raw.json'));lang=json.load(open(C/'stock2313-localization.json'))['English'];weapons={r['index']:r for r in json.load(open(C/'stock2313-item-records.json'))};bytag={r['tag']:r for r in weapons.values()};wear={r['id']:r for r in json.load(open(C/'stock2313-wear-records.json'))}
 dump=args.dump.read_text();block=dump.split('// TypeDefIndex: 8931')[1].split('// Namespace:')[0];types={int(n):k for k,n in re.findall(r'public const .*? (\w+) = (\d+);',block)}
-editable={10,20,30,40,50,60,65,70,1070,1080,1155,1350,1470,1510,1520}
+editable={10,20,30,40,50,60,65,70,80,1070,1080,1155,1350,1470,1510,1520}
 wearskins={r['i']:r for r in json.load(open(C/'stock-embedded-configs/160.json'))['wss']}
 skins={r['id']:r for r in json.load(open(C/'stock2313-skin-records.json'))}
 gadgets={r['path'].split('/')[-1].lower():r['keys'][0] for r in json.load(open(C/'stock2313-target-component-records.json')) if r['path'].startswith('gadgets/') and r['keys']}
