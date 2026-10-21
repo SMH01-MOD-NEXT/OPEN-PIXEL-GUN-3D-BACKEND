@@ -225,12 +225,16 @@ func TestPetInventoryUsesProgressRecordsAndProtectsEquippedPet(t *testing.T) {
 	if !ok {
 		t.Fatal("missing pet test item")
 	}
-	invalid := editFor(p, 80, grantItem.Index, "grant")
-	invalid.Level = 2
-	if _, _, err := s.EditInventory(socketUniqID, invalid); err == nil {
-		t.Fatal("accepted non-baseline pet grant")
+	for _, level := range []int64{0, 66} {
+		invalid := editFor(p, 80, grantItem.Index, "grant")
+		invalid.Level = level
+		if _, _, err := s.EditInventory(socketUniqID, invalid); err == nil {
+			t.Fatal("accepted invalid pet level", level)
+		}
 	}
-	got, changed, err := s.EditInventory(socketUniqID, editFor(p, 80, grantItem.Index, "grant"))
+	grant := editFor(p, 80, grantItem.Index, "grant")
+	grant.Level = 37
+	got, changed, err := s.EditInventory(socketUniqID, grant)
 	if err != nil || !changed {
 		t.Fatal("pet grant", changed, err)
 	}
@@ -238,14 +242,16 @@ func TestPetInventoryUsesProgressRecordsAndProtectsEquippedPet(t *testing.T) {
 	if !ok {
 		t.Fatal("pet record was not added")
 	}
-	if record["i"] != int64(grantID) || record["c"] != int64(0) || record["l"] != int64(1) || record["n"] != "" {
+	if record["i"] != int64(grantID) || record["c"] != int64(0) || record["l"] != int64(37) || record["n"] != "" {
 		t.Fatal("unexpected new-pet defaults", record)
 	}
 	if objectAt(got.ProgressSlots, "53")["e"].([]any)[0].(map[string]any)["future"] != true || objectAt(got.ProgressSlots, "9")["6"] != int64(activeID) {
 		t.Fatal("pet grant damaged unrelated/equipped progress")
 	}
-	if _, changed, err := s.EditInventory(socketUniqID, editFor(got, 80, grantID, "grant")); err != nil || changed {
-		t.Fatal("duplicate pet grant must be idempotent", changed, err)
+	retry := editFor(got, 80, grantID, "grant")
+	retry.Level = 37
+	if _, changed, err := s.EditInventory(socketUniqID, retry); err != nil || changed {
+		t.Fatal("duplicate pet grant at the same level must be idempotent", changed, err)
 	}
 	current, _ := s.Profile(socketUniqID)
 	removed, changed, err := s.EditInventory(socketUniqID, editFor(current, 80, grantID, "revoke"))

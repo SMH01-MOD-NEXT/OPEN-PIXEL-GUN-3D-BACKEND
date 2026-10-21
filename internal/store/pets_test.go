@@ -18,8 +18,13 @@ func TestEveryPetGrantsPersistsAndRevokes(t *testing.T) {
 	p, _ := s.Profile(socketUniqID)
 	baseline := p.clone()
 	pets := catalog.Search("", 80, true)
+	levels := make(map[int]int64, len(pets))
 	for _, pet := range pets {
-		next, changed, err := s.EditInventory(socketUniqID, editFor(p, 80, pet.Index, "grant"))
+		level := int64(pet.Index%65 + 1)
+		levels[pet.Index] = level
+		edit := editFor(p, 80, pet.Index, "grant")
+		edit.Level = level
+		next, changed, err := s.EditInventory(socketUniqID, edit)
 		if err != nil || !changed {
 			t.Fatalf("grant %s: %v %v", pet.ID, changed, err)
 		}
@@ -36,8 +41,8 @@ func TestEveryPetGrantsPersistsAndRevokes(t *testing.T) {
 			t.Fatal("display label leaked into nickname", pet, record)
 		}
 		qty, level, _ := inventoryValue(p, pet)
-		if qty != 1 || level != 1 {
-			t.Fatal("incorrect pet ownership", pet, qty, level)
+		if qty != 1 || level != levels[pet.Index] {
+			t.Fatal("incorrect pet ownership", pet, qty, level, levels[pet.Index])
 		}
 		next, changed, err := reopened.EditInventory(socketUniqID, editFor(p, 80, pet.Index, "revoke"))
 		if err != nil || !changed {
@@ -63,15 +68,21 @@ func TestEveryPetGrantsPersistsAndRevokes(t *testing.T) {
 	}
 }
 
-func TestExistingPetGrantNeverResetsCustomProgress(t *testing.T) {
+func TestExistingPetLevelUpdatePreservesCustomProgress(t *testing.T) {
 	s, _, _ := syncedGameplayStore(t)
 	p, _ := s.Profile(socketUniqID)
 	p.ProgressSlots["53"] = map[string]any{"p": []any{map[string]any{"i": int64(20003), "l": int64(27), "c": int64(15), "n": "My Fox", "future": true}}}
 	stored := p.clone()
 	s.state.Profiles[socketUniqID] = &stored
-	got, changed, err := s.EditInventory(socketUniqID, editFor(p, 80, 20003, "grant"))
-	if err != nil || changed || !reflect.DeepEqual(got, p) {
-		t.Fatal("existing pet progress was reset", changed, err)
+	edit := editFor(p, 80, 20003, "grant")
+	edit.Level = 42
+	got, changed, err := s.EditInventory(socketUniqID, edit)
+	if err != nil || !changed || got.ProgressRevision != p.ProgressRevision+1 {
+		t.Fatal("existing pet level was not updated", changed, err)
+	}
+	record, ok := petProgressRecord(got, 20003)
+	if !ok || record["l"] != int64(42) || record["c"] != int64(15) || record["n"] != "My Fox" || record["future"] != true {
+		t.Fatal("pet level update reset custom progress", record)
 	}
 }
 

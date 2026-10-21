@@ -21,10 +21,12 @@ The player Inventory tab exposes single-item grant/edit/revoke plus:
 2. **Grant all wear:** adds missing masks, hats, boots and capes.
 3. **Grant all armor:** adds missing armor at the selected level; already-owned armor is preserved.
 4. **Grant all gadgets:** adds missing gadgets at the selected level; already-owned gadgets are preserved.
-5. **Grant all pets:** adds missing pets at stock level 1, with no cards or custom nickname; existing pet progress is preserved.
+5. **Grant all pets:** adds missing pets at the selected level 1–65, with no cards or custom nickname; existing pets and their levels are preserved.
 6. **Grant all modules:** adds only missing type-1150 modules at the selected level 1–10. Existing modules and their levels are preserved.
 7. **Revoke all weapons:** removes supported, unequipped weapons.
 8. **Clear inventory:** removes supported, unequipped inventory entries across categories. This is deliberately **not an account/progress reset**. Equipped items and unverified/unknown formats are retained.
+
+Individual pet grant/edit supports levels 1–65 in the verified slot `53.p[].l`. A new record uses the selected level with zero cards and an empty custom nickname. Editing an existing pet changes only `l`; cards, nickname and unknown fields are preserved. Bulk pet grant applies the selected level only to missing pets and preserves all existing pet records.
 
 Module catalog entries have readable labels derived from stock IDs. Individual grant/update supports levels 1–10 and atomically writes the complete 23.1.3 linkage: the module index in `27[type]`, at least one corresponding ModulePoint in `26.c[1155][point_index]`, and the level in `37[module_index]`. The exact catalog relation is `point_index = module_index + 42000` with matching `mod_…`/`modp_…` IDs. Existing positive point quantities are preserved and storage indices are not duplicated. Module indices must never be written directly to `26.s` or `26.u`; that incompatible format caused a verified 90% lobby hang. Configuration-shaped `27.modules_v2` records are preserved but ignored. Module revocation remains disabled. Bulk module grants use the same complete linkage as individual grants, apply all missing modules atomically, persist once, advance one revision, and preserve already-owned module levels. See `INVENTORY_23_1_3.md` for evidence and limits. Labels never change the stored ID.
 

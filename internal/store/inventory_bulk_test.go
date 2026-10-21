@@ -17,8 +17,11 @@ func bulkFor(p Profile, action string) InventoryBulkEdit {
 func confirmedBulk(t *testing.T, s *Store, p Profile, action string) InventoryBulkEdit {
 	t.Helper()
 	e := bulkFor(p, action)
-	if action == "grant_wear" || action == "grant_pets" {
+	if action == "grant_wear" {
 		e.Level, e.Rarity = 1, 0
+	}
+	if action == "grant_pets" {
+		e.Level, e.Rarity = 37, 0
 	}
 	if action == "grant_modules" {
 		e.Level, e.Rarity = 10, 0
@@ -118,7 +121,7 @@ func TestInventoryBulkGrantWearArmorGadgetsPetsAndModules(t *testing.T) {
 		{"grant_wear", map[int]bool{30: true, 40: true, 50: true, 60: true}, 1},
 		{"grant_armor", map[int]bool{20: true}, 3},
 		{"grant_gadgets", map[int]bool{70: true}, 3},
-		{"grant_pets", map[int]bool{80: true}, 1},
+		{"grant_pets", map[int]bool{80: true}, 37},
 		{"grant_modules", map[int]bool{1150: true}, 10},
 	}
 	for _, tc := range cases {
@@ -165,8 +168,10 @@ func TestInventoryBulkGrantWearArmorGadgetsPetsAndModules(t *testing.T) {
 			}
 			for _, item := range catalog.All() {
 				if tc.types[item.Type] && item.Editable {
-					if quantity, _, _ := inventoryValue(got, item); quantity == 0 {
+					if quantity, level, _ := inventoryValue(got, item); quantity == 0 {
 						t.Fatalf("missing granted item %d:%d", item.Type, item.Index)
+					} else if tc.action == "grant_pets" && item.Index != selected.Index && level != tc.level {
+						t.Fatalf("new pet %d level: got %d want %d", item.Index, level, tc.level)
 					}
 					if item.Type == 1150 {
 						typ, ok := moduleType(item)
@@ -241,7 +246,7 @@ func TestInventoryBulkRollbackAndValidation(t *testing.T) {
 	if _, _, _, err := s.EditInventoryBulk(p.PlayerID, altered); err == nil {
 		t.Fatal("parameters not bound to preview")
 	}
-	for _, invalid := range []InventoryBulkEdit{{Action: "unknown", Level: 65}, {Action: "grant_weapons", Level: 0}, {Action: "grant_weapons", Level: 66}, {Action: "grant_weapons", Level: 65, Rarity: 6}, {Action: "grant_modules", Level: 11}, {Action: "grant_modules", Level: 10, Rarity: 1}} {
+	for _, invalid := range []InventoryBulkEdit{{Action: "unknown", Level: 65}, {Action: "grant_weapons", Level: 0}, {Action: "grant_weapons", Level: 66}, {Action: "grant_weapons", Level: 65, Rarity: 6}, {Action: "grant_modules", Level: 11}, {Action: "grant_modules", Level: 10, Rarity: 1}, {Action: "grant_pets", Level: 0}, {Action: "grant_pets", Level: 66}, {Action: "grant_pets", Level: 37, Rarity: 1}} {
 		if _, err := s.PreviewInventoryBulk(p.PlayerID, invalid); err == nil {
 			t.Fatal("invalid accepted")
 		}

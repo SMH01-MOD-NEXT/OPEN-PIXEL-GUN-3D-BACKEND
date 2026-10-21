@@ -28,10 +28,11 @@ func TestAdminPetGrantRetrySyncAndRevoke(t *testing.T) {
 			t.Fatal(response.Code, response.Body)
 		}
 	}
-	edit := store.InventoryEdit{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 1, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt}
+	edit := store.InventoryEdit{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 37, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt}
 	for _, invalid := range []store.InventoryEdit{
 		{Type: 80, Index: 20003, Action: "grant", Quantity: 2, Level: 1, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt},
-		{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 65, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt},
+		{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 0, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt},
+		{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 66, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt},
 		{Type: 80, Index: 20003, Action: "grant", Quantity: 1, Level: 1, Rarity: 5, Revision: before.ProgressRevision, UpdatedAt: before.UpdatedAt},
 	} {
 		if r := do(t, s, http.MethodPost, path, invalid, adminAuthHeader); r.Code != 400 {

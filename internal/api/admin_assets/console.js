@@ -549,12 +549,12 @@
     el("quantityField").hidden =
       action === "revoke" || ![1070, 1155, 1520].includes(item.type);
     el("levelField").hidden =
-      action === "revoke" || ![10, 20, 70, 1150].includes(item.type);
+      action === "revoke" || ![10, 20, 70, 80, 1150].includes(item.type);
     el("rarityField").hidden = action === "revoke" || item.type !== 10;
     el("itemQuantity").value = item.quantity || 1;
     el("itemLevel").max = item.type === 1150 ? "10" : "65";
     el("itemLevel").value =
-      item.type === 80 ? 1 : item.type === 1150 ? item.level || 1 : item.level || 65;
+      item.type === 1150 ? item.level || 1 : item.type === 80 ? item.level || 1 : item.level || 65;
     el("itemRarity").value =
       item.type === 80 || item.type === 1150 ? 0 : item.rarity == null ? 5 : item.rarity;
     el("itemWarning").textContent = t(
@@ -644,7 +644,7 @@
         grant_modules: "bulkGrantModulesHint",
       }[action] || "bulkRevokeHint",
     );
-    const chooseLevel = ["grant_weapons", "grant_armor", "grant_gadgets", "grant_modules"].includes(action);
+    const chooseLevel = ["grant_weapons", "grant_armor", "grant_gadgets", "grant_pets", "grant_modules"].includes(action);
     el("bulkFields").hidden = !chooseLevel;
     el("bulkLevelField").hidden = !chooseLevel;
     el("bulkRarityField").hidden = action !== "grant_weapons";
@@ -660,7 +660,7 @@
       const inv = await api("GET", base(c.id) + "/inventory");
       c.edit = {
         action: c.action,
-        level: ["grant_weapons", "grant_armor", "grant_gadgets", "grant_modules"].includes(c.action)
+        level: ["grant_weapons", "grant_armor", "grant_gadgets", "grant_pets", "grant_modules"].includes(c.action)
           ? Number(el("bulkLevel").value)
           : 1,
         rarity: c.action === "grant_weapons" ? Number(el("bulkRarity").value) : 0,

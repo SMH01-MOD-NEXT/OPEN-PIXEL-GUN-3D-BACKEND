@@ -388,8 +388,8 @@ func (s *Store) EditInventory(playerID string, edit InventoryEdit) (Profile, boo
 	if edit.Type == 1150 && (edit.Action != "grant" || edit.Quantity != 1 || edit.Rarity != 0) {
 		return Profile{}, false, errors.New("store: module grants require quantity 1 and rarity 0; revocation is unsupported")
 	}
-	if item.Type == 80 && edit.Action == "grant" && (edit.Quantity != 1 || edit.Level != 1 || edit.Rarity != 0) {
-		return Profile{}, false, errors.New("store: pet grants require quantity 1, level 1 and rarity 0")
+	if item.Type == 80 && edit.Action == "grant" && (edit.Quantity != 1 || edit.Rarity != 0) {
+		return Profile{}, false, errors.New("store: pet grants require quantity 1, level 1-65 and rarity 0")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -430,7 +430,7 @@ func (s *Store) EditInventory(playerID string, edit InventoryEdit) (Profile, boo
 	}
 	return p.clone(), true, nil
 }
-func editPetInventorySlots(p *Profile, item catalog.Item, action string) error {
+func editPetInventorySlots(p *Profile, item catalog.Item, edit InventoryEdit) error {
 	slot, err := ensureObject(p.ProgressSlots, "53")
 	if err != nil {
 		return err
@@ -450,18 +450,19 @@ func editPetInventorySlots(p *Profile, item catalog.Item, action string) error {
 		if ok {
 			if id, valid := counterInt64(record["i"]); valid && id == int64(item.Index) {
 				found = true
-				if action == "revoke" {
+				if edit.Action == "revoke" {
 					continue
 				}
+				record["l"] = edit.Level
 			}
 		}
 		out = append(out, raw)
 	}
-	if action == "grant" && !found {
+	if edit.Action == "grant" && !found {
 		// These are the observed slot 53/p fields: id, cards, level and custom name.
-		// A newly granted pet starts at level 1 with no cards or custom nickname.
+		// A newly granted pet uses the requested level without fabricating cards or a nickname.
 		out = append(out, map[string]any{
-			"c": int64(0), "i": int64(item.Index), "l": int64(1), "n": "",
+			"c": int64(0), "i": int64(item.Index), "l": edit.Level, "n": "",
 		})
 	}
 	slot["p"] = out
@@ -473,7 +474,7 @@ func editInventorySlots(p *Profile, item catalog.Item, e InventoryEdit) error {
 		return editModuleInventorySlots(p, item, e)
 	}
 	if item.Type == 80 {
-		return editPetInventorySlots(p, item, e.Action)
+		return editPetInventorySlots(p, item, e)
 	}
 	key := strconv.Itoa(item.Index)
 	if path, ok := itemStorage(item.Type); ok {

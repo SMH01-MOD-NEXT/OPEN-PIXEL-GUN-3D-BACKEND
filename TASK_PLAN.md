@@ -5391,3 +5391,10 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Add store/API/asset/locale and dependency-free UI regressions; update operator documentation.
 - [x] Run full tests, vet, race and builds; deploy with private backup and verify the updated console without bulk-mutating the live player.
 - [x] Commit only this task while preserving unrelated pre-existing plan edits.
+
+## Pet level administration — 2026-10-21
+- [x] Accept levels 1–65 for individual type-80 grants and updates in slot 53/p.
+- [x] Preserve cards, nickname and unknown fields when changing an existing pet level.
+- [x] Add a level selector to individual and bulk pet grants; bulk applies it only to missing pets.
+- [x] Extend RU/EN copy plus store, API and console regressions for pet levels and invalid bounds.
+- [x] Run full QA, deploy with a private backup without changing the live player's pets, and commit only this task.

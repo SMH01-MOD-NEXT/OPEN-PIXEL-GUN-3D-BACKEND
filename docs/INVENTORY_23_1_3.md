@@ -168,9 +168,12 @@ binary returned `editable:false` for every pet despite the newer code in the
 repository. Rebuilt and deployed the backend with private state/config/binary
 backups, without clearing application data or changing the frontend.
 
-All 94 catalog pets now have editable ownership and derived UI labels. Existing
-pets are never reset by a repeat grant. A new pet remains level 1, zero cards,
-empty custom nickname; no UI display label is written into the nickname. Revoke
+All 94 catalog pets now have editable ownership and derived UI labels. Individual
+grant/edit accepts level 1–65 through the verified `l` field in slot `53.p`.
+A new pet uses the selected level, zero cards and an empty custom nickname; no UI
+display label is written into the nickname. Re-granting an existing pet changes
+only its level while preserving cards, nickname and unknown record fields. Bulk
+grant applies the selected level only to missing pets and preserves existing pets. Revoke
 still refuses an equipped pet. Refresh `/admin` to load the updated embedded UI,
 select a player, open the catalog, filter Pets, and use the grant action.
 

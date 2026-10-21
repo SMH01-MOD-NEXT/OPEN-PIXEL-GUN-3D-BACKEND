@@ -86,7 +86,7 @@ func TestAdminCatalogExposesAndGrantsPet(t *testing.T) {
 		t.Fatal(resp.Code, resp.Body)
 	}
 	p, _ := s.st.Profile(identity.PlayerID)
-	edit := store.InventoryEdit{Type: 80, Index: 1003, Action: "grant", Quantity: 1, Level: 1, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	edit := store.InventoryEdit{Type: 80, Index: 1003, Action: "grant", Quantity: 1, Level: 37, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
 	path := "/api/v1/admin/players/" + identity.PlayerID + "/inventory"
 	resp = do(t, s, http.MethodPost, path, edit, adminAuthHeader)
 	if resp.Code != http.StatusOK {
@@ -103,7 +103,7 @@ func TestAdminCatalogExposesAndGrantsPet(t *testing.T) {
 		t.Fatal("pet grant did not change inventory", result)
 	}
 	for _, item := range result.Items {
-		if item.Type == 80 && item.Index == 1003 && item.Quantity == 1 && item.Level == 1 {
+		if item.Type == 80 && item.Index == 1003 && item.Quantity == 1 && item.Level == 37 {
 			return
 		}
 	}

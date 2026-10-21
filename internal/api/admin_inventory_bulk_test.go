@@ -85,7 +85,7 @@ func TestAdminBulkGrantPetsThroughPreviewAndApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, _ := s.st.Profile(identity.PlayerID)
-	edit := store.InventoryBulkEdit{Action: "grant_pets", Level: 1, Rarity: 0, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	edit := store.InventoryBulkEdit{Action: "grant_pets", Level: 37, Rarity: 0, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
 	base := "/api/v1/admin/players/" + identity.PlayerID + "/inventory/bulk/"
 	preview := do(t, s, http.MethodPost, base+"preview", edit, adminAuthHeader)
 	var plan store.InventoryBulkPlan
@@ -104,7 +104,7 @@ func TestAdminBulkGrantPetsThroughPreviewAndApply(t *testing.T) {
 	ownedPets := 0
 	for _, item := range store.Inventory(got) {
 		if item.Type == 80 {
-			if item.Level != 1 || item.Quantity != 1 {
+			if item.Level != 37 || item.Quantity != 1 {
 				t.Fatalf("invalid bulk pet record: %+v", item)
 			}
 			ownedPets++

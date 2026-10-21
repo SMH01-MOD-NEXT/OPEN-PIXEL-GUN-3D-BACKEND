@@ -67,8 +67,8 @@ func inventoryBulkPlan(p Profile, e InventoryBulkEdit) (InventoryBulkPlan, []cat
 	if e.Level < 1 || e.Level > 65 || e.Rarity < 0 || e.Rarity > 5 {
 		return plan, nil, errors.New("store: invalid bulk level or rarity")
 	}
-	if e.Action == "grant_pets" && (e.Level != 1 || e.Rarity != 0) {
-		return plan, nil, errors.New("store: bulk pet grants require level 1 and rarity 0")
+	if e.Action == "grant_pets" && e.Rarity != 0 {
+		return plan, nil, errors.New("store: bulk pet grants require level 1-65 and rarity 0")
 	}
 	if e.Action == "grant_modules" && (e.Level < 1 || e.Level > 10 || e.Rarity != 0) {
 		return plan, nil, errors.New("store: bulk module grants require level 1-10 and rarity 0")
