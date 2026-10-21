@@ -5413,3 +5413,12 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Add all three to level-65 Bots, MatchmakingBots and MMBots rotations without changing levels 1–64.
 - [x] Add regressions, run full QA, deploy with private rollback backup and verify delivery on the connected client.
 - [x] Commit only the isolated implementation while preserving pre-existing TASK_PLAN changes.
+
+
+## Research-backed bot arsenal progression — 2026-10-21
+- [x] Inspect existing three bot config paths and exact stock 23.1.3 weapon registry.
+- [x] Research historical changelogs/period-compatible candidates; explicitly document retrospective source limits.
+- [x] Implement eight all-level rotating arsenals, safe deterministic fallback and retained level-65 requested weapons.
+- [x] Validate 54 weapons against both exact catalog and hashed raw client records; test all 65 levels/three paths, boundaries, coverage, hashes and isolation. Full Go tests, race, vet, console harnesses and both builds passed.
+- [x] Deploy with private rollback backup; PID 122743 healthy on :8080, state SHA256 unchanged. ADB has no connected device, so new client delivery/battle verification remains unavailable.
+- [x] Prepare isolated Conventional Commit; retain all pre-existing TASK_PLAN worktree edits.

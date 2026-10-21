@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -38,10 +39,8 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 	cfg.ContentDir = filepath.Join("..", "..", "content")
 
 	bots := scaledBotDocument(t, s, "Bots", 65)
-	for i, weaponSet := range bots["weapons"].([]any) {
-		if weaponSet != "834,1,3,1175,61,94" {
-			t.Fatalf("Bots weapons[%d] = %v, want the level-65 set", i, weaponSet)
-		}
+	if got := bots["weapons"].([]any)[0]; got != "834,1380,1121,1175,1197,94" {
+		t.Fatalf("Bots fallback = %v", got)
 	}
 	for i, dodge := range bots["dodge"].([]any) {
 		if dodge != float64(30) {
@@ -51,10 +50,8 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 
 	matchmaking := scaledBotDocument(t, s, "MatchmakingBots", 65)
 	ai := matchmaking["AI"].(map[string]any)
-	for i, weaponSet := range ai["weapons"].([]any) {
-		if weaponSet != "834,1,3,1175,61,94" {
-			t.Fatalf("MatchmakingBots AI weapons[%d] = %v", i, weaponSet)
-		}
+	if got := ai["weapons"].([]any)[0]; got != "834,1380,1121,1175,1197,94" {
+		t.Fatalf("MatchmakingBots fallback = %v", got)
 	}
 	for i, raw := range matchmaking["AI_Tiers"].([]any) {
 		tier := raw.(map[string]any)
@@ -95,9 +92,11 @@ func TestLevel65BotConfigsIncludeRequestedWeapons(t *testing.T) {
 		if name == "MatchmakingBots" {
 			document = document["AI"].(map[string]any)
 		}
-		for i, got := range document["weapons"].([]any) {
-			if got != "834,1,3,1175,61,94" {
-				t.Fatalf("%s weapons[%d] = %v", name, i, got)
+		for _, i := range []int{0, len(document["weapons"].([]any)) - 1} {
+			got := document["weapons"].([]any)[i].(string)
+			values := strings.Split(got, ",")
+			if values[0] != "834" || values[3] != "1175" || values[5] != "94" {
+				t.Fatalf("%s fallback[%d] = %v", name, i, got)
 			}
 		}
 	}
@@ -124,8 +123,8 @@ func TestRequestedWeaponsAreExclusiveToLevel65(t *testing.T) {
 
 	level64 := scaledBotDocument(t, s, "Bots", 64)
 	for i, got := range level64["weapons"].([]any) {
-		if got != "533,1,3,3,61,162" {
-			t.Fatalf("level-64 weapons[%d] = %v, want unchanged VeryHard fallback", i, got)
+		if strings.Contains(","+got.(string)+",", ",834,") || strings.Contains(","+got.(string)+",", ",1175,") || strings.Contains(","+got.(string)+",", ",94,") {
+			t.Fatalf("level-64 weapons[%d] = %v, contains a level-65 exclusive weapon", i, got)
 		}
 	}
 }
