@@ -44,7 +44,7 @@ func init() {
 		if v.Index <= 0 || v.ID == "" || v.Name == "" {
 			panic("invalid stock catalog record")
 		}
-		// Route module grants through the dedicated ModuleStorage adapter.
+		// Route module grants through the stock non-unique inventory adapter.
 		if v.Type == 1150 {
 			v.Editable = true
 		}

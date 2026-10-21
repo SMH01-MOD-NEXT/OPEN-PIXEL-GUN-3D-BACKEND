@@ -5,13 +5,15 @@ import (
 	"errors"
 	"math"
 	"strconv"
+
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/catalog"
 )
 
 // SupportsProgressCommand is deliberately a measured-contract allowlist. Unknown
 // stock commands remain losslessly stored through full slot snapshots.
 func SupportsProgressCommand(id int64) bool {
 	switch id {
-	case 10, 25, 33, 64, 65, 66, 81, 84, 85, 120, 132, 139, 191, 197:
+	case 10, 25, 33, 64, 65, 66, 81, 84, 85, 87, 120, 132, 139, 191, 197:
 		return true
 	}
 	return false
@@ -34,6 +36,32 @@ func applyInventoryCommand(p *Profile, id int64, d map[string]any) error {
 		return nil
 	}
 	switch id {
+	case 87:
+		// Stock 0x1B54F8C carries only i; increment an owned module's level.
+		key, err := commandIndex(d, "i")
+		if err != nil {
+			return err
+		}
+		index, _ := strconv.Atoi(key)
+		item, ok := catalog.Find(1150, index)
+		if !ok || !moduleOwned(*p, item) {
+			return errors.New("store: cannot upgrade an unowned module")
+		}
+		level := moduleLevel(*p, item)
+		if level >= 10 {
+			return errors.New("store: module already at maximum level")
+		}
+		levels, err := ensureObject(p.ProgressSlots, "37")
+		if err != nil {
+			return err
+		}
+		if raw, exists := levels[key]; exists {
+			n, valid := counterInt64(raw)
+			if !valid || n < 1 || n > 10 {
+				return bad
+			}
+		}
+		levels[key] = level + 1
 	case 25:
 		// Measured equipment payloads contain a partial slot-9 document. Preserve
 		// other categories and members within an equipment category.

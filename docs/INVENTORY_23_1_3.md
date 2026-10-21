@@ -66,16 +66,17 @@ both persist through the same measured slot-16 gadget adapter. The similarly nam
 
 Other catalog categories, including lobby/fort objects and weapon skins, remain
 **read-only** until their ownership schemas are verified. Module entries have an
-individual grant/update adapter: slot `27` stores owned item indices in lists
-keyed by stock module type (`1`–`24`), and slot `37[index]` stores the selected
-level (1–10). Legacy `27.modules_v2` identity records are retained unchanged and
-recognized records are promoted into the stock lists on a module grant. Module
-revocation and bulk module grants remain disabled. The stock serialization path
-has been traced, but a new-module in-client relaunch/round-trip is still pending;
-use only a freshly backed-up profile for that validation. Unknown raw sections
+individual grant/update adapter: ownership is membership in `26.s[index]` (written
+as `1`), and `37[index]` stores level 1–10. Modules are **non-unique** items:
+putting them in `26.u` causes an InvalidCastException in the stock loader.
+Slot `27` is module placement, not ownership. Legacy `27.modules_v2` definitions
+and old placement records are preserved, never treated as owned items or blindly
+migrated. Re-grant a previously failed item through the corrected adapter.
+Module revocation and bulk module grants remain disabled. See the live verification
+addendum below for the tested module and boundaries. Unknown raw sections
 remain preserved even without an inventory projection.
 
-Measured command reducers: `10,25,33,64,65,66,81,84,85,120,132,139,191,197`.
+Measured command reducers: `10,25,33,64,65,66,81,84,85,87,120,132,139,191,197`.
 A measured purchase batch (currency charge + weapon ownership) commits together
 before ACK. Receipts survive restart and prevent retry double-charging. Malformed
 batches and disk errors do not partially apply. Unsupported commands retain the
@@ -194,6 +195,45 @@ while the game was running; it was preserved, not overwritten with an old profil
 All other final slots matched the pre-test baseline. No temporary pet remains.
 This proves the admin ownership lifecycle, not every stock pet purchase/upgrade
 or card delta command; those remain governed by the stated economy limits above.
+
+## Module ownership repair (2026-10-21)
+
+Exact-version evidence:
+- Module owned-count `0x24B0C38` resolves the inventory item; level getter
+  `0x24B0BB0` gates slot-37 levels on actual ownership.
+- Inventory load `0x171BBB0` / write `0x171CE90`: `s` is a set represented as
+  index-keyed records. The loader consumes its keys, not its numeric values.
+  The separate `u[type][instance]` loader explicitly casts to unique-item
+  subclasses; module objects do not inherit that class.
+- Command `84` (`{i:index}`) grants a non-unique item. Module upgrade factory
+  `0x1B54F8C` emits command `87` (`{i:index}`); reducer increments the owned
+  module's level, rejecting unowned, malformed and max-level upgrades atomically.
+  Command receipts, currency rollback and revision fencing remain in force.
+- Slot `27` records storage placement; configuration `modules_v2` is not progress
+  ownership. No automatic grant is inferred from either it or slot `37`.
+
+Regression coverage includes all 42 module identities at every level 1–10,
+reopened-store persistence, retry/no duplicates, raw-slot mirroring, preservation
+of unrelated inventory and placement, malformed sections, failed disk writes,
+command grant/upgrade replay, atomic failed upgrade batches and stale uploads.
+Full Go tests, vet, race tests, console harness and both command builds passed.
+
+Live verification used the connected Android 23.1.3 client and existing account,
+without clearing its data or changing the frontend. State, environment and the
+previous binary were privately backed up before deployment. One previously
+failed grant, Armor Regeneration (`326009`), was granted correctly at level 1
+(revision 84), changed to level 7 (revision 85), then restored to level 1
+(revision 86). Fresh client login acknowledged each revision. Read-only stock
+runtime inspection confirmed exactly one `326009` in the Inventory simple-item
+list; slot 37 and persisted state retained the chosen level across backend and
+client restarts. The isolated rejected `u` trial was removed before the successful
+check; it is not present in the final profile. Counters and all 87 sections remain;
+ordinary client updates/canonicalization are preserved, not overwritten wholesale.
+
+Limits: this verifies admin grant, level update, sync and persistence for one live
+module, not all 42 on device, an in-game purchase/upgrade, equip/remove, or a real
+browser admin E2E. Placement commands 88/89 are not newly implemented here;
+full stock snapshots remain the preservation path for unmeasured commands.
 
 ## Remaining work
 

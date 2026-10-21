@@ -5363,3 +5363,10 @@ Scope and honest verification limits: docs/INVENTORY_23_1_3.md.
 - [x] Run Go/vet/race/build, deploy without mass-changing the live player, commit.
 
 Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed. Deployed console/search/read-only preview verified; live player inventory, revision and counters unchanged.
+
+## Module server repair — current verification
+- [x] Reconstruct actual 23.1.3 module grant/storage/load contract from client code and live read-only evidence; do not trust previous adapter assumptions.
+- [x] Fix ownership to non-unique 26/s membership, retain 37 levels and preserve 27 placement; regress persistence, retry, rollback and stale sync.
+- [x] Full tests, race/vet, console checks and both builds passed.
+- [x] Privately back up state/binary/environment, deploy, verify live grant at level 1 and 7, restart server/client, restore level 1 without clearing data.
+- [x] Document evidence and verification limits; final QA passed and isolated changes prepared for commit (pre-existing plan edits left unstaged).
