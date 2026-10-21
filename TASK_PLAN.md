@@ -5377,3 +5377,9 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Update regression tests and documentation so deserialization/login acknowledgement alone can never be claimed as full client compatibility.
 - [x] Run full Go tests, vet, race, console harness and builds; deploy with a fresh private backup and cold-start verification.
 - [x] Commit the isolated correction while preserving unrelated pre-existing plan edits.
+## Complete module materialization — 2026-10-21
+- [x] Reproduce the remaining defect with a genuinely missing module: `308009` reached slot 27 and level 10 but was absent from Craft → Modules.
+- [x] Trace `ModuleData.PointData`, module count getter `0x24B0C38`, and all 42 exact module-to-point pairs (`+42000`, matching `mod_`/`modp_` IDs).
+- [x] Prove on-device that adding linked ModulePoint `350009` quantity 1 makes Kinetic Sniper `308009` appear at level 10; user confirmed the screen.
+- [x] Make module grants atomically preserve/create slot-27 storage, positive `26.c[1155]` point quantity, and slot-37 level without duplicates or point loss.
+- [x] Run full QA, deploy with backup, re-grant the live proof module idempotently, cold-start, document final state, and commit isolated changes.

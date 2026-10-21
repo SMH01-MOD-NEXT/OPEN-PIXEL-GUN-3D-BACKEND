@@ -148,8 +148,9 @@ func TestAdminModuleCatalogAndGrant(t *testing.T) {
 	profile, _ = s.st.Profile(identity.PlayerID)
 	storage := profile.ProgressSlots["27"].(map[string]any)
 	regenerator := storage["5"].([]any)
-	if len(regenerator) != 1 || regenerator[0] != int64(326009) {
-		t.Fatalf("module grant did not write ModuleStorage ownership: %#v", storage)
+	points := profile.ProgressSlots["26"].(map[string]any)["c"].(map[string]any)["1155"].(map[string]any)
+	if len(regenerator) != 1 || regenerator[0] != int64(326009) || points["368009"] != int64(1) {
+		t.Fatalf("module grant did not write linked storage and point ownership: storage=%#v points=%#v", storage, points)
 	}
 	for _, item := range store.Inventory(profile) {
 		if item.Type == 1150 && item.Index == 326009 && item.Quantity == 1 && item.Level == 7 {

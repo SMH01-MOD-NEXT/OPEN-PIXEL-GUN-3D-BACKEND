@@ -55,7 +55,7 @@ its raw editors cannot accidentally restore a pre-edit snapshot.
 | 80 | Pets | `53.p` record list (`{i:index,c:cards,l:level,n:nickname}`) |
 | 1070 | Weapon parts | `24[index] = quantity` |
 | 1080 | Royale items | `11` integer list |
-| 1150 | Available modules | `27[module_type]` index list; level in `37[index]` |
+| 1150 | Usable modules | `27[module_type]` index list + linked `26.c[1155][point_index] > 0`; level in `37[index]` |
 | 1155/1520 | Module points / applicable consumables | `26.c[type][index]` |
 | 1350/1470/1510 | Armor skins / graffiti / wear skins | `26.s[index] = 1` |
 
@@ -66,17 +66,16 @@ both persist through the same measured slot-16 gadget adapter. The similarly nam
 `44007` record has a different stock display label and is not relabeled.
 
 Other catalog categories, including lobby/fort objects and weapon skins, remain
-**read-only** until their ownership schemas are verified. Module entries have an
-individual grant/update adapter: an available module is stored as its index in the
-module-type list at `27[module_type]`, and `37[index]` stores level 1–10. Slot `26`
-is the generic inventory and must not receive module indices: a live cold start with
-`26.s[326009]` repeatedly reached an incompatible inventory-item cast and left the
-lobby loading overlay stuck at 90%. Configuration-shaped `27.modules_v2` records
-are preserved but are not treated as progress ownership or migrated. Repeated
-module grants do not duplicate the canonical slot-27 index. Module revocation and
-bulk module grants remain disabled. See the correction addendum below for the
-tested boundaries. Unknown raw sections remain preserved even without an inventory
-projection.
+**read-only** until their ownership schemas are verified. A usable module has three
+linked records: its index in `27[module_type]`, a positive corresponding ModulePoint
+quantity in `26.c[1155][point_index]`, and level 1–10 in `37[module_index]`. The exact
+23.1.3 catalog relation is `point_index = module_index + 42000`, with matching
+`mod_…` and `modp_…` IDs. Existing positive point quantities are preserved. Module
+indices must not be written directly to `26.s` or `26.u`: a live cold start with
+`26.s[326009]` reached an incompatible inventory-item cast and left the lobby loading
+overlay stuck at 90%. Configuration-shaped `27.modules_v2` records are preserved but
+ignored. Repeated grants do not duplicate storage or reset accumulated points. Module
+revocation and bulk grants remain disabled. Unknown raw sections remain preserved.
 
 Measured command reducers: `10,25,33,64,65,66,81,84,85,87,120,132,139,191,197`.
 A measured purchase batch (currency charge + weapon ownership) commits together
@@ -208,20 +207,20 @@ read-only memory membership check are not sufficient acceptance criteria.
 
 Corrected evidence:
 - Progress enum slot `27` is `ModuleStorage`; live canonical data is grouped as
-  module-type keys (`1`–`24`) whose values are module-index lists. For example,
-  Armor Regeneration `326009` is under regenerator group `5`.
-- `ModulesInfo` slot `37[index]` stores level 1–10 separately. A level without the
-  matching storage index is not treated as available ownership.
-- `ModulesContainer.modules_v2` is configuration data, not the canonical progress
-  ownership list. Configuration-shaped records previously written under slot 27 are
-  retained verbatim but ignored by the adapter.
-- Slot `26` is generic inventory. Neither `26.s` nor `26.u` is a valid module grant
-  destination in this client.
-- Module upgrade factory `0x1B54F8C` emits command `87` with `{i:index}`. The
-  reducer increments an available module's slot-37 level and rejects unowned,
-  malformed and maximum-level upgrades atomically. Generic command `84` is not used
-  as proof of module ownership. Commands `88/89` remain unimplemented; full stock
-  snapshots preserve their unmeasured placement/storage transitions.
+  module-type keys (`1`–`24`) whose values are module-index lists.
+- Every `ModuleData` embeds a `ModulePointData` containing both indices. The stock
+  catalog provides all 42 exact pairs: `304009..345009` map to `346009..387009`.
+- Module item count getter `0x24B0C38` resolves the linked point item and reads its
+  inventory quantity. Level getter `0x24B0BB0` returns zero until that count is
+  positive, then reads `ModulesInfo` slot `37[module_index]`.
+- Therefore slot 27 plus slot 37 can change a level but cannot materialize a missing
+  module in Craft → Modules. A complete grant also needs
+  `26.c[1155][point_index] >= 1`; existing positive quantities must be preserved.
+- `ModulesContainer.modules_v2` is configuration data, not progress ownership.
+  Configuration-shaped records under slot 27 are retained but ignored.
+- Neither `26.s` nor `26.u` is a valid module destination. Module upgrade command
+  `87` remains level-only; commands `88/89` remain unimplemented and full stock
+  snapshots preserve their unmeasured transitions.
 
 Emergency recovery removed only the bad `26.s[326009]` membership, advanced the
 profile to revision 87 and preserved all 87 sections, currency, level, XP, canonical
@@ -241,8 +240,16 @@ already available module, not an arbitrary new-module device grant.
 Regression coverage exercises all 42 module identities at levels 1–10, store reopen,
 idempotent retries, raw-slot mirroring, malformed storage, failed persistence,
 command-87 replay/rollback, stale snapshots and preservation of unrelated slots.
-A new-module device grant, equip/remove, in-game purchase/upgrade and real-browser
-admin E2E remain separate verification steps.
+A first new-module attempt proved the remaining gap: revision 90 added Kinetic
+Sniper `308009` to slot 27 at level 10, but it did not appear in the module screen.
+Adding its exact linked point `350009` with quantity 1 made the level-10 module appear
+immediately in Craft → Modules; the user confirmed it on-device. The complete adapter
+was then deployed from the fully tested binary. Integrated re-grants changed `308009`
+10→9→10 at revisions 93–94 while retaining exactly one slot-27 index and point
+quantity 1. A cold launch acknowledged revision 94 with no `InvalidCastException` or
+`NullReferenceException`; all 87 sections and the user's current counters remained.
+Equip/remove, a stock in-game acquisition, and real-browser admin E2E remain separate
+verification steps.
 
 ## Remaining work
 

@@ -9,11 +9,11 @@ import (
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/catalog"
 )
 
-// Stock 23.1.3 persists available modules in ModuleStorage slot 27, grouped by
-// ModuleData.ModuleType. Each group is a list of module indices; levels live in
-// ModulesInfo slot 37. Slot 26 is the generic inventory and must never receive
-// module objects: doing so reaches an incompatible inventory-item cast while
-// the lobby initializes and can leave the loading overlay stuck at 90%.
+// Stock 23.1.3 represents a usable module with three linked records: its index
+// in ModuleStorage slot 27 grouped by ModuleData.ModuleType, a positive linked
+// ModulePoint count in 26.c[1155], and its level in ModulesInfo slot 37. Writing
+// a module index directly to generic 26.s/26.u reaches an incompatible inventory
+// item cast and can leave the lobby loading overlay stuck at 90%.
 func moduleType(item catalog.Item) (int64, bool) {
 	parts := strings.Split(item.ID, "_")
 	if len(parts) < 3 || parts[0] != "mod" {
@@ -44,21 +44,30 @@ func moduleStorageIndices(p Profile, typ int64) ([]any, bool) {
 	return indices, ok
 }
 
-func moduleOwned(p Profile, item catalog.Item) bool {
-	typ, ok := moduleType(item)
+func modulePointItem(item catalog.Item) (catalog.Item, bool) {
+	point, ok := catalog.Find(1155, item.Index+42000)
+	if !ok || point.ID != strings.Replace(item.ID, "mod_", "modp_", 1) {
+		return catalog.Item{}, false
+	}
+	return point, true
+}
+
+func modulePointQuantity(p Profile, item catalog.Item) (int64, bool) {
+	point, ok := modulePointItem(item)
 	if !ok {
-		return false
+		return 0, false
 	}
-	indices, valid := moduleStorageIndices(p, typ)
-	if !valid {
-		return false
+	raw, exists := objectAt(p.ProgressSlots, "26", "c", "1155")[strconv.Itoa(point.Index)]
+	if !exists {
+		return 0, true
 	}
-	for _, raw := range indices {
-		if index, ok := counterInt64(raw); ok && index == int64(item.Index) {
-			return true
-		}
-	}
-	return false
+	quantity, valid := counterInt64(raw)
+	return quantity, valid
+}
+
+func moduleOwned(p Profile, item catalog.Item) bool {
+	quantity, valid := modulePointQuantity(p, item)
+	return valid && quantity > 0
 }
 
 func moduleLevel(p Profile, item catalog.Item) int64 {
@@ -90,6 +99,10 @@ func editModuleInventorySlots(p *Profile, item catalog.Item, edit InventoryEdit)
 	if !ok {
 		return errors.New("store: unsupported module identity")
 	}
+	point, ok := modulePointItem(item)
+	if !ok {
+		return errors.New("store: unsupported module point identity")
+	}
 	section, err := ensureObject(p.ProgressSlots, "27")
 	if err != nil {
 		return err
@@ -108,6 +121,23 @@ func editModuleInventorySlots(p *Profile, item catalog.Item, edit InventoryEdit)
 	}
 	if !owned {
 		section[key] = append(indices, int64(item.Index))
+	}
+
+	points, err := ensureObject(p.ProgressSlots, "26", "c", "1155")
+	if err != nil {
+		return err
+	}
+	pointKey := strconv.Itoa(point.Index)
+	quantity := int64(0)
+	if raw, exists := points[pointKey]; exists {
+		var valid bool
+		quantity, valid = counterInt64(raw)
+		if !valid || quantity < 0 {
+			return errors.New("store: incompatible module point quantity")
+		}
+	}
+	if quantity < 1 {
+		points[pointKey] = int64(1)
 	}
 
 	levels, err := ensureObject(p.ProgressSlots, "37")

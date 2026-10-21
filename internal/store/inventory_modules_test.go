@@ -25,6 +25,10 @@ func TestModuleStorageMappingCoversCatalogAndIgnoresConfigRecords(t *testing.T) 
 		if !ok || typ < 1 || typ > 24 {
 			t.Fatalf("module type mapping: %+v => %d %v", item, typ, ok)
 		}
+		point, ok := modulePointItem(item)
+		if !ok || point.Type != 1155 || point.Index != item.Index+42000 {
+			t.Fatalf("module point mapping: %+v => %+v %v", item, point, ok)
+		}
 		seen[typ] = true
 	}
 	if len(seen) != 24 {
@@ -39,8 +43,12 @@ func TestModuleStorageMappingCoversCatalogAndIgnoresConfigRecords(t *testing.T) 
 		t.Fatal("configuration record or level alone claimed ownership", q, l)
 	}
 	p.ProgressSlots["27"].(map[string]any)["5"] = []any{int64(item.Index)}
+	if q, l, _ := inventoryValue(p, item); q != 0 || l != 0 {
+		t.Fatal("ModuleStorage without a point claimed ownership", q, l)
+	}
+	p.ProgressSlots["26"] = map[string]any{"c": map[string]any{"1155": map[string]any{"368009": int64(1)}}}
 	if q, l, _ := inventoryValue(p, item); q != 1 || l != 4 {
-		t.Fatal("canonical ModuleStorage record not recognized", q, l)
+		t.Fatal("linked module point not recognized", q, l)
 	}
 }
 
@@ -50,7 +58,7 @@ func TestModuleGrantModuleStorageAllCatalogAndLevels(t *testing.T) {
 			s, dir, _ := syncedGameplayStore(t)
 			p, _ := s.Profile(socketUniqID)
 			p.ProgressSlots["27"] = map[string]any{"future": "keep", "modules_v2": []any{map[string]any{"future": true}}}
-			p.ProgressSlots["26"] = map[string]any{"u": map[string]any{"999": map[string]any{"41": int64(123)}}, "g": int64(2), "future": "keep", "s": map[string]any{"9023": int64(1)}}
+			p.ProgressSlots["26"] = map[string]any{"u": map[string]any{"999": map[string]any{"41": int64(123)}}, "g": int64(2), "future": "keep", "s": map[string]any{"9023": int64(1)}, "c": map[string]any{"1155": map[string]any{"346009": int64(9)}}}
 			p.ProgressSlots["37"] = map[string]any{"future": int64(7)}
 			p.ProgressDocument["26"] = cloneAny(p.ProgressSlots["26"])
 			p.ProgressDocument["27"] = cloneAny(p.ProgressSlots["27"])
@@ -69,14 +77,20 @@ func TestModuleGrantModuleStorageAllCatalogAndLevels(t *testing.T) {
 				if !ok || len(indices) != 1 || !valid || storedIndex != int64(item.Index) {
 					t.Fatal("bad ModuleStorage ownership", objectAt(got.ProgressSlots, "27"))
 				}
+				point, _ := modulePointItem(item)
+				pointQuantity, valid := counterInt64(objectAt(got.ProgressSlots, "26", "c", "1155")[strconv.Itoa(point.Index)])
+				if !valid || pointQuantity < 1 {
+					t.Fatal("linked module point missing", objectAt(got.ProgressSlots, "26", "c", "1155"))
+				}
 				if q, l, _ := inventoryValue(got, item); q != 1 || l != level {
 					t.Fatal("ownership/level", q, l)
 				}
-				if !reflect.DeepEqual(got.ProgressSlots["26"], before.ProgressSlots["26"]) || objectAt(got.ProgressSlots, "27")["future"] != "keep" || !reflect.DeepEqual(objectAt(got.ProgressSlots, "27")["modules_v2"], objectAt(before.ProgressSlots, "27")["modules_v2"]) {
+				before26, got26 := objectAt(before.ProgressSlots, "26"), objectAt(got.ProgressSlots, "26")
+				if got26["g"] != before26["g"] || got26["future"] != before26["future"] || !reflect.DeepEqual(got26["u"], before26["u"]) || !reflect.DeepEqual(got26["s"], before26["s"]) || objectAt(got.ProgressSlots, "27")["future"] != "keep" || !reflect.DeepEqual(objectAt(got.ProgressSlots, "27")["modules_v2"], objectAt(before.ProgressSlots, "27")["modules_v2"]) {
 					t.Fatal("unrelated inventory changed")
 				}
-				if !reflect.DeepEqual(got.ProgressDocument["27"], got.ProgressSlots["27"]) {
-					t.Fatal("full sync missing ModuleStorage ownership")
+				if !reflect.DeepEqual(got.ProgressDocument["26"], got.ProgressSlots["26"]) || !reflect.DeepEqual(got.ProgressDocument["27"], got.ProgressSlots["27"]) {
+					t.Fatal("full sync missing linked module records")
 				}
 				retry, changed, err := s.EditInventory(socketUniqID, moduleEdit(got, item.Index, level))
 				if err != nil || changed || retry.ProgressRevision != got.ProgressRevision {
@@ -101,6 +115,9 @@ func TestModuleGrantModuleStorageAllCatalogAndLevels(t *testing.T) {
 func TestModuleGrantValidationAndAtomicRollback(t *testing.T) {
 	badSlots := []map[string]any{
 		{"27": "bad"}, {"27": map[string]any{"1": "bad"}},
+		{"26": "bad"}, {"26": map[string]any{"c": "bad"}},
+		{"26": map[string]any{"c": map[string]any{"1155": "bad"}}},
+		{"26": map[string]any{"c": map[string]any{"1155": map[string]any{"346009": "bad"}}}},
 		{"37": "bad"}, {"37": map[string]any{"304009": "bad"}},
 	}
 	for i, slots := range badSlots {
@@ -153,7 +170,9 @@ func TestModuleUpgradeCommandPersistenceRetryAndStaleSnapshot(t *testing.T) {
 	s, dir, ctx := syncedGameplayStore(t)
 	p, _ := s.Profile(socketUniqID)
 	p.ProgressSlots["27"] = map[string]any{"5": []any{int64(326009)}}
+	p.ProgressSlots["26"] = map[string]any{"c": map[string]any{"1155": map[string]any{"368009": int64(1)}}}
 	p.ProgressSlots["37"] = map[string]any{"326009": int64(1)}
+	p.ProgressDocument["26"] = cloneAny(p.ProgressSlots["26"])
 	p.ProgressDocument["27"] = cloneAny(p.ProgressSlots["27"])
 	p.ProgressDocument["37"] = cloneAny(p.ProgressSlots["37"])
 	stored := p.clone()
@@ -180,7 +199,7 @@ func TestModuleUpgradeCommandPersistenceRetryAndStaleSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.MergeProfileProgressSlots(socketUniqID, map[string]any{"27": map[string]any{"5": []any{}}, "37": map[string]any{}}, ctx); !errors.Is(err, ErrStaleProgressRevision) {
+	if _, err = s.MergeProfileProgressSlots(socketUniqID, map[string]any{"26": map[string]any{"c": map[string]any{"1155": map[string]any{}}}, "27": map[string]any{"5": []any{}}, "37": map[string]any{}}, ctx); !errors.Is(err, ErrStaleProgressRevision) {
 		t.Fatal("stale upload", err)
 	}
 	if _, err = s.ApplyProfileCounterCommands(socketUniqID, ctx, commands); !errors.Is(err, ErrStaleProgressRevision) {
@@ -209,17 +228,19 @@ func TestModuleCommandsAtomicChargeAndUpgrade(t *testing.T) {
 	}
 }
 
-func TestModuleStorageMembershipUsesIndices(t *testing.T) {
+func TestModulePointQuantityGatesOwnership(t *testing.T) {
 	item, _ := catalog.Find(1150, 326009)
-	for _, index := range []any{int64(326009), float64(326009)} {
-		p := Profile{ProgressSlots: map[string]any{"27": map[string]any{"5": []any{index}}}}
+	for _, quantity := range []any{int64(1), float64(25)} {
+		p := Profile{ProgressSlots: map[string]any{"26": map[string]any{"c": map[string]any{"1155": map[string]any{"368009": quantity}}}}}
 		if !moduleOwned(p, item) || moduleLevel(p, item) != 1 {
-			t.Fatal("ModuleStorage index ignored", index)
+			t.Fatal("positive module point quantity ignored", quantity)
 		}
 	}
-	p := Profile{ProgressSlots: map[string]any{"27": map[string]any{"6": []any{int64(326009)}}}}
-	if moduleOwned(p, item) {
-		t.Fatal("wrong module type group claimed ownership")
+	for _, quantity := range []any{int64(0), int64(-1), "bad"} {
+		p := Profile{ProgressSlots: map[string]any{"26": map[string]any{"c": map[string]any{"1155": map[string]any{"368009": quantity}}}}}
+		if moduleOwned(p, item) {
+			t.Fatal("invalid module point quantity claimed ownership", quantity)
+		}
 	}
 }
 
@@ -228,6 +249,7 @@ func TestModuleUpgradeRejectsMaximumAndMalformedLevel(t *testing.T) {
 		s, _, ctx := syncedGameplayStore(t)
 		p, _ := s.Profile(socketUniqID)
 		p.ProgressSlots["27"] = map[string]any{"5": []any{int64(326009)}}
+		p.ProgressSlots["26"] = map[string]any{"c": map[string]any{"1155": map[string]any{"368009": int64(1)}}}
 		p.ProgressSlots["37"] = map[string]any{"326009": raw}
 		stored := p.clone()
 		s.state.Profiles[socketUniqID] = &stored
