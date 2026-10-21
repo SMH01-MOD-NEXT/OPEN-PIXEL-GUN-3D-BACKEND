@@ -65,12 +65,14 @@ both persist through the same measured slot-16 gadget adapter. The similarly nam
 `44007` record has a different stock display label and is not relabeled.
 
 Other catalog categories, including lobby/fort objects and weapon skins, remain
-**read-only** until their ownership schemas are verified. Module entries now have
-an individual grant/update adapter: identity fields go to slot `27.modules_v2`,
-and the selected level (1–10) goes to slot `37[index]`. Module revocation and
-bulk module grants are disabled. The minimal record's in-client round-trip is
-still pending; use only a backed-up profile for that validation. Unknown IDs in
-inspected ownership containers remain visible read-only; unknown raw sections
+**read-only** until their ownership schemas are verified. Module entries have an
+individual grant/update adapter: slot `27` stores owned item indices in lists
+keyed by stock module type (`1`–`24`), and slot `37[index]` stores the selected
+level (1–10). Legacy `27.modules_v2` identity records are retained unchanged and
+recognized records are promoted into the stock lists on a module grant. Module
+revocation and bulk module grants remain disabled. The stock serialization path
+has been traced, but a new-module in-client relaunch/round-trip is still pending;
+use only a freshly backed-up profile for that validation. Unknown raw sections
 remain preserved even without an inventory projection.
 
 Measured command reducers: `10,25,33,64,65,66,81,84,85,120,132,139,191,197`.

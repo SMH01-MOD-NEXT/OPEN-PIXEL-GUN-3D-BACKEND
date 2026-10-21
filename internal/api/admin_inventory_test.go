@@ -134,6 +134,11 @@ func TestAdminModuleCatalogAndGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile, _ := s.st.Profile(identity.PlayerID)
+	for _, item := range store.Inventory(profile) {
+		if item.Type == 1150 && item.Index == 326009 && item.Quantity > 0 {
+			t.Fatal("module fixture must start unowned")
+		}
+	}
 	edit := store.InventoryEdit{Type: 1150, Index: 326009, Action: "grant", Quantity: 1, Level: 7, Revision: profile.ProgressRevision, UpdatedAt: profile.UpdatedAt}
 	path := "/api/v1/admin/players/" + identity.PlayerID + "/inventory"
 	response = do(t, s, http.MethodPost, path, edit, adminAuthHeader)
@@ -141,6 +146,11 @@ func TestAdminModuleCatalogAndGrant(t *testing.T) {
 		t.Fatal("module grant", response.Code, response.Body)
 	}
 	profile, _ = s.st.Profile(identity.PlayerID)
+	moduleStorage, _ := profile.ProgressSlots["27"].(map[string]any)
+	moduleIndices, _ := moduleStorage["5"].([]any)
+	if !reflect.DeepEqual(moduleIndices, []any{int64(326009)}) {
+		t.Fatalf("module grant did not write stock ModuleStorage encoding: %#v", moduleStorage)
+	}
 	for _, item := range store.Inventory(profile) {
 		if item.Type == 1150 && item.Index == 326009 && item.Quantity == 1 && item.Level == 7 {
 			return
