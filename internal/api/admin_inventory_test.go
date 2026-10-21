@@ -162,7 +162,7 @@ func TestAdminModuleCatalogAndGrant(t *testing.T) {
 
 func TestInventoryConsoleAssetsAreLocalizedAndEmbedded(t *testing.T) {
 	html := inventoryConsoleHTML()
-	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `grantAllWear`, `grantAllArmor`, `grantAllGadgets`, `grantAllPets`, `derivedModuleName`, `пересинхронизац`} {
+	for _, marker := range []string{`id="ownedSearch"`, `id="catalogSearch"`, `id="playerTabs"`, `data-route="support"`, `/inventory/bulk/preview`, `/inventory/bulk/apply`, `seq !== playerSeq`, `seq !== catalogSeq`, `grantAllWear`, `grantAllArmor`, `grantAllGadgets`, `grantAllPets`, `grantAllModules`, `data-route="settings"`, `const LOCALES`, `bulkGrantModulesHint`, `settingsDescription`, `Theme and language`, `derivedModuleName`, `пересинхронизац`} {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("console missing %s", marker)
 		}
@@ -235,5 +235,28 @@ func TestInventoryPurchaseACKFollowsDurableOwnershipAndCharge(t *testing.T) {
 	}
 	if !owned {
 		t.Fatal("ownership ACK without stored ownership")
+	}
+}
+
+func TestInventoryConsoleLocalesHaveMatchingKeys(t *testing.T) {
+	locales := make([]map[string]any, 0, 2)
+	for _, name := range []string{"console.ru.json", "console.en.json"} {
+		raw, err := inventoryAssets.ReadFile("admin_assets/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var locale map[string]any
+		if err := json.Unmarshal(raw, &locale); err != nil {
+			t.Fatal(err)
+		}
+		locales = append(locales, locale)
+	}
+	if len(locales[0]) != len(locales[1]) {
+		t.Fatalf("locale key count differs: ru=%d en=%d", len(locales[0]), len(locales[1]))
+	}
+	for key := range locales[0] {
+		if _, ok := locales[1][key]; !ok {
+			t.Fatalf("English locale missing %q", key)
+		}
 	}
 }

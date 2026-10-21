@@ -1,9 +1,15 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OPEN PG · Admin</title>
+    <script>
+      try {
+        if (localStorage.getItem("opg3d_admin_theme") === "light")
+          document.documentElement.dataset.theme = "light";
+      } catch (_) {}
+    </script>
     <style>
       /* CONSOLE_CSS */
     </style>
@@ -20,7 +26,8 @@
           ><button data-route="players" data-i18n="players"></button
           ><button data-route="catalog" data-i18n="catalog"></button
           ><button data-route="support" data-i18n="support"></button
-          ><button data-route="logs" data-i18n="logs"></button>
+          ><button data-route="logs" data-i18n="logs"></button
+          ><button data-route="settings" data-i18n="settings"></button>
         </nav>
         <div class="sidebar-foot">
           <span class="connection-dot" id="connectionDot"></span
@@ -224,6 +231,10 @@
                       data-i18n="grantAllPets"
                     ></button
                     ><button
+                      id="grantAllModules"
+                      data-i18n="grantAllModules"
+                    ></button
+                    ><button
                       class="danger-outline"
                       id="revokeAllWeapons"
                       data-i18n="revokeAllWeapons"
@@ -408,6 +419,28 @@
                 id="doReconcile"
                 data-i18n="reconcile"
               ></button>
+            </div>
+          </section>
+          <section id="page-settings" class="page" hidden>
+            <div class="panel compact settings-panel">
+              <h2 data-i18n="interfaceSettings"></h2>
+              <p class="muted" data-i18n="settingsDescription"></p>
+              <form id="settingsForm">
+                <label
+                  ><span data-i18n="theme"></span
+                  ><select id="uiTheme">
+                    <option value="dark" data-i18n="themeDark"></option>
+                    <option value="light" data-i18n="themeLight"></option>
+                  </select></label
+                ><label
+                  ><span data-i18n="language"></span
+                  ><select id="uiLanguage">
+                    <option value="ru" data-i18n="languageRussian"></option>
+                    <option value="en" data-i18n="languageEnglish"></option>
+                  </select></label
+                ><button class="primary" data-i18n="saveSettings"></button>
+              </form>
+              <p id="settingsStatus" class="inline-status" role="status"></p>
             </div>
           </section>
           <section id="page-logs" class="page" hidden>

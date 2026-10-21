@@ -20,6 +20,9 @@ func confirmedBulk(t *testing.T, s *Store, p Profile, action string) InventoryBu
 	if action == "grant_wear" || action == "grant_pets" {
 		e.Level, e.Rarity = 1, 0
 	}
+	if action == "grant_modules" {
+		e.Level, e.Rarity = 10, 0
+	}
 	plan, err := s.PreviewInventoryBulk(p.PlayerID, e)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +109,7 @@ func TestInventoryBulkGrantAtomicPreservesAndPersists(t *testing.T) {
 		t.Fatal("bulk not durable")
 	}
 }
-func TestInventoryBulkGrantWearArmorGadgetsAndPets(t *testing.T) {
+func TestInventoryBulkGrantWearArmorGadgetsPetsAndModules(t *testing.T) {
 	cases := []struct {
 		action string
 		types  map[int]bool
@@ -116,6 +119,7 @@ func TestInventoryBulkGrantWearArmorGadgetsAndPets(t *testing.T) {
 		{"grant_armor", map[int]bool{20: true}, 3},
 		{"grant_gadgets", map[int]bool{70: true}, 3},
 		{"grant_pets", map[int]bool{80: true}, 1},
+		{"grant_modules", map[int]bool{1150: true}, 10},
 	}
 	for _, tc := range cases {
 		t.Run(tc.action, func(t *testing.T) {
@@ -139,6 +143,9 @@ func TestInventoryBulkGrantWearArmorGadgetsAndPets(t *testing.T) {
 			if selected.Type == 20 || selected.Type == 70 {
 				preservedLevel = 12
 			}
+			if selected.Type == 1150 {
+				preservedLevel = 4
+			}
 			if err := editInventorySlots(&p, selected, InventoryEdit{Action: "grant", Quantity: 1, Level: preservedLevel}); err != nil {
 				t.Fatal("seed existing item", err)
 			}
@@ -161,9 +168,28 @@ func TestInventoryBulkGrantWearArmorGadgetsAndPets(t *testing.T) {
 					if quantity, _, _ := inventoryValue(got, item); quantity == 0 {
 						t.Fatalf("missing granted item %d:%d", item.Type, item.Index)
 					}
+					if item.Type == 1150 {
+						typ, ok := moduleType(item)
+						if !ok {
+							t.Fatalf("missing module type for %d", item.Index)
+						}
+						indices, valid := moduleStorageIndices(got, typ)
+						stored := false
+						for _, raw := range indices {
+							index, ok := counterInt64(raw)
+							stored = stored || ok && index == int64(item.Index)
+						}
+						points, pointValid := modulePointQuantity(got, item)
+						if !valid || !stored || !pointValid || points < 1 {
+							t.Fatalf("incomplete module linkage for %d", item.Index)
+						}
+					}
 				}
 			}
-			if selected.Type == 20 || selected.Type == 70 || selected.Type == 80 {
+			if tc.action == "grant_modules" && total != 42 {
+				t.Fatalf("unexpected module catalog size: %d", total)
+			}
+			if selected.Type == 20 || selected.Type == 70 || selected.Type == 80 || selected.Type == 1150 {
 				if _, level, _ := inventoryValue(got, selected); level != preservedLevel {
 					t.Fatalf("already-owned item level changed: got %d want %d", level, preservedLevel)
 				}
@@ -215,7 +241,7 @@ func TestInventoryBulkRollbackAndValidation(t *testing.T) {
 	if _, _, _, err := s.EditInventoryBulk(p.PlayerID, altered); err == nil {
 		t.Fatal("parameters not bound to preview")
 	}
-	for _, invalid := range []InventoryBulkEdit{{Action: "unknown", Level: 65}, {Action: "grant_weapons", Level: 0}, {Action: "grant_weapons", Level: 66}, {Action: "grant_weapons", Level: 65, Rarity: 6}} {
+	for _, invalid := range []InventoryBulkEdit{{Action: "unknown", Level: 65}, {Action: "grant_weapons", Level: 0}, {Action: "grant_weapons", Level: 66}, {Action: "grant_weapons", Level: 65, Rarity: 6}, {Action: "grant_modules", Level: 11}, {Action: "grant_modules", Level: 10, Rarity: 1}} {
 		if _, err := s.PreviewInventoryBulk(p.PlayerID, invalid); err == nil {
 			t.Fatal("invalid accepted")
 		}

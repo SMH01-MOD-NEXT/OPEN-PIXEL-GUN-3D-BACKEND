@@ -1,5 +1,21 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
+  --bg: #14181f;
+  --surface: #1c222c;
+  --surface2: #262e3a;
+  --line: #3b4554;
+  --text: #eef1f6;
+  --muted: #b0bbca;
+  --accent: #83b8ff;
+  --accent-soft: #253c59;
+  --danger: #ff9299;
+  --warning: #e7b674;
+  --sidebar: #111b2c;
+  --side-text: #c8d2e3;
+  --focus: #83b8ff;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
   --bg: #f5f6f8;
   --surface: #fff;
   --surface2: #f0f2f5;
@@ -10,23 +26,7 @@
   --accent-soft: #eaf2fe;
   --danger: #b92f38;
   --warning: #875213;
-  --sidebar: #111b2c;
-  --side-text: #c8d2e3;
   --focus: #3285e6;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14181f;
-    --surface: #1c222c;
-    --surface2: #262e3a;
-    --line: #3b4554;
-    --text: #eef1f6;
-    --muted: #b0bbca;
-    --accent: #83b8ff;
-    --accent-soft: #253c59;
-    --danger: #ff9299;
-    --warning: #e7b674;
-  }
 }
 * {
   box-sizing: border-box;
@@ -70,13 +70,11 @@ button:disabled {
 }
 button.primary {
   background: var(--accent);
-  color: var(--surface);
+  color: #142033;
   border-color: var(--accent);
 }
-@media (prefers-color-scheme: dark) {
-  button.primary {
-    color: #142033;
-  }
+:root[data-theme="light"] button.primary {
+  color: #fff;
 }
 button.primary:hover:not(:disabled) {
   filter: brightness(0.94);
@@ -709,6 +707,18 @@ dialog .form-grid label {
   .table-wrap {
     max-height: calc(100vh - 390px);
   }
+}
+
+.settings-panel {
+  max-width: 620px;
+}
+.settings-panel form {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+}
+.settings-panel select {
+  width: 100%;
 }
 @media (max-width: 640px) {
   .app {

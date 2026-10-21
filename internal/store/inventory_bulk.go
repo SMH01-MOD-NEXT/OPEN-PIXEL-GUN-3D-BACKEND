@@ -51,6 +51,8 @@ func bulkGrantTypes(action string) map[int]bool {
 		return map[int]bool{70: true}
 	case "grant_pets":
 		return map[int]bool{80: true}
+	case "grant_modules":
+		return map[int]bool{1150: true}
 	default:
 		return nil
 	}
@@ -67,6 +69,9 @@ func inventoryBulkPlan(p Profile, e InventoryBulkEdit) (InventoryBulkPlan, []cat
 	}
 	if e.Action == "grant_pets" && (e.Level != 1 || e.Rarity != 0) {
 		return plan, nil, errors.New("store: bulk pet grants require level 1 and rarity 0")
+	}
+	if e.Action == "grant_modules" && (e.Level < 1 || e.Level > 10 || e.Rarity != 0) {
+		return plan, nil, errors.New("store: bulk module grants require level 1-10 and rarity 0")
 	}
 	if e.Revision != p.ProgressRevision || !e.UpdatedAt.Equal(p.UpdatedAt) {
 		return plan, nil, ErrInventoryConflict

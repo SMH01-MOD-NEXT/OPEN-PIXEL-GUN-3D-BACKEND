@@ -3,6 +3,30 @@
   "use strict";
   const el = (id) => document.getElementById(id),
     all = (s) => Array.from(document.querySelectorAll(s));
+  const preferenceKeys = {
+    theme: "opg3d_admin_theme",
+    language: "opg3d_admin_language",
+  };
+  function readPreference(key, allowed, fallback) {
+    try {
+      const value = localStorage.getItem(preferenceKeys[key]);
+      return allowed.includes(value) ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+  function writePreference(key, value) {
+    try {
+      localStorage.setItem(preferenceKeys[key], value);
+    } catch (_) {
+      // The current choice still applies even when browser storage is disabled.
+    }
+  }
+  let theme = readPreference("theme", ["dark", "light"], "dark"),
+    language = readPreference("language", ["ru", "en"], "ru"),
+    TEXT = LOCALES[language] || LOCALES.ru;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.lang = language;
   const t = (key, values = {}) =>
     Object.entries(values).reduce(
       (s, [k, v]) => s.split("{" + k + "}").join(String(v)),
@@ -20,30 +44,36 @@
           "'": "&#39;",
         })[c],
     );
-  all("[data-i18n]").forEach((n) => (n.textContent = t(n.dataset.i18n)));
-  all("[data-placeholder]").forEach(
-    (n) => (n.placeholder = t(n.dataset.placeholder)),
-  );
-  all("[data-aria]").forEach((n) =>
-    n.setAttribute("aria-label", t(n.dataset.aria)),
-  );
-  all(".type-select").forEach(
-    (n) =>
-      (n.innerHTML =
+  function applyTranslations() {
+    document.title = t("title");
+    all("[data-i18n]").forEach((n) => (n.textContent = t(n.dataset.i18n)));
+    all("[data-placeholder]").forEach(
+      (n) => (n.placeholder = t(n.dataset.placeholder)),
+    );
+    all("[data-aria]").forEach((n) =>
+      n.setAttribute("aria-label", t(n.dataset.aria)),
+    );
+    all(".type-select").forEach((n) => {
+      const value = n.value || "0";
+      n.innerHTML =
         '<option value="0">' +
         esc(t("allTypes")) +
         "</option>" +
         Object.entries(TEXT.types)
           .filter(([k]) => k !== "0")
           .map(([k, v]) => '<option value="' + k + '">' + esc(v) + "</option>")
-          .join("")),
-  );
-  ["itemRarity", "bulkRarity"].forEach((id) => {
-    el(id).innerHTML = TEXT.rarities
-      .map((s, i) => '<option value="' + i + '">' + esc(s) + "</option>")
-      .join("");
-    el(id).value = "5";
-  });
+          .join("");
+      n.value = value;
+    });
+    ["itemRarity", "bulkRarity"].forEach((id) => {
+      const node = el(id), value = node.value || "5";
+      node.innerHTML = TEXT.rarities
+        .map((label, i) => '<option value="' + i + '">' + esc(label) + "</option>")
+        .join("");
+      node.value = value;
+    });
+  }
+  applyTranslations();
   const RAW = {
     prefs: "rawPrefs",
     progress: "rawProgress",
@@ -169,7 +199,7 @@
   }
   async function navigate(value) {
     if (!discard()) return;
-    if (!["overview", "players", "catalog", "support", "logs"].includes(value))
+    if (!["overview", "players", "catalog", "support", "logs", "settings"].includes(value))
       value = "overview";
     if (route === "logs" && value !== "logs") stopLogs();
     route = value;
@@ -190,6 +220,7 @@
         catalog: "catalogRouteHint",
         support: "supportHint",
         logs: "logsHint",
+        settings: "settingsHint",
       }[route],
     );
     if (!connected) return;
@@ -594,6 +625,7 @@
         grant_armor: "grantAllArmor",
         grant_gadgets: "grantAllGadgets",
         grant_pets: "grantAllPets",
+        grant_modules: "grantAllModules",
         revoke_weapons: "revokeAllWeapons",
         revoke_all: "revokeAll",
       }[action],
@@ -609,14 +641,15 @@
         grant_armor: "bulkGrantArmorHint",
         grant_gadgets: "bulkGrantGadgetsHint",
         grant_pets: "bulkGrantPetsHint",
+        grant_modules: "bulkGrantModulesHint",
       }[action] || "bulkRevokeHint",
     );
-    const chooseLevel = ["grant_weapons", "grant_armor", "grant_gadgets"].includes(action);
+    const chooseLevel = ["grant_weapons", "grant_armor", "grant_gadgets", "grant_modules"].includes(action);
     el("bulkFields").hidden = !chooseLevel;
     el("bulkLevelField").hidden = !chooseLevel;
     el("bulkRarityField").hidden = action !== "grant_weapons";
-    el("bulkLevel").max = "65";
-    el("bulkLevel").value = action === "grant_weapons" ? 65 : 1;
+    el("bulkLevel").max = action === "grant_modules" ? "10" : "65";
+    el("bulkLevel").value = action === "grant_weapons" ? 65 : action === "grant_modules" ? 10 : 1;
     el("bulkError").textContent = "";
     el("bulkDialog").showModal();
   }
@@ -627,7 +660,7 @@
       const inv = await api("GET", base(c.id) + "/inventory");
       c.edit = {
         action: c.action,
-        level: ["grant_weapons", "grant_armor", "grant_gadgets"].includes(c.action)
+        level: ["grant_weapons", "grant_armor", "grant_gadgets", "grant_modules"].includes(c.action)
           ? Number(el("bulkLevel").value)
           : 1,
         rarity: c.action === "grant_weapons" ? Number(el("bulkRarity").value) : 0,
@@ -705,6 +738,7 @@
   el("grantAllArmor").onclick = () => openBulk("grant_armor");
   el("grantAllGadgets").onclick = () => openBulk("grant_gadgets");
   el("grantAllPets").onclick = () => openBulk("grant_pets");
+  el("grantAllModules").onclick = () => openBulk("grant_modules");
   el("revokeAllWeapons").onclick = () => openBulk("revoke_weapons");
   el("revokeAll").onclick = () => openBulk("revoke_all");
   el("profileForm").oninput = () => (dirty = true);
@@ -1045,6 +1079,26 @@
     status("");
     el("connectionError").textContent = "";
     el("connectionDialog").showModal();
+  };
+  el("uiTheme").value = theme;
+  el("uiLanguage").value = language;
+  el("uiTheme").oninput = () => {
+    document.documentElement.dataset.theme = el("uiTheme").value;
+  };
+  el("settingsForm").onsubmit = (e) => {
+    e.preventDefault();
+    theme = ["dark", "light"].includes(el("uiTheme").value)
+      ? el("uiTheme").value
+      : "dark";
+    language = ["ru", "en"].includes(el("uiLanguage").value)
+      ? el("uiLanguage").value
+      : "ru";
+    writePreference("theme", theme);
+    writePreference("language", language);
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.lang = language;
+    el("settingsStatus").textContent = (LOCALES[language] || LOCALES.ru).settingsSaved;
+    window.location.reload();
   };
   window.addEventListener("beforeunload", (e) => {
     if (dirty) {

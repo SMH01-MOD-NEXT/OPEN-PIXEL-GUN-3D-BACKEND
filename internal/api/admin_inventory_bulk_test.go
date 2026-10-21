@@ -156,3 +156,40 @@ func TestAdminBulkPersistenceFailureDoesNotRelogin(t *testing.T) {
 		t.Fatal("failed bulk partially committed")
 	}
 }
+
+func TestAdminBulkGrantModulesThroughPreviewAndApply(t *testing.T) {
+	s, _ := newTestServer(t)
+	identity, _, err := s.st.AdoptSocketIdentity("612672168", "bulk-modules-device", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.st.Profile(identity.PlayerID)
+	edit := store.InventoryBulkEdit{Action: "grant_modules", Level: 10, Rarity: 0, Revision: p.ProgressRevision, UpdatedAt: p.UpdatedAt}
+	base := "/api/v1/admin/players/" + identity.PlayerID + "/inventory/bulk/"
+	preview := do(t, s, http.MethodPost, base+"preview", edit, adminAuthHeader)
+	var plan store.InventoryBulkPlan
+	if err := json.Unmarshal(preview.Body.Bytes(), &plan); err != nil || preview.Code != http.StatusOK || plan.Changes != 42 {
+		t.Fatal("module bulk preview", preview.Code, preview.Body, err)
+	}
+	edit.PlanToken, edit.ConfirmPlayerID = plan.PlanToken, identity.PlayerID
+	applied := do(t, s, http.MethodPost, base+"apply", edit, adminAuthHeader)
+	if applied.Code != http.StatusOK {
+		t.Fatal(applied.Code, applied.Body)
+	}
+	got, _ := s.st.Profile(identity.PlayerID)
+	if got.ProgressRevision != p.ProgressRevision+1 {
+		t.Fatal("bulk module grant must advance one revision", got.ProgressRevision)
+	}
+	ownedModules := 0
+	for _, item := range store.Inventory(got) {
+		if item.Type == 1150 {
+			if item.Level != 10 || item.Quantity != 1 {
+				t.Fatalf("invalid bulk module record: %+v", item)
+			}
+			ownedModules++
+		}
+	}
+	if ownedModules != 42 {
+		t.Fatalf("bulk module inventory: %d", ownedModules)
+	}
+}

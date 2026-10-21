@@ -66,12 +66,20 @@ assert.equal(el('itemDialog').open,true);
   ['grantAllWear','grantAllWear',true,true],
   ['grantAllArmor','grantAllArmor',false,true],
   ['grantAllGadgets','grantAllGadgets',false,true],
+  ['grantAllModules','grantAllModules',false,true],
  ]) {
   el(button).onclick();
   assert.equal(el('bulkTitle').textContent,TEXT[title]);
   assert.equal(el('bulkFields').hidden,fields);
   assert.equal(el('bulkRarityField').hidden,rarity);
  }
+ el('grantAllModules').onclick();
+ assert.equal(el('bulkTitle').textContent,TEXT.grantAllModules);
+ assert.equal(el('bulkDescription').textContent,TEXT.bulkGrantModulesHint);
+ assert.equal(el('bulkLevel').max,'10');
+ assert.equal(el('bulkLevel').value,10);
+ await el('bulkPreview').onclick();
+ assert.deepEqual(posted && JSON.parse(JSON.stringify(posted)), {action:'grant_modules',level:10,rarity:0,revision:4,updated_at:'timestamp'});
  el('grantAllPets').onclick();
  assert.equal(el('bulkTitle').textContent,TEXT.grantAllPets);
  assert.equal(el('bulkDescription').textContent,TEXT.bulkGrantPetsHint);
@@ -85,5 +93,5 @@ assert.equal(el('itemDialog').open,true);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(posted.confirm_player_id,'test-player');
  assert.equal(posted.plan_token,'preview-token');
- console.log('PASS: pet and module editing, readable module labels, module level limits, bulk-grant forms and confirmation, equipped protection and escaping');
+ console.log('PASS: pet and module editing, readable module labels, module level limits, module and pet bulk-grant forms and confirmation, equipped protection and escaping');
 })().catch(e=>{console.error(e);process.exitCode=1;});

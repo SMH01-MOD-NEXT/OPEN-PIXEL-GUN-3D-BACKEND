@@ -5383,3 +5383,11 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Prove on-device that adding linked ModulePoint `350009` quantity 1 makes Kinetic Sniper `308009` appear at level 10; user confirmed the screen.
 - [x] Make module grants atomically preserve/create slot-27 storage, positive `26.c[1155]` point quantity, and slot-37 level without duplicates or point loss.
 - [x] Run full QA, deploy with backup, re-grant the live proof module idempotently, cold-start, document final state, and commit isolated changes.
+
+## Bulk module administration and console preferences — 2026-10-21
+- [x] Add previewed, confirmed, atomic grant-all for the 42 type-1150 modules using complete ModuleStorage/ModulePoint/ModulesInfo linkage.
+- [x] Preserve existing module ownership and levels; enforce levels 1–10, one revision, rollback, replay/CAS and targeted resync behavior.
+- [x] Add browser-local Settings with deterministic dark default, optional light theme, complete Russian/English resources and persisted language selection.
+- [x] Add store/API/asset/locale and dependency-free UI regressions; update operator documentation.
+- [x] Run full tests, vet, race and builds; deploy with private backup and verify the updated console without bulk-mutating the live player.
+- [x] Commit only this task while preserving unrelated pre-existing plan edits.
