@@ -1,0 +1,176 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package api
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"reflect"
+	"testing"
+)
+
+func TestBotDifficultyBandsFollowPlayerLevel(t *testing.T) {
+	tests := []struct {
+		level      int
+		legacyTier int
+		matchTier  int
+		preset     string
+	}{
+		{1, 0, 0, "Easy"},
+		{10, 0, 0, "Easy"},
+		{11, 1, 2, "Middle"},
+		{25, 1, 2, "Middle"},
+		{26, 2, 3, "Hard"},
+		{45, 2, 3, "Hard"},
+		{46, 3, 4, "VeryHard"},
+		{65, 3, 4, "VeryHard"},
+	}
+	for _, test := range tests {
+		got := botDifficultyForLevel(test.level)
+		if got.legacyTier != test.legacyTier || got.matchTier != test.matchTier || got.preset != test.preset {
+			t.Fatalf("level %d = %#v, want legacy=%d match=%d preset=%s", test.level, got, test.legacyTier, test.matchTier, test.preset)
+		}
+	}
+}
+
+func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+
+	bots := scaledBotDocument(t, s, "Bots", 65)
+	for i, weaponSet := range bots["weapons"].([]any) {
+		if weaponSet != "533,1,3,3,61,162" {
+			t.Fatalf("Bots weapons[%d] = %v, want the stock tier-3 set", i, weaponSet)
+		}
+	}
+	for i, dodge := range bots["dodge"].([]any) {
+		if dodge != float64(30) {
+			t.Fatalf("Bots dodge[%d] = %v, want stock tier-3 value 30", i, dodge)
+		}
+	}
+
+	matchmaking := scaledBotDocument(t, s, "MatchmakingBots", 65)
+	ai := matchmaking["AI"].(map[string]any)
+	for i, weaponSet := range ai["weapons"].([]any) {
+		if weaponSet != "533,1,3,3,61,162" {
+			t.Fatalf("MatchmakingBots AI weapons[%d] = %v", i, weaponSet)
+		}
+	}
+	for i, raw := range matchmaking["AI_Tiers"].([]any) {
+		tier := raw.(map[string]any)
+		if tier["AI_DefaultAI"] != float64(3) {
+			t.Fatalf("AI_Tiers[%d].AI_DefaultAI = %v, want 3", i, tier["AI_DefaultAI"])
+		}
+		firstSet := tier["AI_WeaponSets"].([]any)[0].([]any)
+		if firstSet[0] != float64(667) {
+			t.Fatalf("AI_Tiers[%d] starts with weapon %v, want stock high-rank 667", i, firstSet[0])
+		}
+	}
+
+	mmBots := scaledBotDocument(t, s, "MMBots", 65)
+	if mmBots["dl"] != "47" {
+		t.Fatalf("MMBots fallback loadout = %v, want strongest stock VeryHard fallback 47", mmBots["dl"])
+	}
+	for i, raw := range mmBots["bpl"].([]any) {
+		preset := raw.(map[string]any)
+		if preset["d"] != float64(3) {
+			t.Fatalf("bpl[%d].d = %v, want stock VeryHard default tier 3", i, preset["d"])
+		}
+		if !reflect.DeepEqual(preset["t"], []any{float64(2), float64(3), float64(4)}) {
+			t.Fatalf("bpl[%d].t = %#v, want stock VeryHard tiers", i, preset["t"])
+		}
+		loadouts := preset["el"].([]any)
+		if loadouts[0] != float64(33) || loadouts[len(loadouts)-1] != float64(47) {
+			t.Fatalf("bpl[%d].el = %#v, want stock VeryHard loadouts 33..47", i, loadouts)
+		}
+	}
+}
+
+func TestLevelScaledBotPushUsesMeasuredDeliveryContracts(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+	list := map[string]any{
+		"Bots":            map[string]any{sioConfigHashKey: ""},
+		"MatchmakingBots": map[string]any{sioConfigHashKey: ""},
+		"MMBots":          map[string]any{sioConfigHashKey: ""},
+	}
+	batches := s.configPushBatchesForLevel(list, 65)
+	if len(batches) != 1 {
+		t.Fatalf("got %d batches, want one", len(batches))
+	}
+	batch := batches[0]
+	if len(batch.entries) != 3 || len(batch.documents) != 1 {
+		t.Fatalf("entries=%d documents=%d, want 3 and 1", len(batch.entries), len(batch.documents))
+	}
+	for _, name := range []string{"Bots", "MatchmakingBots"} {
+		entry := batch.entries[name].(map[string]any)
+		if _, ok := entry[sioPushBodyKey].(string); !ok {
+			t.Fatalf("%s val is %T, want inline JSON text", name, entry[sioPushBodyKey])
+		}
+	}
+	if _, ok := batch.entries["MMBots"].(map[string]any)[sioPushBodyKey].(int); !ok {
+		t.Fatalf("MMBots must retain the binary attachment path: %#v", batch.entries["MMBots"])
+	}
+}
+
+func TestBotScalingDoesNotMutateShippingDocuments(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+	base, ok := s.hostedConfigDocument("MMBots")
+	if !ok {
+		t.Fatal("shipping MMBots is not hosted")
+	}
+	before := append([]byte(nil), base.body...)
+	_ = s.scaleBotConfig("MMBots", base, 65)
+	again, ok := s.hostedConfigDocument("MMBots")
+	if !ok || !reflect.DeepEqual(before, again.body) {
+		t.Fatal("per-player scaling changed the shared shipping document")
+	}
+}
+
+func scaledBotDocument(t *testing.T, s *Server, name string, level int) map[string]any {
+	t.Helper()
+	hosted, ok := s.hostedConfigDocument(name)
+	if !ok {
+		t.Fatalf("shipping %s is not hosted", name)
+	}
+	scaled := s.scaleBotConfig(name, hosted, level)
+	var document map[string]any
+	if err := json.Unmarshal(scaled.body, &document); err != nil {
+		t.Fatalf("decode scaled %s: %v", name, err)
+	}
+	if scaled.hash == hosted.hash {
+		t.Fatalf("scaled %s retained the baseline hash", name)
+	}
+	return document
+}
+
+func TestBotPollAndPushUseTheSamePlayerScaledFingerprint(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+	reply, changed := s.hostedConfigReplyForLevel("MMBots", "f9d49789271aa02d", 65)
+	if !changed {
+		t.Fatal("level-65 MMBots was confirmed as the embedded starter document")
+	}
+	batches := s.configPushBatchesForLevel(map[string]any{
+		"MMBots": map[string]any{sioConfigHashKey: "f9d49789271aa02d"},
+	}, 65)
+	if len(batches) != 1 {
+		t.Fatalf("got %d push batches, want one", len(batches))
+	}
+	entry := batches[0].entries["MMBots"].(map[string]any)
+	if reply[sioConfigHashKey] != entry[sioPushHashKey] {
+		t.Fatalf("poll hash %v != push hash %v", reply[sioConfigHashKey], entry[sioPushHashKey])
+	}
+	body, ok := reply[sioConfigBodyKey].(string)
+	if !ok {
+		t.Fatalf("poll body is %T, want JSON text", reply[sioConfigBodyKey])
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(body), &document); err != nil {
+		t.Fatal(err)
+	}
+	if document["dl"] != "47" {
+		t.Fatalf("poll fallback loadout = %v, want 47", document["dl"])
+	}
+}

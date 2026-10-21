@@ -129,9 +129,16 @@ func fullSlotsPayload() (body string, hash string, ok bool) {
 // back to the one document that is built in. See config_documents.go for the
 // run-56 measurement that made the missing documents files.
 func (s *Server) hostedConfigReply(name, cachedHash string) (map[string]any, bool) {
+	return s.hostedConfigReplyForLevel(name, cachedHash, 0)
+}
+
+func (s *Server) hostedConfigReplyForLevel(name, cachedHash string, playerLevel int) (map[string]any, bool) {
 	hosted, ok := s.hostedConfigDocument(name)
 	if !ok {
 		return nil, false
+	}
+	if playerLevel > 0 {
+		hosted = s.scaleBotConfig(name, hosted, playerLevel)
 	}
 	if cachedHash == hosted.hash && !s.cfg.ConfigAlwaysServe {
 		return map[string]any{sioConfigHashKey: hosted.hash}, false

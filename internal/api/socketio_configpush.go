@@ -51,7 +51,7 @@ const sioConfigPushEvent = "config_info_versions"
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal":
+	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots":
 		return true
 	default:
 		return false
@@ -214,6 +214,10 @@ const configPushDocumentLimit = sioMaxAttachments - sioReplyAttachments
 // dropped: they go out in further pushes. Names are ordered so that the
 // batching is reproducible between runs rather than following Go's map order.
 func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
+	return s.configPushBatchesForLevel(list, 0)
+}
+
+func (s *Server) configPushBatchesForLevel(list map[string]any, playerLevel int) []configPushBatch {
 	names := make([]string, 0, len(list))
 	for name := range list {
 		names = append(names, name)
@@ -226,6 +230,9 @@ func (s *Server) configPushBatches(list map[string]any) []configPushBatch {
 		hosted, ok := s.hostedConfigDocument(name)
 		if !ok {
 			continue
+		}
+		if playerLevel > 0 {
+			hosted = s.scaleBotConfig(name, hosted, playerLevel)
 		}
 		if current.entries == nil {
 			current = configPushBatch{
@@ -296,7 +303,8 @@ func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport s
 		return
 	}
 
-	batches := s.configPushBatches(list)
+	playerLevel := s.sessionPlayerLevel(session)
+	batches := s.configPushBatchesForLevel(list, playerLevel)
 	if len(batches) == 0 {
 		return
 	}
@@ -345,15 +353,16 @@ func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport s
 		}
 
 		s.log.Event("socket.config_pushed", map[string]any{
-			"sid":         session.sid,
-			"event":       sioConfigPushEvent,
-			"transport":   transport,
-			"batch":       number,
-			"batches":     len(batches),
-			"documents":   len(batch.documents),
-			"attachments": len(batch.documents) + sioReplyAttachments,
-			"names":       len(batch.entries),
-			"note":        "bodies travel as attachments 0..n-3; the name and argument are the last two",
+			"sid":          session.sid,
+			"event":        sioConfigPushEvent,
+			"transport":    transport,
+			"batch":        number,
+			"batches":      len(batches),
+			"documents":    len(batch.documents),
+			"attachments":  len(batch.documents) + sioReplyAttachments,
+			"names":        len(batch.entries),
+			"player_level": playerLevel,
+			"note":         "bodies travel as attachments 0..n-3; the name and argument are the last two",
 		})
 	}
 }

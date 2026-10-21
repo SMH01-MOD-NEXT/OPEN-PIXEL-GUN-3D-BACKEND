@@ -504,6 +504,7 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 		unreadable := 0
 		uncached := 0
 		served := 0
+		playerLevel := s.sessionPlayerLevel(session)
 		for name, entry := range list {
 			hash, ok := sioCachedConfigHash(entry)
 			if !ok {
@@ -513,7 +514,7 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 			if hash == "" {
 				uncached++
 			}
-			if reply, changed := s.hostedConfigReply(name, hash); reply != nil {
+			if reply, changed := s.hostedConfigReplyForLevel(name, hash, playerLevel); reply != nil {
 				acknowledged[name] = reply
 				if changed {
 					served++
@@ -530,6 +531,7 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 			"unreadable":   unreadable,
 			"uncached":     uncached,
 			"served":       served,
+			"player_level": playerLevel,
 			"note":         "every polled name is answered; an empty hash means the client holds no copy of that document, which is answered rather than dropped",
 		})
 		body["list"] = acknowledged

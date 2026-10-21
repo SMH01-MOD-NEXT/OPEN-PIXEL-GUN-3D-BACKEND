@@ -5398,3 +5398,12 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Add a level selector to individual and bulk pet grants; bulk applies it only to missing pets.
 - [x] Extend RU/EN copy plus store, API and console regressions for pet levels and invalid bounds.
 - [x] Run full QA, deploy with a private backup without changing the live player's pets, and commit only this task.
+
+## Player-level bot difficulty — 2026-10-21
+- [x] Trace exact 23.1.3 bot config IDs, cached stock bodies and runtime AI dictionaries without modifying the device.
+- [x] Confirm weak-bot fallback: starter `MMBots.dl=1`, while normal AI-level assignment was not called and controller tier stayed at 0.
+- [x] Add authenticated per-profile rank bands using only stock Easy/Middle/Hard/VeryHard settings and weapon loadouts.
+- [x] Cover legacy `Bots`, `MatchmakingBots` and current `MMBots` paths with measured inline/binary delivery contracts.
+- [x] Add boundary, fallback, loadout, schema, hashing and shared-document isolation regressions.
+- [x] Run full QA, back up and deploy; user confirmed stronger/non-default weapons in a real level-65 bot match.
+- [x] Commit only isolated bot-config work while preserving pre-existing plan edits and private state.
