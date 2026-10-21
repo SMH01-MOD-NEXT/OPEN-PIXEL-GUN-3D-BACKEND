@@ -5370,3 +5370,10 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Full tests, race/vet, console checks and both builds passed.
 - [x] Privately back up state/binary/environment, deploy, verify live grant at level 1 and 7, restart server/client, restore level 1 without clearing data.
 - [x] Document evidence and verification limits; final QA passed and isolated changes prepared for commit (pre-existing plan edits left unstaged).
+## Module cold-start regression correction — 2026-10-21
+- [x] Reproduce the reported `Loading 90%` hang on a clean client launch and capture the repeated inventory `InvalidCastException`.
+- [x] Back up live state and remove only the bad `26.s[326009]` membership; preserve 87 slots, counters, slot-27 storage and slot-37 level. Revision 87 was acknowledged and the user confirmed the lobby loads.
+- [x] Reject the `26.s` ownership hypothesis and restore the canonical ModuleStorage adapter: `27[module_type]` index lists plus `37[index]` level.
+- [x] Update regression tests and documentation so deserialization/login acknowledgement alone can never be claimed as full client compatibility.
+- [x] Run full Go tests, vet, race, console harness and builds; deploy with a fresh private backup and cold-start verification.
+- [x] Commit the isolated correction while preserving unrelated pre-existing plan edits.

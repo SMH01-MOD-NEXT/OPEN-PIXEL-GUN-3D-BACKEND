@@ -55,6 +55,7 @@ its raw editors cannot accidentally restore a pre-edit snapshot.
 | 80 | Pets | `53.p` record list (`{i:index,c:cards,l:level,n:nickname}`) |
 | 1070 | Weapon parts | `24[index] = quantity` |
 | 1080 | Royale items | `11` integer list |
+| 1150 | Available modules | `27[module_type]` index list; level in `37[index]` |
 | 1155/1520 | Module points / applicable consumables | `26.c[type][index]` |
 | 1350/1470/1510 | Armor skins / graffiti / wear skins | `26.s[index] = 1` |
 
@@ -66,15 +67,16 @@ both persist through the same measured slot-16 gadget adapter. The similarly nam
 
 Other catalog categories, including lobby/fort objects and weapon skins, remain
 **read-only** until their ownership schemas are verified. Module entries have an
-individual grant/update adapter: ownership is membership in `26.s[index]` (written
-as `1`), and `37[index]` stores level 1–10. Modules are **non-unique** items:
-putting them in `26.u` causes an InvalidCastException in the stock loader.
-Slot `27` is module placement, not ownership. Legacy `27.modules_v2` definitions
-and old placement records are preserved, never treated as owned items or blindly
-migrated. Re-grant a previously failed item through the corrected adapter.
-Module revocation and bulk module grants remain disabled. See the live verification
-addendum below for the tested module and boundaries. Unknown raw sections
-remain preserved even without an inventory projection.
+individual grant/update adapter: an available module is stored as its index in the
+module-type list at `27[module_type]`, and `37[index]` stores level 1–10. Slot `26`
+is the generic inventory and must not receive module indices: a live cold start with
+`26.s[326009]` repeatedly reached an incompatible inventory-item cast and left the
+lobby loading overlay stuck at 90%. Configuration-shaped `27.modules_v2` records
+are preserved but are not treated as progress ownership or migrated. Repeated
+module grants do not duplicate the canonical slot-27 index. Module revocation and
+bulk module grants remain disabled. See the correction addendum below for the
+tested boundaries. Unknown raw sections remain preserved even without an inventory
+projection.
 
 Measured command reducers: `10,25,33,64,65,66,81,84,85,87,120,132,139,191,197`.
 A measured purchase batch (currency charge + weapon ownership) commits together
@@ -196,44 +198,51 @@ All other final slots matched the pre-test baseline. No temporary pet remains.
 This proves the admin ownership lifecycle, not every stock pet purchase/upgrade
 or card delta command; those remain governed by the stated economy limits above.
 
-## Module ownership repair (2026-10-21)
+## Module ownership correction after cold-start regression (2026-10-21)
 
-Exact-version evidence:
-- Module owned-count `0x24B0C38` resolves the inventory item; level getter
-  `0x24B0BB0` gates slot-37 levels on actual ownership.
-- Inventory load `0x171BBB0` / write `0x171CE90`: `s` is a set represented as
-  index-keyed records. The loader consumes its keys, not its numeric values.
-  The separate `u[type][instance]` loader explicitly casts to unique-item
-  subclasses; module objects do not inherit that class.
-- Command `84` (`{i:index}`) grants a non-unique item. Module upgrade factory
-  `0x1B54F8C` emits command `87` (`{i:index}`); reducer increments the owned
-  module's level, rejecting unowned, malformed and max-level upgrades atomically.
-  Command receipts, currency rollback and revision fencing remain in force.
-- Slot `27` records storage placement; configuration `modules_v2` is not progress
-  ownership. No automatic grant is inferred from either it or slot `37`.
+The earlier `26.s` conclusion was rejected by a full cold-start test. Although the
+client could deserialize, acknowledge and persist that record, the next complete
+lobby initialization repeatedly logged an `InvalidCastException` in inventory-item
+handling and remained at `Loading 90%`. This is why login acknowledgement and a
+read-only memory membership check are not sufficient acceptance criteria.
 
-Regression coverage includes all 42 module identities at every level 1–10,
-reopened-store persistence, retry/no duplicates, raw-slot mirroring, preservation
-of unrelated inventory and placement, malformed sections, failed disk writes,
-command grant/upgrade replay, atomic failed upgrade batches and stale uploads.
-Full Go tests, vet, race tests, console harness and both command builds passed.
+Corrected evidence:
+- Progress enum slot `27` is `ModuleStorage`; live canonical data is grouped as
+  module-type keys (`1`–`24`) whose values are module-index lists. For example,
+  Armor Regeneration `326009` is under regenerator group `5`.
+- `ModulesInfo` slot `37[index]` stores level 1–10 separately. A level without the
+  matching storage index is not treated as available ownership.
+- `ModulesContainer.modules_v2` is configuration data, not the canonical progress
+  ownership list. Configuration-shaped records previously written under slot 27 are
+  retained verbatim but ignored by the adapter.
+- Slot `26` is generic inventory. Neither `26.s` nor `26.u` is a valid module grant
+  destination in this client.
+- Module upgrade factory `0x1B54F8C` emits command `87` with `{i:index}`. The
+  reducer increments an available module's slot-37 level and rejects unowned,
+  malformed and maximum-level upgrades atomically. Generic command `84` is not used
+  as proof of module ownership. Commands `88/89` remain unimplemented; full stock
+  snapshots preserve their unmeasured placement/storage transitions.
 
-Live verification used the connected Android 23.1.3 client and existing account,
-without clearing its data or changing the frontend. State, environment and the
-previous binary were privately backed up before deployment. One previously
-failed grant, Armor Regeneration (`326009`), was granted correctly at level 1
-(revision 84), changed to level 7 (revision 85), then restored to level 1
-(revision 86). Fresh client login acknowledged each revision. Read-only stock
-runtime inspection confirmed exactly one `326009` in the Inventory simple-item
-list; slot 37 and persisted state retained the chosen level across backend and
-client restarts. The isolated rejected `u` trial was removed before the successful
-check; it is not present in the final profile. Counters and all 87 sections remain;
-ordinary client updates/canonicalization are preserved, not overwritten wholesale.
+Emergency recovery removed only the bad `26.s[326009]` membership, advanced the
+profile to revision 87 and preserved all 87 sections, currency, level, XP, canonical
+slot-27 storage and the existing slot-37 level. A private pre-repair snapshot was
+saved. The client acknowledged revision 87 and the user confirmed a cold launch
+reached the lobby without the 90% hang.
 
-Limits: this verifies admin grant, level update, sync and persistence for one live
-module, not all 42 on device, an in-game purchase/upgrade, equip/remove, or a real
-browser admin E2E. Placement commands 88/89 are not newly implemented here;
-full stock snapshots remain the preservation path for unmeasured commands.
+The corrected backend was then deployed from the tested binary. A clean launch
+reached the lobby with no `InvalidCastException`. Re-granting the already available
+Armor Regeneration module changed only its slot-37 level from 1 to 7 at revision 88;
+slot 27 retained exactly one `326009` and slot 26 remained unchanged. A cold launch
+again reached the lobby without the exception. Level 1 was restored at revision 89
+and verified by one more cold launch. Revision 89 is acknowledged; currency, level,
+XP and all 87 sections remain intact. This validates idempotent level updates for an
+already available module, not an arbitrary new-module device grant.
+
+Regression coverage exercises all 42 module identities at levels 1–10, store reopen,
+idempotent retries, raw-slot mirroring, malformed storage, failed persistence,
+command-87 replay/rollback, stale snapshots and preservation of unrelated slots.
+A new-module device grant, equip/remove, in-game purchase/upgrade and real-browser
+admin E2E remain separate verification steps.
 
 ## Remaining work
 

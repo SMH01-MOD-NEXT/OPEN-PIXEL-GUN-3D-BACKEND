@@ -146,10 +146,10 @@ func TestAdminModuleCatalogAndGrant(t *testing.T) {
 		t.Fatal("module grant", response.Code, response.Body)
 	}
 	profile, _ = s.st.Profile(identity.PlayerID)
-	inventory := profile.ProgressSlots["26"].(map[string]any)
-	simple := inventory["s"].(map[string]any)
-	if simple["326009"] != int64(1) {
-		t.Fatalf("module grant did not write stock simple ownership: %#v", inventory)
+	storage := profile.ProgressSlots["27"].(map[string]any)
+	regenerator := storage["5"].([]any)
+	if len(regenerator) != 1 || regenerator[0] != int64(326009) {
+		t.Fatalf("module grant did not write ModuleStorage ownership: %#v", storage)
 	}
 	for _, item := range store.Inventory(profile) {
 		if item.Type == 1150 && item.Index == 326009 && item.Quantity == 1 && item.Level == 7 {
