@@ -39,8 +39,8 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 
 	bots := scaledBotDocument(t, s, "Bots", 65)
 	for i, weaponSet := range bots["weapons"].([]any) {
-		if weaponSet != "533,1,3,3,61,162" {
-			t.Fatalf("Bots weapons[%d] = %v, want the stock tier-3 set", i, weaponSet)
+		if weaponSet != "834,1,3,1175,61,94" {
+			t.Fatalf("Bots weapons[%d] = %v, want the level-65 set", i, weaponSet)
 		}
 	}
 	for i, dodge := range bots["dodge"].([]any) {
@@ -52,7 +52,7 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 	matchmaking := scaledBotDocument(t, s, "MatchmakingBots", 65)
 	ai := matchmaking["AI"].(map[string]any)
 	for i, weaponSet := range ai["weapons"].([]any) {
-		if weaponSet != "533,1,3,3,61,162" {
+		if weaponSet != "834,1,3,1175,61,94" {
 			t.Fatalf("MatchmakingBots AI weapons[%d] = %v", i, weaponSet)
 		}
 	}
@@ -62,8 +62,8 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 			t.Fatalf("AI_Tiers[%d].AI_DefaultAI = %v, want 3", i, tier["AI_DefaultAI"])
 		}
 		firstSet := tier["AI_WeaponSets"].([]any)[0].([]any)
-		if firstSet[0] != float64(667) {
-			t.Fatalf("AI_Tiers[%d] starts with weapon %v, want stock high-rank 667", i, firstSet[0])
+		if firstSet[0] != float64(level65UltimatumID) {
+			t.Fatalf("AI_Tiers[%d] starts with weapon %v, want Ultimatum", i, firstSet[0])
 		}
 	}
 
@@ -82,6 +82,50 @@ func TestLevel65BotConfigsReplaceEveryFallbackWithStockHighRankData(t *testing.T
 		loadouts := preset["el"].([]any)
 		if loadouts[0] != float64(33) || loadouts[len(loadouts)-1] != float64(47) {
 			t.Fatalf("bpl[%d].el = %#v, want stock VeryHard loadouts 33..47", i, loadouts)
+		}
+	}
+}
+
+func TestLevel65BotConfigsIncludeRequestedWeapons(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+
+	for _, name := range []string{"Bots", "MatchmakingBots"} {
+		document := scaledBotDocument(t, s, name, 65)
+		if name == "MatchmakingBots" {
+			document = document["AI"].(map[string]any)
+		}
+		for i, got := range document["weapons"].([]any) {
+			if got != "834,1,3,1175,61,94" {
+				t.Fatalf("%s weapons[%d] = %v", name, i, got)
+			}
+		}
+	}
+
+	matchmaking := scaledBotDocument(t, s, "MatchmakingBots", 65)
+	for tierIndex, rawTier := range matchmaking["AI_Tiers"].([]any) {
+		sets := rawTier.(map[string]any)["AI_WeaponSets"].([]any)
+		last := sets[len(sets)-1].([]any)
+		if last[0] != float64(level65UltimatumID) || last[3] != float64(level65VerticalGripDeviceID) || last[5] != float64(level65BigBuddyID) {
+			t.Fatalf("AI_Tiers[%d] last set = %#v", tierIndex, last)
+		}
+	}
+
+	mmBots := scaledBotDocument(t, s, "MMBots", 65)
+	loadout := mmBots["el"].(map[string]any)["47"].(map[string]any)
+	if loadout["p"] != float64(834001) || loadout["sp"] != float64(1175001) || loadout["h"] != float64(94001) {
+		t.Fatalf("MMBots loadout 47 = %#v", loadout)
+	}
+}
+
+func TestRequestedWeaponsAreExclusiveToLevel65(t *testing.T) {
+	s, cfg := newTestServer(t)
+	cfg.ContentDir = filepath.Join("..", "..", "content")
+
+	level64 := scaledBotDocument(t, s, "Bots", 64)
+	for i, got := range level64["weapons"].([]any) {
+		if got != "533,1,3,3,61,162" {
+			t.Fatalf("level-64 weapons[%d] = %v, want unchanged VeryHard fallback", i, got)
 		}
 	}
 }

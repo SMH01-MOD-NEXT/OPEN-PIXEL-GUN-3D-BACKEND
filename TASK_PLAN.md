@@ -5407,3 +5407,9 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Add boundary, fallback, loadout, schema, hashing and shared-document isolation regressions.
 - [x] Run full QA, back up and deploy; user confirmed stronger/non-default weapons in a real level-65 bot match.
 - [x] Commit only isolated bot-config work while preserving pre-existing plan edits and private state.
+
+## Level-65 requested bot weapons — 2026-10-21
+- [x] Resolve the exact 23.1.3 inventory/category IDs for Ultimatum, Vertical Grip Device and Big Buddy.
+- [x] Add all three to level-65 Bots, MatchmakingBots and MMBots rotations without changing levels 1–64.
+- [x] Add regressions, run full QA, deploy with private rollback backup and verify delivery on the connected client.
+- [x] Commit only the isolated implementation while preserving pre-existing TASK_PLAN changes.

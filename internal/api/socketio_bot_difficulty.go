@@ -67,6 +67,9 @@ func (s *Server) scaleBotConfig(name string, hosted hostedConfig, playerLevel in
 	if !changed {
 		return hosted
 	}
+	if playerLevel >= 65 {
+		injectLevel65BotWeapons(name, hosted.document)
+	}
 	body, err := json.Marshal(hosted.document)
 	if err != nil {
 		return hosted
@@ -150,6 +153,107 @@ func selectMMBotPreset(document map[string]any, presetID string) bool {
 	}
 	document["bpl"] = presets
 	return true
+}
+
+const (
+	level65UltimatumID          = 834
+	level65VerticalGripDeviceID = 1175
+	level65BigBuddyID           = 94
+)
+
+// injectLevel65BotWeapons adds three user-selected stock 23.1.3 weapons to the
+// maximum-rank rotation. IDs in Bots/MatchmakingBots omit the inventory suffix
+// 001, while MMBots equipment entries use the complete inventory index. The
+// three weapons occupy different categories: primary, special and heavy.
+func injectLevel65BotWeapons(name string, document map[string]any) {
+	switch name {
+	case "Bots":
+		replaceLegacyWeaponFallbacks(document)
+	case "MatchmakingBots":
+		ai, ok := document["AI"].(map[string]any)
+		if ok {
+			replaceLegacyWeaponFallbacks(ai)
+		}
+		tiers, _ := document["AI_Tiers"].([]any)
+		for _, rawTier := range tiers {
+			tier, ok := rawTier.(map[string]any)
+			if !ok {
+				continue
+			}
+			sets, _ := tier["AI_WeaponSets"].([]any)
+			injectRotatingWeaponSets(sets, false)
+		}
+	case "MMBots":
+		loadouts, ok := document["el"].(map[string]any)
+		if !ok {
+			return
+		}
+		sets := make([]any, 0, 15)
+		for id := 33; id <= 47; id++ {
+			if loadout, ok := loadouts[jsonNumberString(float64(id))].(map[string]any); ok {
+				sets = append(sets, loadout)
+			}
+		}
+		injectRotatingWeaponSets(sets, true)
+	}
+}
+
+func replaceLegacyWeaponFallbacks(document map[string]any) {
+	weapons, ok := document["weapons"].([]any)
+	if !ok {
+		return
+	}
+	const selected = "834,1,3,1175,61,94"
+	for i := range weapons {
+		weapons[i] = selected
+	}
+	document["weapons"] = weapons
+}
+
+func injectRotatingWeaponSets(sets []any, fullInventoryIndex bool) {
+	for i, rawSet := range sets {
+		switch weaponSet := rawSet.(type) {
+		case []any:
+			if len(weaponSet) < 6 {
+				continue
+			}
+			injectRotatingWeaponValues(weaponSet, i, len(sets), fullInventoryIndex)
+		case map[string]any:
+			keys := []string{"p", "b", "m", "sp", "sn", "h"}
+			values := make([]any, len(keys))
+			for j, key := range keys {
+				values[j] = weaponSet[key]
+			}
+			injectRotatingWeaponValues(values, i, len(sets), fullInventoryIndex)
+			for j, key := range keys {
+				weaponSet[key] = values[j]
+			}
+		}
+	}
+}
+
+func injectRotatingWeaponValues(weaponSet []any, index, total int, fullInventoryIndex bool) {
+	weaponID := func(id int) float64 {
+		if fullInventoryIndex {
+			return float64(id*1000 + 1)
+		}
+		return float64(id)
+	}
+	switch index % 3 {
+	case 0:
+		weaponSet[0] = weaponID(level65UltimatumID)
+	case 1:
+		weaponSet[3] = weaponID(level65VerticalGripDeviceID)
+	case 2:
+		weaponSet[5] = weaponID(level65BigBuddyID)
+	}
+	// The last set is also the MMBots default fallback. Give it all three so
+	// every config path can select them even when no randomized set is supplied.
+	if index == total-1 {
+		weaponSet[0] = weaponID(level65UltimatumID)
+		weaponSet[3] = weaponID(level65VerticalGripDeviceID)
+		weaponSet[5] = weaponID(level65BigBuddyID)
+	}
 }
 
 func jsonNumberString(value any) string {
