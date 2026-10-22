@@ -45,6 +45,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/exchange"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/pixelpass"
 )
 
@@ -116,6 +117,14 @@ func (s *Server) hostedConfigFromFile(name string) (hostedConfig, bool) {
 	if name == pixelpass.ConfigName {
 		body := pixelpass.JSON()
 		return hostedConfig{document: pixelpass.Document(), body: body, hash: s.hostedConfigHash(body)}, true
+	}
+
+	if document, ok := exchange.Document(name); ok {
+		body, err := json.Marshal(document)
+		if err != nil {
+			return hostedConfig{}, false
+		}
+		return hostedConfig{document: document, body: body, hash: s.hostedConfigHash(body)}, true
 	}
 
 	file, ok := hostedConfigFile(name)

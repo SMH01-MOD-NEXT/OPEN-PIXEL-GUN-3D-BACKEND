@@ -153,6 +153,10 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 	if err != nil {
 		return 0, err
 	}
+	skip, err = reduceCurrencyExchange(&candidate, commands, now, skip)
+	if err != nil {
+		return 0, err
+	}
 	applied := 0
 	for commandPosition, raw := range commands {
 		command, ok := raw.(map[string]any)

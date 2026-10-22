@@ -1,0 +1,360 @@
+{
+  "s": "halloween",
+  "ss": [
+    {
+      "s": "novice",
+     "tlk": "Key_9270",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersNovice"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "constructable",
+     "tlk": "Key_9795",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersConstructable"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "adaptive",
+     "tlk": "Key_3728",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersAdaptive"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "bundle-tier",
+     "tlk": "Key_9877",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersTierBundles"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "daily-tier",
+     "tlk": "Key_9876",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersDailyTier"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "bonuses",
+     "tlk": "Key_9874",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "Bonuses"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "offerslobby",
+     "tlk": "Key_4807",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersLobby"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "modules",
+     "tlk": "Key_3728",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "OffersModules"
+      ],
+      "t": "navigation.offers",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "event",
+     "tlk": "Key_6792",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "Event"
+      ],
+      "t": "navigation.event",
+     "st": [
+        1
+      ]
+    },
+    {
+      "s": "gift",
+     "tlk": "Key_10059",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "FreeRewards"
+      ],
+      "t": null,
+      "st": [
+        1,
+        2
+      ]
+    },
+    {
+      "s": "Advert",
+     "tlk": "Key_4835",
+      "sn": "halloween",
+      "vv": "layout",
+     "p": [
+        "Advert"
+      ],
+      "t": null,
+      "st": [
+        1
+      ]
+    },
+    {
+      "s": "coins",
+      "tlk": "Key_0275",
+      "sn": "halloween",
+      "vv": "grid",
+      "p": [
+        "Coins"
+      ],
+      "t": "navigation.coins",
+      "st": [
+        1,
+        2
+      ]
+    },
+    {
+      "s": "subscriptions",
+     "tlk": "subscriptions",
+      "sn": "halloween",
+      "vv": "layout",
+      "p": [
+        "Subscription"
+      ],
+      "t": null,
+      "st": [
+        1
+      ]
+    },
+    {
+      "s": "gems",
+     "tlk": "Key_0951",
+      "sn": "halloween",
+      "vv": "grid",
+     "p": [
+        "Gems"
+      ],
+      "t": "navigation.gems",
+     "st": [
+        1,
+        2
+      ]
+    },
+    {
+      "s": "silver",
+      "tlk": "Key_7989",
+      "sn": "halloween",
+      "vv": "grid",
+      "p": [
+        "Silver"
+      ],
+      "t": "navigation.silver",
+     "st": [
+        2
+      ]
+    }
+  ],
+  "t": [
+    {
+      "t": "navigation.offers",
+      "tlk": "Key_3728"
+    },
+    {
+      "t": "navigation.event",
+      "tlk": "Key_6792"
+    },
+    {
+      "t": "navigation.coins",
+      "tlk": "Key_0275"
+    },
+    {
+      "t": "navigation.gems",
+      "tlk": "Key_0951"
+    },
+    {
+      "t": "navigation.silver",
+      "tlk": "Key_7989"
+    }
+  ],
+  "cs": {
+    "gems": [
+      {
+        "ip": 100,
+        "inp": 100,
+        "vp": "layout",
+        "vnp": "layout"
+      },
+      {
+        "ip": 50,
+        "inp": 50,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 5,
+        "inp": 5,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 20,
+       "inp": 20,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 3,
+        "inp": 3,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 10,
+       "inp": 10,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 1,
+        "inp": 1,
+        "vp": "grid",
+        "vnp": "grid"
+      }
+    ],
+    "coins": [
+      {
+       "ip": 100,
+        "inp": 100,
+        "vp": "layout",
+        "vnp": "layout"
+      },
+      {
+        "ip": 50,
+        "inp": 50,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 5,
+       "inp": 5,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 20,
+        "inp": 20,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 3,
+       "inp": 3,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 10,
+        "inp": 10,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 1,
+       "inp": 1,
+        "vp": "grid",
+        "vnp": "grid"
+     }
+    ],
+    "silver": [
+      {
+        "ip": 100,
+        "inp": 100,
+        "vp": "layout",
+        "vnp": "layout"
+      },
+      {
+       "ip": 50,
+        "inp": 50,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 5,
+        "inp": 5,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 20,
+       "inp": 20,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 3,
+        "inp": 3,
+        "vp": "grid",
+        "vnp": "grid"
+      },
+      {
+        "ip": 10,
+       "inp": 10,
+        "vp": "grid",
+        "vnp": "grid"
+     },
+      {
+        "ip": 1,
+        "inp": 1,
+        "vp": "grid",
+        "vnp": "grid"
+      }
+    ]
+  },
+  "lbs": "halloween"
+}

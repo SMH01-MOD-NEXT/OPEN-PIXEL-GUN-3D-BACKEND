@@ -5474,3 +5474,10 @@ Backend was stopped after the host restart; launched the rebuilt binary using
 its last successful deployment environment. PID 6859 healthy on :8080.
 Production state hash stayed unchanged; no real balances/accounts were edited.
 No frontend changes. Optional API fields preserve older callers' balances.
+
+## Backend currency exchange shop — 2026-10-22
+- [x] Trace stock 23.1.3 MainStore/PixelPass catalogs and native unlimited-offer purchase commands.
+- [x] Host five repeatable exchange offers with server-side rate/funds/overflow validation and atomic debit/credit plus durable command receipts.
+- [x] Use large native currency cards, explicit stock icons and localized Offers heading; user confirmed appearance and operation.
+- [x] Verify all five rates, restart/retry/concurrency/write failure and pass-claim coexistence in tests; native ticket/credit exchanges persisted across relaunch without resetting pass progress.
+- [x] Run go test ./..., go vet ./..., go test -race ./..., three console suites and both production builds; deploy healthy backend, preserve production state and commit backend-only changes.

@@ -55,7 +55,7 @@ const sioConfigPushEvent = "config_info_versions"
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots", "PixelPass", "ExpOpen", "ExpOpenForB":
+	case "MainStore", "PixelPassOffers", "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots", "PixelPass", "ExpOpen", "ExpOpenForB":
 		return true
 	default:
 		return false

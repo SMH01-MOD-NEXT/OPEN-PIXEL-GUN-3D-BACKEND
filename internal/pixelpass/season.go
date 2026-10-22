@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/exchange"
 )
 
 // Stock creates the Tutorial task itself, outside the calendar task list.
@@ -151,7 +153,7 @@ func Document() map[string]any {
 	for _, mode := range []int{0, 1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28, 32, 33, 35, 36, 37, 40, 41} {
 		matches = append(matches, map[string]any{"g": mode, "p": []int{20, 15, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10}, "s": 50})
 	}
-	return map[string]any{"configId": ConfigName, "c": map[string]any{"i": SeasonID, "sn": "bp_title_cyberpunk_bp", "s": Start, "e": End, "vc": 0, "etr": []string{"2015:100"}, "etp": []string{"2015:100"}, "tp": []string{"25015:60"}, "etf": 1, "lp": "26015:20", "pp": "26015:600", "po": "26015:600", "ps": 0, "ppb": "26015:1200", "ppo": "26015:1200", "dpb": 0, "pbl": 10, "sbpc": 86400, "hc": 60}, "p": pages, "l": levels, "t": Tasks(), "prt": []int{}, "tb": bases, "at": []any{}, "of": []any{}, "r": map[string]any{"r": 25015, "m": matches}}
+	return map[string]any{"configId": ConfigName, "c": map[string]any{"i": SeasonID, "sn": "bp_title_cyberpunk_bp", "s": Start, "e": End, "vc": 0, "etr": []string{"2015:100"}, "etp": []string{"2015:100"}, "tp": []string{"25015:60"}, "etf": 1, "lp": "26015:20", "pp": "26015:600", "po": "26015:600", "ps": 0, "ppb": "26015:1200", "ppo": "26015:1200", "dpb": 0, "pbl": 10, "sbpc": 86400, "hc": 60}, "p": pages, "l": levels, "t": Tasks(), "prt": []int{}, "tb": bases, "at": []any{}, "of": exchange.NativeOffers(), "r": map[string]any{"r": 25015, "m": matches}}
 }
 func JSON() []byte {
 	b, err := json.Marshal(Document())
