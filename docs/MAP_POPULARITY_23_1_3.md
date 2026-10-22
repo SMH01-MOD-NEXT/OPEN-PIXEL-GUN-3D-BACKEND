@@ -69,3 +69,9 @@ are echoed outside the validated data tree, and the input is not mutated.
 - ADB device unavailable during verification: a fresh stock UI request and absence
   of its exception still require device reconnection. No claim of live UI proof
   or working nonzero population counters is made.
+
+## Следующий шаг
+
+См. `MAP_POPULARITY_FRONTEND_HANDOFF_23_1_3.md`: проверенные поля штатного
+присутствия, ограничения исследования, эксперимент без новой APK и точное ТЗ
+минимального frontend/backend расширения. Ненулевые счётчики ещё не включены.
