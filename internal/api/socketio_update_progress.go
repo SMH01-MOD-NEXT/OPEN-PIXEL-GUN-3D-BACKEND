@@ -2,7 +2,10 @@
 
 package api
 
-import "github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+import (
+	"errors"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+)
 
 // update_progress is not a generic request/reply operation. The transport
 // correlates the encrypted response with req_id, but the stock progress manager
@@ -85,6 +88,18 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 			body[sioUpdateProgressErrCodeKey] = 1
 			body["error"] = 1
 			body["result"] = "progress_store_failed"
+			// Stock reconnect alone can retain the same optimistic local pass
+			// state forever. Arm the real full-download handshake before its
+			// error/reconnect path; never abort the transport or grant early.
+			if errors.Is(err, store.ErrPixelPassStateConflict) {
+				profile, syncErr := s.st.RequestProfileProgressResync(playerID, session.progressWriteContext())
+				if syncErr == nil {
+					body["result"] = "progress_resync_required"
+					s.log.Event("socket.pixelpass_resync_required", map[string]any{"player_id": playerID, "req_id": reqID, "revision": profile.ProgressRevision, "reason": err.Error()})
+				} else {
+					s.log.Event("socket.pixelpass_resync_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": syncErr.Error()})
+				}
+			}
 			s.log.Event("socket.progress_update_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": err.Error()})
 			return body
 		}

@@ -99,6 +99,11 @@ func ppCommand(id int64) bool                { return id >= 322 && id <= 333 || 
 
 var errPass = errors.New("store: invalid or unavailable Pixel Pass operation")
 
+// ErrPixelPassStateConflict identifies a catalog-valid claim rejected only by
+// authoritative ownership/progress. The API must reload the ledger, not relax
+// eligibility or acknowledge a reward that was never committed.
+var ErrPixelPassStateConflict = errors.New("store: Pixel Pass client state requires authoritative reload")
+
 // reducePixelPass validates semantic operations before the generic reducer.
 // Stock sends generic reward/debit echoes in the SAME transaction; consume
 // those echoes, grant from the frozen catalog once, and persist one candidate.
@@ -641,8 +646,11 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			return nil, errPass
 		}
 		cell := pixelpass.Levels()[n-1]
-		if ppInt(state, "e") < cell.Exp || cell.Free == 0 && ppInt(state, "p") == 0 || !samePassRewards(d["r"], cell.Rewards) {
+		if !samePassRewards(d["r"], cell.Rewards) {
 			return nil, errPass
+		}
+		if ppInt(state, "e") < cell.Exp || cell.Free == 0 && ppInt(state, "p") == 0 {
+			return nil, fmt.Errorf("%w: level=%d crowns=%d required=%d premium=%d", ErrPixelPassStateConflict, n, ppInt(state, "e"), cell.Exp, ppInt(state, "p"))
 		}
 		list, _ := state["lr"].([]any)
 		found := false

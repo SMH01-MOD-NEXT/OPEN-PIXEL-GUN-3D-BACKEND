@@ -136,3 +136,43 @@ crown reset, premium reset or frontend edit. Regression tests cover both
 cohorts' non-null row, zero threshold, equal catalogs/hashes, poll cache hits
 and inline push bodies. Physical UI confirmation still requires restarting
 the client so its config provider ingests the newly supplied 176 document.
+
+## Claim conflict recovery (2026-10-22)
+
+Real 23.1.3 claims for level17/135 coins and level18/14 gems were rejected by
+server eligibility, not a process crash. Paid level purchases and the premium
+pack were durable. Live client memory later held 2440 crowns against 2320 in the
+server ledger: a persistent 120-crown disagreement. The historical origin of
+that excess is not proven; do not compensate by inventing server crowns or
+weakening level/premium checks. Normal reconnect alone retained the optimistic
+local pass state, causing subsequent catalog-valid claims to fail again.
+
+Catalog-valid claims blocked by authoritative crowns/premium now return typed
+`ErrPixelPassStateConflict`. The API keeps a failure acknowledgement (including
+outer i/optional ci) and durably requests the existing correlated `sync_full` +
+Login download. It does not forcibly close a transport, issue unearned rewards,
+or report success for a failed grant. Malformed rewards are ordinary validation
+errors and do not schedule a reload. This recovery can cause one authorization
+reload; it is not a promise to suppress every validation-error reconnect.
+
+`RequestProfileProgressResync` preserves all gameplay, balances, premium,
+claimed cells and **payment command receipts**. It does not call the operator
+revision helper that clears receipts. Repeated pending requests reuse a revision,
+a persistence failure restores the old profile, and existing authenticated
+revision gates protect against stale uploads while the download is pending.
+Once canonical progress is loaded, eligible rewards follow the normal atomic,
+idempotent claim path without an extra reload.
+
+Regression coverage includes the observed paid pack/four level purchases,
+1520-crown level17 rejection, full reload/restart, exact paid retries without a
+second debit, a subsequent valid single grant, level18 rejection at1620,
+forged rewards, persistence rollback, and the API marker/download/Login boundary.
+
+Device recovery verified revision109 through a real correlated full download
+and durable Login acknowledgement, with both client and server at2320 crowns
+and premium still active. Before/after recovery gameplay and receipt payloads
+were identical. The next observed claim (level19,145 coins) committed two native
+commands, received err_code=0, appeared in the reward UI and increased stored
+coins by145 on the same authenticated socket session. No subsequent conflict or
+authorization reload was observed during this verification. This is recovery
+of a measured divergence; the origin of the earlier120-crown drift remains open.
