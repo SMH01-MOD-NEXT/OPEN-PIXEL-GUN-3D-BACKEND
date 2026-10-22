@@ -343,6 +343,18 @@
       ["pfExp", f.experience || 0],
       ["pfCoins", f.coins || 0],
       ["pfGems", f.gems || 0],
+      [
+        "pfPixelPassCurrency",
+        f.progress_slots?.["3"]?.PixelPassCurrency ??
+          f.progress_document?.["3"]?.PixelPassCurrency ??
+          0,
+      ],
+      [
+        "pfBattlePassCurrency",
+        f.progress_slots?.["3"]?.BattlePassCurrency ??
+          f.progress_document?.["3"]?.BattlePassCurrency ??
+          0,
+      ],
     ].forEach(([id, v]) => (el(id).value = v));
     Object.entries(RAW).forEach(
       ([key, id]) => (el(id).value = JSON.stringify(f[key] || {}, null, 2)),
@@ -752,6 +764,8 @@
       experience: Number(el("pfExp").value),
       coins: Number(el("pfCoins").value),
       gems: Number(el("pfGems").value),
+      pixel_pass_currency: Number(el("pfPixelPassCurrency").value),
+      battle_pass_currency: Number(el("pfBattlePassCurrency").value),
     };
     mutate(el("pfSave"), null, async () => {
       if (
@@ -759,7 +773,9 @@
           .filter(([k]) => k !== "nick")
           .every(([, v]) => Number.isSafeInteger(v) && v >= 0) ||
         data.level < 1 ||
-        data.level > 65
+        data.level > 65 ||
+        data.pixel_pass_currency > 2147483647 ||
+        data.battle_pass_currency > 2147483647
       )
         throw new Error(t("invalidNumbers"));
       await api("PUT", base(id) + "/profile", data);

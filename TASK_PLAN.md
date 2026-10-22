@@ -5461,3 +5461,16 @@ Legacy local task caches additionally needed the existing full-download route.
 No frontend edits. The first free reward claimed normally (+55 coins, tier 1);
 20 crowns, premium status and prior task claims stayed intact, with no resets.
 Final deployed PID 152034; all QA/build/smoke checks passed.
+
+## Admin Pixel Pass currencies — 2026-10-22
+- [x] Inspect stock currency IDs and the profile editor/save/resync contract.
+- [x] Add RU/EN exact-balance inputs for PixelPassCurrency (26015) and BattlePassCurrency (3015).
+- [x] Save both slot-3 currency channels atomically with the profile and schedule one targeted resync; preserve pass crowns, tiers, premium and claims.
+- [x] Cover authenticated API/UI validation, explicit zero/omission/max int32, no-op saves, durable balances, stale boot snapshots, pass-state preservation and persistence rollback.
+- [x] Pass go test ./..., go vet ./..., go test -race ./..., all three console regressions, both builds and diff check.
+- [x] Back up binary/state/config, deploy and verify production console fields/localization/auth; commit isolated feature.
+
+Backend was stopped after the host restart; launched the rebuilt binary using
+its last successful deployment environment. PID 6859 healthy on :8080.
+Production state hash stayed unchanged; no real balances/accounts were edited.
+No frontend changes. Optional API fields preserve older callers' balances.

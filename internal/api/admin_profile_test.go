@@ -210,7 +210,7 @@ func TestAdminConsoleExposesFullProfileEditor(t *testing.T) {
 		t.Fatalf("content security policy = %q", got)
 	}
 	for _, marker := range []string{
-		`id="pfLevel"`, `id="pfExp"`, `id="pfCoins"`, `id="pfGems"`,
+		`id="pfLevel"`, `id="pfExp"`, `id="pfCoins"`, `id="pfGems"`, `id="pfPixelPassCurrency"`, `id="pfBattlePassCurrency"`,
 		`id="rawPrefs"`, `id="rawProgress"`, `id="rawDocument"`,
 		`id="rawSlots"`, `id="rawClientState"`, `id="doReconcile"`,
 		`"reconcile"`, `"source_id"`, `"target_id"`, `/state`,

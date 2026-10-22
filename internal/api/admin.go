@@ -165,11 +165,13 @@ func (s *Server) handleAdminPlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 type adminProfileRequest struct {
-	Nick       string `json:"nick"`
-	Level      int    `json:"level"`
-	Experience int64  `json:"experience"`
-	Coins      int64  `json:"coins"`
-	Gems       int64  `json:"gems"`
+	Nick               string `json:"nick"`
+	Level              int    `json:"level"`
+	Experience         int64  `json:"experience"`
+	Coins              int64  `json:"coins"`
+	Gems               int64  `json:"gems"`
+	PixelPassCurrency  *int64 `json:"pixel_pass_currency"`
+	BattlePassCurrency *int64 `json:"battle_pass_currency"`
 }
 
 func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) {
@@ -182,19 +184,26 @@ func (s *Server) handleAdminSaveProfile(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "invalid_profile", "level, experience, coins and gems cannot be negative")
 		return
 	}
+	passCurrencies := store.PassCurrencyEdit{PixelPass: req.PixelPassCurrency, BattlePass: req.BattlePassCurrency}
+	if !passCurrencies.Valid() {
+		s.writeError(w, http.StatusBadRequest, "invalid_profile", "pass currency balances must be integers between 0 and 2147483647")
+		return
+	}
 	id := r.PathValue("id")
 	before, _ := s.st.Profile(id)
-	profile, err := s.st.SetProfile(id, req.Nick, req.Level, req.Experience, req.Coins, req.Gems)
+	profile, err := s.st.SetProfile(id, req.Nick, req.Level, req.Experience, req.Coins, req.Gems, passCurrencies)
 	if err != nil {
 		s.writeAdminError(w, err)
 		return
 	}
 	s.log.Event("admin.profile_saved", map[string]any{
-		"player_id": id,
-		"nick":      req.Nick,
-		"level":     req.Level,
-		"coins":     req.Coins,
-		"gems":      req.Gems,
+		"player_id":            id,
+		"nick":                 req.Nick,
+		"level":                req.Level,
+		"coins":                req.Coins,
+		"gems":                 req.Gems,
+		"pixel_pass_currency":  profile.ProgressSlots["3"].(map[string]any)["PixelPassCurrency"],
+		"battle_pass_currency": profile.ProgressSlots["3"].(map[string]any)["BattlePassCurrency"],
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"profile": profile})
 	if profile.ProgressRevision != before.ProgressRevision {

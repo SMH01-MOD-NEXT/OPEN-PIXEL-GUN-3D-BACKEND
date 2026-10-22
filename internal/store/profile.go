@@ -891,10 +891,29 @@ func (p Profile) Counters() (level int, experience, coins, gems int64) {
 	return level, experience, coins, gems
 }
 
+// PassCurrencyEdit sets exact slot-3 balances. Nil means preserve the existing
+// value, keeping older admin clients compatible. Stock stores signed int32s.
+type PassCurrencyEdit struct {
+	PixelPass  *int64
+	BattlePass *int64
+}
+
+func (e PassCurrencyEdit) Valid() bool {
+	for _, value := range []*int64{e.PixelPass, e.BattlePass} {
+		if value != nil && (*value < 0 || *value > 2147483647) {
+			return false
+		}
+	}
+	return true
+}
+
 // SetProfile overwrites the operator-editable fields of a profile. The nested
 // client-owned maps are left alone: they are synchronised by the game and an
 // admin edit has no business silently dropping them.
-func (s *Store) SetProfile(playerID string, nick string, level int, experience, coins, gems int64) (Profile, error) {
+func (s *Store) SetProfile(playerID string, nick string, level int, experience, coins, gems int64, passCurrencies ...PassCurrencyEdit) (Profile, error) {
+	if len(passCurrencies) > 1 || len(passCurrencies) == 1 && !passCurrencies[0].Valid() {
+		return Profile{}, errors.New("store: invalid pass currency balance")
+	}
 	if level < 0 || experience < 0 || coins < 0 || gems < 0 {
 		return Profile{}, errors.New("store: profile values cannot be negative")
 	}
@@ -939,6 +958,21 @@ func (s *Store) SetProfile(playerID string, nick string, level int, experience, 
 	profile.Progress["coins"] = coins
 	profile.Progress["gems"] = gems
 	syncClientFacingSlots(profile, level, experience, coins, gems)
+	if len(passCurrencies) == 1 {
+		edit := passCurrencies[0]
+		for name, value := range map[string]*int64{"PixelPassCurrency": edit.PixelPass, "BattlePassCurrency": edit.BattlePass} {
+			if value == nil {
+				continue
+			}
+			old, _ := counterInt64(objectAt(profile.ProgressSlots, "3")[name])
+			if old != *value {
+				advanceRevision = true
+			}
+			for _, doc := range []map[string]any{profile.ProgressSlots, profile.ProgressDocument} {
+				doc["3"].(map[string]any)[name] = *value
+			}
+		}
+	}
 	reconcileProfileCounters(profile)
 	if advanceRevision {
 		advanceProfileProgressRevision(profile)
