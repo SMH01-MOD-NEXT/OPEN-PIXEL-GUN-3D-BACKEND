@@ -32,7 +32,7 @@ func TestPlayerStateEventsUseDedicatedHandlers(t *testing.T) {
 		{"refund_get", sioHead{}, "refunds"},
 		{"get_time", sioHead{}, "time"},
 		{"check_binded_id", sioHead{}, "binded"},
-		{"get_map_popularity", sioHead{"params": map[string]any{}}, "params"},
+		{"get_map_popularity", sioHead{"params": map[string]any{}}, "data"},
 		{"get_leader_clan", sioHead{"clan_id": "0"}, "leader"},
 		{"unsubscribe", sioHead{"list": []any{}}, "list"},
 	}
@@ -209,15 +209,6 @@ func TestReadHandlersReturnStableEmptyTypes(t *testing.T) {
 	bind := s.answerCheckBindedID(nil, sioHead{"social_id": "", "social_name": ""}, 102)
 	if bind["social_id"] != "" || bind["binded"] != 0 || bind["is_binded"] != 0 || bind["allow_bind"] != 1 {
 		t.Fatalf("bind answer = %#v", bind)
-	}
-
-	params := map[string]any{"2": map[string]any{"16.6.0mm_v2": map[string]any{"0": []any{"10038"}}}}
-	popularity := s.answerMapPopularity(nil, sioHead{"params": params}, 103)
-	if !reflect.DeepEqual(popularity["params"], params) {
-		t.Fatalf("map shape changed: %#v", popularity)
-	}
-	if empty, ok := popularity["popularity"].(map[string]any); !ok || len(empty) != 0 {
-		t.Fatalf("popularity is %T %#v, want empty object", popularity["popularity"], popularity["popularity"])
 	}
 
 	leader := s.answerLeaderClan(nil, sioHead{"clan_id": "0"}, 104)

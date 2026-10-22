@@ -175,15 +175,6 @@ func (s *Server) answerCheckBindedID(_ *sioSession, head sioHead, reqID int) map
 	return body
 }
 
-func (s *Server) answerMapPopularity(_ *sioSession, head sioHead, reqID int) map[string]any {
-	body := sioOK(reqID)
-	// Echo the requested map/version tree instead of inventing popularity or
-	// matchmaking data; this keeps exactly the shape the 23.1.3 client sent.
-	body["params"] = head["params"]
-	body["popularity"] = map[string]any{}
-	return body
-}
-
 func (s *Server) answerLeaderClan(_ *sioSession, head sioHead, reqID int) map[string]any {
 	body := sioOK(reqID)
 	body["clan_id"] = head.text("clan_id")
