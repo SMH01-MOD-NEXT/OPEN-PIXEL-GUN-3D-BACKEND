@@ -154,3 +154,5 @@ See `TASK_PLAN.md` for what comes next.
 Not affiliated with Cubic Games, Rilisoft, Lightmap or Photon. This project
 implements a server for a discontinued client whose services no longer exist;
 it contains no vendor code or assets.
+
+Native APK launcher/update publication: [signed frontend releases](docs/NATIVE_FRONTEND_RELEASES.md).

@@ -73,6 +73,10 @@ func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
 }
 
 func (s *Server) routes() {
+	// Native-only launcher protocol; no credentials or profile writes.
+	s.mux.HandleFunc("GET /api/v1/loader/info", s.handleLoaderInfo)
+	s.mux.HandleFunc("GET /api/v1/frontend/manifest", s.handleFrontendManifest)
+	s.mux.HandleFunc("GET /api/v1/frontend/{hash}/library.so", s.handleFrontendBinary)
 	// Real protocol.
 	s.mux.HandleFunc("GET /api/v1/ping", s.handlePing)
 	s.mux.HandleFunc("GET /api/v1/time", s.handleTime)

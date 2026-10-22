@@ -26,3 +26,6 @@ log_front.txt
 # The vendor bundle manifest, recovered from a client. Same reason as above:
 # it is their content, not ours.
 /content/sio-configs/AssetBundlesAndroid.json
+
+# Signed native releases are deployment artifacts, never source.
+content/frontend/
