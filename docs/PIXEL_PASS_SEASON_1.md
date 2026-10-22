@@ -176,3 +176,31 @@ commands, received err_code=0, appeared in the reward UI and increased stored
 coins by145 on the same authenticated socket session. No subsequent conflict or
 authorization reload was observed during this verification. This is recovery
 of a measured divergence; the origin of the earlier120-crown drift remains open.
+
+## Native direct task claims (2026-10-22)
+
+Two captured task collections (outer IDs `4c3eae65`, `70d344d5`) use
+`326 {e:60}` plus `152 {5_<task>:{r:1}}`, with analytics but **no 337/338**.
+Tasks 1003 and 1000 were already completed in the authoritative ledger. The old
+reducer recognized only 338 as a task crown budget and incorrectly applied the
+50-crown match limit to these 60-crown rewards. These two rejected collections
+explain a confirmed missing 120 crowns; local crowns are not inherently excess.
+This evidence does not establish the origin of every earlier discrepancy.
+
+Direct 152 claims now establish their reward budget from the server catalog
+only after known/open/completed-task validation. Both task claim protocols share
+one semantic receipt, including when present together in one batch. Exact command
+retries and fresh-ID semantic retries cannot pay again. Missing/wrong crown
+echoes fail atomically. Task rewards never consume the ordinary match daily
+budget, whose existing limits remain unchanged. No client change or forced
+progress rollback is required. Regression tests cover observed two-command
+claims, restart, concurrent/rebatched retries, elite rewards, persistence failure,
+invalid/future/incomplete claims and the API success/no-resync boundary.
+
+Deployment verification: genuine rejected packets were replayed over authenticated
+encrypted Socket.IO. Each applied two commands, then exact retries applied zero.
+Server crowns increased2320→2440 and matched live client memory2440 (same app
+PID12097). Premium remained1; coins505957, gems509741, all currency slot values,
+revision109 and match-crown budget100 were unchanged. No profile reset or
+authoritative resync was scheduled by this deployment. A fresh manual UI task
+collection is a separate follow-up, not claimed by the recovery replay test.

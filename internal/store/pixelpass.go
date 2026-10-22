@@ -297,6 +297,9 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 		}
 		return nil
 	}
+	// Stock direct task collection is 326 + GameTask.SetRewarded(152),
+	// without the optional PixelPass pending-reward commands 337/338.
+	directTaskClaims := map[int]pixelpass.Task{}
 	// GameTask delta commands carry a dictionary keyed by "5_<task index>".
 	// Preserve other task families, but enforce monotonic bounded pass progress.
 	for i, raw := range commands {
@@ -404,9 +407,34 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			}
 			l.Tasks[k] = old
 			tasks[k] = cloneAnyMap(old)
+			if id == 152 && ppInt(delta, "r") == 1 {
+				directTaskClaims[idx] = task
+			}
 		}
 	}
-	tutorialClaim := false
+	var earned, reported, duplicateCrowns int64
+	handledTaskClaims := map[string]bool{}
+	recordTaskClaim := func(task pixelpass.Task) {
+		key := strconv.Itoa(task.Index)
+		if handledTaskClaims[key] {
+			return
+		}
+		handledTaskClaims[key] = true
+		amount := ppRewardAmount(task.Rewards)
+		earned += amount
+		if l.Claimed[key] == true {
+			duplicateCrowns += amount
+		} else {
+			l.Claimed[key] = true
+		}
+		delete(pending, key)
+	}
+	// Eligibility has been checked against known/open tasks and completed
+	// progress above. Rewards come only from the server catalog, not the echo.
+	for _, task := range directTaskClaims {
+		recordTaskClaim(task)
+	}
+	_, tutorialClaim := directTaskClaims[pixelpass.TutorialTaskIndex]
 	for _, raw := range commands {
 		c, _ := raw.(map[string]any)
 		d, _ := c["p"].(map[string]any)
@@ -427,7 +455,6 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			totalReported += v
 		}
 	}
-	var earned, reported, duplicateCrowns int64
 	// Initialization, premium and task claims establish the permitted crown budget.
 	for i, raw := range commands {
 		c, _ := raw.(map[string]any)
@@ -508,16 +535,11 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 				if l.Claimed[key] != true {
 					pending[key] = map[string]any{"25015": ppRewardAmount(task.Rewards)}
 				}
-			} else if l.Claimed[key] != true {
-				if pending[key] == nil {
+			} else {
+				if l.Claimed[key] != true && pending[key] == nil {
 					return nil, errPass
 				}
-				earned += ppRewardAmount(task.Rewards)
-				l.Claimed[key] = true
-				delete(pending, key)
-			} else {
-				earned += ppRewardAmount(task.Rewards)
-				duplicateCrowns += ppRewardAmount(task.Rewards)
+				recordTaskClaim(task)
 			}
 		case 325, 328:
 			for _, t := range pixelpass.Tasks() {
@@ -594,6 +616,11 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 	// A repeated semantic task/premium transaction with new command IDs must not
 	// turn its ObtainExp echo into a fresh match reward.
 	semantic := false
+	for idx := range directTaskClaims {
+		if idx != pixelpass.TutorialTaskIndex {
+			semantic = true
+		}
+	}
 	for _, raw := range commands {
 		c, _ := raw.(map[string]any)
 		id, _ := counterInt64(c["id"])

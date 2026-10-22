@@ -58,3 +58,34 @@ func TestPixelPassConflictArmsAuthoritativeReloadNotFalseGrant(t *testing.T) {
 		t.Fatal("reload marker did not retire")
 	}
 }
+
+func TestNativeTaskCrownCollectionAcknowledgedWithoutResync(t *testing.T) {
+	if !pixelpass.Active(time.Now()) {
+		t.Skip("frozen season")
+	}
+	s, session, rev := newOperatorEditedProgress(t)
+	completeRevisionDownload(t, s, session, rev)
+	commands := []any{
+		map[string]any{"id": 322, "ci": "init", "p": map[string]any{"i": 1, "c": "stock"}},
+		map[string]any{"id": 150, "ci": "progress", "p": map[string]any{"5_1000": map[string]any{"p": 3, "c": 1}}},
+	}
+	if r := s.answerUpdateProgress(session, sioHead{"id": 63, "i": "setup", "p": map[string]any{"c": commands}}, 110); r["err_code"] != sioErrNone {
+		t.Fatal(r)
+	}
+	claim := sioHead{"id": 63, "i": "native-task", "p": map[string]any{"c": []any{
+		map[string]any{"id": 326, "ci": "4588e24e", "p": map[string]any{"e": 60}},
+		map[string]any{"id": 152, "ci": "3b399ef3", "p": map[string]any{"5_1000": map[string]any{"r": 1}}},
+	}}}
+	for i := 0; i < 2; i++ {
+		if r := s.answerUpdateProgress(session, claim, 111+i); r["err_code"] != sioErrNone {
+			t.Fatal(r)
+		}
+	}
+	p, _ := s.st.Profile(revisionTestPlayerID)
+	if p.ProgressRevision != rev || p.PixelPass.Claimed["1000"] != true || p.PixelPass.MatchCrowns != 0 {
+		t.Fatal("claim lost or reload armed", p.PixelPass)
+	}
+	if status := s.answerProgressStatus(session, sioHead{}, 115); status["opg3d_admin_resync"] != nil {
+		t.Fatal("unnecessary reload")
+	}
+}
