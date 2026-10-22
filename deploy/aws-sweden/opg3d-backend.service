@@ -1,0 +1,31 @@
+[Unit]
+Description=Open Pixel Gun backend (Sweden)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=opg3d
+Group=opg3d
+WorkingDirectory=/opt/opg3d
+EnvironmentFile=/etc/opg3d/backend.env
+ExecStart=/opt/opg3d/bin/opg3d-backend
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/opg3d/data /opt/opg3d/logs /opt/opg3d/bundles
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+LimitNOFILE=8192
+MemoryMax=512M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

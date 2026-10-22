@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Open Pixel Gun state backup
+[Timer]
+OnCalendar=*-*-* 03:10:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+[Install]
+WantedBy=timers.target

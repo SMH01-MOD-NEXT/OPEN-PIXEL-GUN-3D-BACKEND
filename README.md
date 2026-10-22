@@ -156,3 +156,5 @@ implements a server for a discontinued client whose services no longer exist;
 it contains no vendor code or assets.
 
 Native APK launcher/update publication: [signed frontend releases](docs/NATIVE_FRONTEND_RELEASES.md).
+
+Official AWS deployment and SSH-only administration: [Sweden operations](docs/AWS_SWEDEN.md).

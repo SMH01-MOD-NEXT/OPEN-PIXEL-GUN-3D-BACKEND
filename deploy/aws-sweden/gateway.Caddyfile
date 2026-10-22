@@ -1,0 +1,12 @@
+{
+	admin off
+	auto_https off
+}
+:8080 {
+	@private path /admin /admin/* /api/v1/admin /api/v1/admin/*
+	respond @private 404
+	request_body {
+		max_size 32MB
+	}
+	reverse_proxy 127.0.0.1:18080
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Open Pixel Gun player state
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/opg3d/ops/backup.py
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/opg3d /opt/opg3d/logs
