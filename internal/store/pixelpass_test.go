@@ -159,7 +159,7 @@ func TestPixelPassInvalidOperationsAreAtomic(t *testing.T) {
 	cases := map[string][]any{
 		"locked": {claimCell(2, "locked")}, "level50": {claimCell(50, "locked")}, "close": {counterCommand(331, "close", map[string]any{})},
 		"wrong-reward":    {counterCommand(323, "forged", map[string]any{"l": 1, "r": []any{"2015:999999"}})},
-		"future-task":     {counterCommand(150, "future", map[string]any{"5_1003": map[string]any{"p": 3}})},
+		"future-task":     {counterCommand(150, "future", map[string]any{"5_1006": map[string]any{"p": 3}})},
 		"incomplete-task": {counterCommand(337, "task", map[string]any{"t": 1000, "r": []any{"25015:60"}})},
 		"unbudgeted-exp":  {counterCommand(326, "exp", map[string]any{"e": 600})},
 		"wrong-season":    {counterCommand(322, "season", map[string]any{"i": 2, "c": "x"})},

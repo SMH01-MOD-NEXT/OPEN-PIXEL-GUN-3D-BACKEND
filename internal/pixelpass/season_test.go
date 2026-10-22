@@ -95,3 +95,28 @@ func TestGeneratedTutorialHasNativeBase(t *testing.T) {
 		t.Fatal("tutorial zero reward must not relax generic economy validation")
 	}
 }
+
+func TestTaskOpenMatchesNativeOneBasedCalendar(t *testing.T) {
+	start, _ := time.Parse(time.RFC3339, Start)
+	end, _ := time.Parse(time.RFC3339, End)
+	for _, tc := range []struct {
+		name string
+		day  int
+		at   time.Time
+		want bool
+	}{
+		{"before-season", 0, start.Add(-time.Nanosecond), false},
+		{"legacy-zero", 0, start, true}, {"first-day", 1, start, true},
+		{"second-day-locked", 2, start.Add(24*time.Hour - time.Nanosecond), false},
+		{"second-day-boundary", 2, start.Add(24 * time.Hour), true},
+		{"third-day-locked", 3, start.Add(24 * time.Hour), false},
+		{"last-day", 60, end.Add(-time.Nanosecond), true},
+		{"after-season", 1, end, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := TaskOpen(Task{StartDay: tc.day, Type: 2}, tc.at); got != tc.want {
+				t.Fatalf("TaskOpen = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

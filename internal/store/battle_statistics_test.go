@@ -252,7 +252,7 @@ func TestBattleStatisticsWithNativeInBattleTaskFlush(t *testing.T) {
 	batch := battleBatch(passNow.Unix())
 	batch = append(batch, counterCommand(153, "native-task-flush", map[string]any{
 		"5_1000": map[string]any{"p": 1}, "5_2000": map[string]any{"p": 1},
-		"5_1003": map[string]any{"p": 1}, "5_1006": map[string]any{"p": 1},
+		"5_1009": map[string]any{"p": 1}, "5_1006": map[string]any{"p": 1},
 	}))
 	passApply(t, s, ctx, batch...)
 	reopened, err := Open(dir)
@@ -263,12 +263,12 @@ func TestBattleStatisticsWithNativeInBattleTaskFlush(t *testing.T) {
 	if len(battleArray(objectAt(p.ProgressSlots, "57")["h"])) != 1 || ppInt(objectAt(p.PixelPass.Tasks, "5_1000"), "p") != 1 {
 		t.Fatal("match/task flush lost")
 	}
-	if ppInt(objectAt(p.PixelPass.Tasks, "5_1003"), "p") != 0 || ppInt(objectAt(before.ProgressSlots, "74", "pp"), "e") != ppInt(objectAt(p.ProgressSlots, "74", "pp"), "e") {
+	if ppInt(objectAt(p.PixelPass.Tasks, "5_1009"), "p") != 0 || ppInt(objectAt(before.ProgressSlots, "74", "pp"), "e") != ppInt(objectAt(p.ProgressSlots, "74", "pp"), "e") {
 		t.Fatal("future progress or crowns changed")
 	}
 	for _, bad := range []any{
 		counterCommand(154, "reset", map[string]any{"5_1000": map[string]any{"p": 0}}),
-		counterCommand(153, "bad-field", map[string]any{"5_1003": map[string]any{"r": 2}}),
+		counterCommand(153, "bad-field", map[string]any{"5_1009": map[string]any{"r": 2}}),
 	} {
 		if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, []any{bad}, passNow); err == nil {
 			t.Fatal("accepted invalid reset/flush")
@@ -292,14 +292,14 @@ func TestBattleStatisticsWithNativeCompletedTaskBatch(t *testing.T) {
 	batch := battleBatch(passNow.Unix())
 	batch = append(batch,
 		counterCommand(151, "completed-open", map[string]any{"5_1000": map[string]any{"p": 3, "c": 1}}),
-		counterCommand(151, "completed-cached", map[string]any{"5_2000": map[string]any{"p": 3}, "5_1003": map[string]any{"p": 3, "c": 1}}),
+		counterCommand(151, "completed-cached", map[string]any{"5_2000": map[string]any{"p": 3}, "5_1009": map[string]any{"p": 3, "c": 1}}),
 		counterCommand(151, "completed-cached-2", map[string]any{"5_1006": map[string]any{"p": 3, "c": 1}}))
 	passApply(t, s, ctx, batch...)
 	p, _ := s.Profile(socketUniqID)
 	if ppInt(p.BattleWins(), "2") != 1 || ppInt(objectAt(p.PixelPass.Tasks, "5_1000"), "c") != 1 {
 		t.Fatal("native completion discarded match")
 	}
-	if ppInt(objectAt(p.PixelPass.Tasks, "5_1003"), "c") != 0 || ppInt(objectAt(p.PixelPass.Tasks, "5_1006"), "c") != 0 {
+	if ppInt(objectAt(p.PixelPass.Tasks, "5_1009"), "c") != 0 || ppInt(objectAt(p.PixelPass.Tasks, "5_1006"), "c") != 0 {
 		t.Fatal("future tasks unlocked")
 	}
 }

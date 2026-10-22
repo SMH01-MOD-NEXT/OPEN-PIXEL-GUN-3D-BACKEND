@@ -64,7 +64,7 @@ func TestPixelPassDirectTaskClaimValidationAtomic(t *testing.T) {
 		amount   int64
 		complete bool
 	}{
-		{"incomplete", 1000, 60, false}, {"future", 1003, 60, false}, {"unknown", 9876, 60, false}, {"understated", 1000, 59, true}, {"inflated", 1000, 61, true}, {"missing-echo", 1000, 0, true},
+		{"incomplete", 1000, 60, false}, {"future", 1006, 60, false}, {"unknown", 9876, 60, false}, {"understated", 1000, 59, true}, {"inflated", 1000, 61, true}, {"missing-echo", 1000, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, ctx := passSetup(t)
@@ -132,5 +132,46 @@ func TestPixelPassDirectTaskPersistenceFailureAndElite(t *testing.T) {
 	after, _ = s.Profile(socketUniqID)
 	if ppInt(after.PixelPass.State, "e") != 400 || after.PixelPass.MatchCrowns != 0 {
 		t.Fatal("elite reward")
+	}
+}
+
+// Genuine 23.1.3 next-calendar-day completion/claim shapes: these used to be
+// ignored as future progress, then rejected on 152 and disconnect the client.
+func TestPixelPassSecondCalendarDayDirectClaims(t *testing.T) {
+	s, dir, ctx := passSetup(t)
+	now := passNow.Add(24 * time.Hour)
+	for _, tc := range []struct {
+		idx    int
+		needed int64
+	}{{1007, 25}, {1008, 1}} {
+		key := fmt.Sprintf("5_%d", tc.idx)
+		batch := []any{counterCommand(151, fmt.Sprintf("native-complete-%d", tc.idx), map[string]any{key: map[string]any{"p": tc.needed, "c": 1}})}
+		if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, batch, now); err != nil {
+			t.Fatal(err)
+		}
+		claim := directTaskClaim(tc.idx, 60, fmt.Sprintf("native-claim-%d", tc.idx))
+		if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, claim, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, directTaskClaim(tc.idx, 60, fmt.Sprintf("retry-claim-%d", tc.idx)), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := reopened.Profile(socketUniqID)
+	if ppInt(p.PixelPass.State, "e") != 120 || p.PixelPass.MatchCrowns != 0 {
+		t.Fatal("lost/duplicated task crowns", p.PixelPass)
+	}
+	for _, idx := range []int{1007, 1008} {
+		if ppInt(objectAt(p.PixelPass.Tasks, fmt.Sprintf("5_%d", idx)), "r") != 1 {
+			t.Fatal("missing durable claim")
+		}
+	}
+	// The following day's tasks are still rejected, not unlocked wholesale.
+	if _, err := s.applyProfileCounterCommandsAt(socketUniqID, ctx, []any{counterCommand(150, "truly-future", map[string]any{"5_1009": map[string]any{"p": 3, "c": 1}})}, now); err == nil {
+		t.Fatal("future task unlocked")
 	}
 }

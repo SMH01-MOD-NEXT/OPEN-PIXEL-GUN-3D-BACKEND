@@ -204,3 +204,19 @@ PID12097). Premium remained1; coins505957, gems509741, all currency slot values,
 revision109 and match-crown budget100 were unchanged. No profile reset or
 authoritative resync was scheduled by this deployment. A fresh manual UI task
 collection is a separate follow-up, not claimed by the recovery replay test.
+
+
+### Native calendar-day compatibility
+
+23.1.3 task availability at `0x18F29D4` compares `sd` against
+`floor((now - seasonStart) / 86400) + 1`. Server eligibility must use the same
+one-based current day. Existing catalog IDs and `sd=0` legacy entries are kept
+for compatibility; reindexing them would invalidate persisted progress/receipts.
+Before/after season boundaries remain closed. The next genuinely future group
+remains unavailable. A client completion packet is not a substitute for a
+completed server task when claiming its catalog crown reward.
+
+The Oct22 repair recovered only two completions found in genuine historical151
+packets (1007:25kills,1008:1win), then replayed their original rejected326+152
+claims through authenticated encrypted Socket.IO. Crown total2820→2940; exact
+retries granted nothing further. No premium/currency/battle-budget/revision reset.

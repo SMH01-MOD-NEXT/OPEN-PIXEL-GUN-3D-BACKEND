@@ -115,7 +115,10 @@ func FindTask(index int) (Task, bool) {
 }
 func TaskOpen(t Task, now time.Time) bool {
 	a, _ := time.Parse(time.RFC3339, Start)
-	return Active(now) && int(now.Sub(a)/(24*time.Hour)) >= t.StartDay
+	// Stock 23.1.3 task availability (0x18F29D4) compares StartDay to
+	// floor((now-start)/86400)+1, not to the zero-based elapsed day. Keep
+	// existing catalog indices/StartDay values to preserve earned receipts.
+	return Active(now) && int(now.Sub(a)/(24*time.Hour))+1 >= t.StartDay
 }
 func Reward(token string) (index int, amount int64, err error) {
 	p := strings.Split(token, ":")
