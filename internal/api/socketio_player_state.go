@@ -15,7 +15,7 @@ var playerInfoFields = []string{
 	"weapons_c", "gadgets_c", "avatars_c", "pets_c", "sets", "country",
 	"continent", "lobby", "is_season_lobby", "paying", "kill_cnt",
 	"death_cnt", "kill_cnt_month", "death_cnt_month", "mode", "accessories",
-	"scores",
+	"scores", "accuracy",
 }
 
 func (s *Server) socketPlayerID(session *sioSession) (string, bool) {

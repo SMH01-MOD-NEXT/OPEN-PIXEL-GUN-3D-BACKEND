@@ -12,7 +12,7 @@ import (
 // SupportsProgressCommand is deliberately a measured-contract allowlist. Unknown
 // stock commands remain losslessly stored through full slot snapshots.
 func SupportsProgressCommand(id int64) bool {
-	if ppCommand(id) || id >= 150 && id <= 155 {
+	if statsCommand(id) || ppCommand(id) || id >= 150 && id <= 155 {
 		return true
 	}
 	switch id {

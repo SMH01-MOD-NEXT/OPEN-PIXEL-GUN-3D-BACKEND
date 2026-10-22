@@ -5481,3 +5481,19 @@ No frontend changes. Optional API fields preserve older callers' balances.
 - [x] Use large native currency cards, explicit stock icons and localized Offers heading; user confirmed appearance and operation.
 - [x] Verify all five rates, restart/retry/concurrency/write failure and pass-claim coexistence in tests; native ticket/credit exchanges persisted across relaunch without resetting pass progress.
 - [x] Run go test ./..., go vet ./..., go test -race ./..., three console suites and both production builds; deploy healthy backend, preserve production state and commit backend-only changes.
+
+## Persistent player and global battle statistics — 2026-10-22
+- [x] Trace native 23.1.3 match reports, profile/global statistics requests and callback response schemas.
+- [x] Implement authenticated, durable, replay-safe match/statistics ingestion and native query responses; preserve existing accounts/pass/shop state.
+- [x] Add regression/integration tests for persistence, retries, validation, player isolation and global aggregation.
+- [x] Verify native UI no longer waits for data, run full QA/build, deploy and commit backend-only changes.
+
+Native Stats: 8 real wins (6 Team Fight, 2 Deathmatch), loading cleared.
+Corrected mixed native pass-task 151/153 packets so they cannot discard combat
+results; unopened calendar entries stay locked. Replayed two genuine rejected
+control packets through authenticated encrypted Socket.IO: 4/6 commands applied,
+retries 0; durable totals 8 wins / 3 losses, native history last ten. Verified
+backend restart, stale boot protection and actual client History UI. Daily V1/V2
+updates, failure rollback, concurrency and restart covered by tests. Full QA,
+both builds and production admin smoke passed. Deployed PID 50464 healthy.
+No frontend edits, no account/pass resets, no invented match statistics.

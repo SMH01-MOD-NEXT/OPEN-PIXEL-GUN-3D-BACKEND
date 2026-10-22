@@ -49,7 +49,8 @@ type Profile struct {
 	Gems       int64  `json:"gems"`
 
 	// PixelPass is the server-owned season ledger, not a client snapshot field.
-	PixelPass *PixelPassLedger `json:"pixel_pass_ledger,omitempty"`
+	PixelPass        *PixelPassLedger        `json:"pixel_pass_ledger,omitempty"`
+	BattleStatistics *BattleStatisticsLedger `json:"battle_statistics_ledger,omitempty"`
 
 	// Prefs mirrors the client's own key/value state verbatim. The 23.1.3
 	// client owns these keys, so they are kept as they arrive instead of being
@@ -106,6 +107,7 @@ type Profile struct {
 func (p *Profile) clone() Profile {
 	out := *p
 	out.PixelPass = p.PixelPass.clone()
+	out.BattleStatistics = p.BattleStatistics.clone()
 	if p.Prefs != nil {
 		out.Prefs = make(map[string]string, len(p.Prefs))
 		for key, value := range p.Prefs {
@@ -785,6 +787,7 @@ func (s *Store) ReplaceProfileRawState(playerID string, prefs map[string]string,
 	profile.ProgressDocument = cloneAnyMap(document)
 	profile.ProgressSlots = cloneAnyMap(slots)
 	profile.ClientState = cloneAnyMap(clientState)
+	profile.BattleStatistics = nil
 	// This is a complete replacement, not a merge. Reset the projections first
 	// so clearing raw documents also clears the support-visible counters rather
 	// than leaving stale values from the previous snapshot.
@@ -1209,6 +1212,7 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	source.Progress = nil
 	source.ProgressDocument = nil
 	source.ProgressSlots = nil
+	source.BattleStatistics = nil
 	source.ClientState = nil
 	advanceProfileProgressRevision(source)
 	source.UpdatedAt = now

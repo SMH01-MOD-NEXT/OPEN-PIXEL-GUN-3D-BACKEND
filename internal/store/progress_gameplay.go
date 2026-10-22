@@ -45,6 +45,7 @@ func allowProfileClientWrite(p *Profile, contexts []ProgressWriteContext) (bool,
 // gameplay projections. All channels now expose the same money, level and XP.
 func reconcileProfileCounters(p *Profile) {
 	projectPixelPass(p)
+	projectBattleStatistics(p)
 	if p.Progress == nil {
 		p.Progress = map[string]any{}
 	}
@@ -197,6 +198,14 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 			return 0, errors.New("store: counter receipt limit reached; operator review required")
 		}
 		if skip[commandPosition] {
+			candidate.ProgressCommandReceipts[key] = true
+			applied++
+			continue
+		}
+		if statsCommand(id) {
+			if err := applyBattleStatistics(&candidate, id, data, now); err != nil {
+				return 0, err
+			}
 			candidate.ProgressCommandReceipts[key] = true
 			applied++
 			continue

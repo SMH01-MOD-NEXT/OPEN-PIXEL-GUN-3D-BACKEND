@@ -246,7 +246,11 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
 		return (*Server).answerCreateSlots
-	case "get_info_by_id", "get_info_by_id_v2", "get_info_by_id_v3":
+	case "get_info_by_id_v3":
+		return (*Server).answerNativePlayerInfo
+	case "update_player_modes_stat":
+		return (*Server).answerUpdatePlayerModesStat
+	case "get_info_by_id", "get_info_by_id_v2":
 		return (*Server).answerGetInfoByID
 	case "update_player":
 		return (*Server).answerUpdatePlayer
@@ -540,6 +544,9 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 
 	if topic := head.text("type"); topic != "" {
 		body["type"] = topic
+		if topic == "get_player_info_subscription" {
+			body["status"] = "ok"
+		}
 	}
 	return body
 }

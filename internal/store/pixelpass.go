@@ -309,7 +309,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 		if err != nil {
 			return nil, err
 		}
-		if id >= 153 { // Reset/change-in-battle is not allowed to erase pass claims.
+		if id >= 154 { // Reset commands must not erase pass progress or claims.
 			for k := range d {
 				if strings.HasPrefix(k, "5_") {
 					return nil, errPass
@@ -335,7 +335,24 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 			}
 			idx, err := strconv.Atoi(strings.TrimPrefix(k, "5_"))
 			task, found := pixelpass.FindTask(idx)
-			if err != nil || !found || !pixelpass.TaskOpen(task, now) {
+			if err != nil || !found {
+				return nil, errPass
+			}
+			// Stock flushes its in-battle dictionary via 153 (151 on completion),
+			// including cached
+			// calendar tasks not open yet. Validate that channel but do not
+			// unlock future tasks or let it roll back the whole match report.
+			if id == 151 || id == 153 {
+				for field, raw := range delta {
+					v, valid := counterInt64(raw)
+					if !valid || v < 0 || (field != "p" && field != "c" && field != "r") || field == "p" && v > 1000000 || field != "p" && v > 1 {
+						return nil, errPass
+					}
+				}
+				if !pixelpass.TaskOpen(task, now) {
+					continue
+				}
+			} else if !pixelpass.TaskOpen(task, now) {
 				return nil, errPass
 			}
 			old, _ := l.Tasks[k].(map[string]any)
@@ -363,7 +380,7 @@ func reducePixelPass(p *Profile, commands []any, now time.Time) (map[int]bool, e
 						return nil, errPass
 					}
 					// An old device can echo the pre-repair tutorial flags.
-					if idx == pixelpass.TutorialTaskIndex && v < ppInt(old, a) {
+					if (idx == pixelpass.TutorialTaskIndex || id == 151 || id == 153) && v < ppInt(old, a) {
 						v = ppInt(old, a)
 					}
 					if v < ppInt(old, a) {

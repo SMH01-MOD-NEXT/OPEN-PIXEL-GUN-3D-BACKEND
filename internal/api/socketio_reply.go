@@ -261,6 +261,7 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		// documents themselves go to the config system, which listens on
 		// its own event. See socketio_configpush.go for the measurement.
 		s.pushConfigDocuments(session, a.namespace, a.transport, codec, head)
+		s.pushSubscribedPlayerInfo(session, a.namespace, a.transport, codec, head, reqID)
 	}
 	if event == sioAuthEvent {
 		// Authorisation is the one reply the loading bar waits on, so it keeps
