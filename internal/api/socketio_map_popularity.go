@@ -5,6 +5,7 @@ package api
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The stock 23.1.3 MapPopularityController callback (RVA 0x33C433C)
@@ -22,21 +23,22 @@ const (
 	mapPopularityMaxKeyBytes = 128
 )
 
-func (s *Server) answerMapPopularity(_ *sioSession, head sioHead, reqID int) map[string]any {
+func (s *Server) answerMapPopularity(session *sioSession, head sioHead, reqID int) map[string]any {
 	data, ok := emptyRequestedMapPopularity(head["params"])
 	if !ok {
 		return socketStateFailure(reqID, "invalid_params")
 	}
+	if _, authenticated := s.socketPlayerID(session); authenticated {
+		session.rememberStockMapCatalog(head["params"])
+	}
+	s.fillStockMapPopularity(data, head["params"], time.Now())
 	body := sioOK(reqID)
 	body["data"] = data
 	return body
 }
 
-// There is currently no authoritative Photon room-statistics feed in this
-// backend. Return explicit zeroes, not fabricated activity, client-reported
-// offline matches, or lifetime play totals. This also replaces stale client
-// counts for the requested maps. The schema is ready for a real source later;
-// this change repairs the wire contract, NOT live population measurement.
+// Validate and allocate the complete stock reply before reading presence. Missing
+// observations remain explicit zeroes; an empty catalog is an object, not null.
 func emptyRequestedMapPopularity(raw any) (mapPopularityData, bool) {
 	data := make(mapPopularityData)
 	// Some clients poll before their map catalog is populated.

@@ -19,6 +19,9 @@ func (s *sioSession) detachReloginTransport(transport sioReloginTransport) {
 	s.mu.Lock()
 	if s.reloginTransport == transport {
 		s.reloginTransport = nil
+		// A closed owner WebSocket is no longer live room telemetry. Preserve
+		// the catalog/retirement flag, but require a fresh report to count again.
+		s.mapPresence.fields = nil
 	}
 	s.mu.Unlock()
 }
@@ -36,6 +39,7 @@ func (s *sioSession) abortReloginTransportForPlayer(playerID string) bool {
 	}
 	transport := s.reloginTransport
 	s.reloginTransport = nil
+	s.mapPresence.fields = nil
 	s.mu.Unlock()
 	return transport.abortForRelogin()
 }

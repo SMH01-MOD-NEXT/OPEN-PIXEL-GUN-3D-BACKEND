@@ -201,6 +201,9 @@ type sioSession struct {
 	reloginTransport      sioReloginTransport
 	progressWriteRevision uint64
 
+	// mapPresence is transient stock-client telemetry, never durable progress.
+	mapPresence stockMapPresence
+
 	// pending is the binary event whose text header has arrived and whose
 	// attachments are still being collected. A socket.io binary event is split
 	// across one text packet and one frame per attachment, so the halves have

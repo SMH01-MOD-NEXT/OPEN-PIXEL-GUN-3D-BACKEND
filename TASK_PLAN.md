@@ -5497,3 +5497,9 @@ backend restart, stale boot protection and actual client History UI. Daily V1/V2
 updates, failure rollback, concurrency and restart covered by tests. Full QA,
 both builds and production admin smoke passed. Deployed PID 50464 healthy.
 No frontend edits, no account/pass resets, no invented match statistics.
+
+## Two-device live popularity verification — 2026-10-22
+- [x] Identify Nothing/Realme; install existing signed APK on Realme only. Realme VPN LAN bypass fixed by user; level 65 + initial tutorial gates synced, economy/XP preserved.
+- [x] Two distinct accounts in a real Photon room on map 1001; offline=false, stock join/leave, and final encrypted live counts 2→1→0 verified with abrupt socket closures. Both apps relaunched without resets.
+- [x] Conservative backend-only counts for stock group 0 / mmrank 0; exclude ambiguous ranks, offline, stale, banned and duplicates. Owner transport close clears immediately. Document self-report/Photon-only disconnect and cold-catalog limits.
+- [x] Full tests/race/vet/build passed; safe local rollout healthy, state byte-identical across restart; official Sweden unchanged. Isolated source/documentation commit; unrelated plan/frontend changes preserved.

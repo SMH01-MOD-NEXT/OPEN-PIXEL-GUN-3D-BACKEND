@@ -90,6 +90,9 @@ func (s *sioSession) setIdentity(uniqID, device, playerID string) {
 	s.mu.Lock()
 	s.uniqID = uniqID
 	s.device = device
+	if s.playerID != playerID {
+		s.mapPresence = stockMapPresence{}
+	}
 	s.playerID = playerID
 	s.mu.Unlock()
 }
@@ -397,6 +400,7 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		return socketBanReply(reqID)
 	}
 	session.setIdentity(uniqID, device, account.PlayerID)
+	s.retireOlderMapPresence(session)
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		session.setProgressWriteRevision(profile.ProgressRevision)
 	}
@@ -738,6 +742,11 @@ func (s *Server) answerRoom(session *sioSession, head sioHead, reqID int) map[st
 // answerPlayerOnline acknowledges the client's presence report and records what
 // it said, which is where the operator's "who is online" view comes from.
 func (s *Server) answerPlayerOnline(session *sioSession, head sioHead, reqID int) map[string]any {
+	if _, ok := s.socketPlayerID(session); !ok {
+		return sioDenied(reqID)
+	}
+	s.retireOlderMapPresence(session)
+	session.mergeStockMapPresence(head)
 	_, _, playerID := session.identity()
 	s.log.Event("socket.player_online", map[string]any{
 		"sid":       session.sid,
