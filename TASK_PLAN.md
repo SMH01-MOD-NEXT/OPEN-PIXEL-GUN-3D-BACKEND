@@ -5622,4 +5622,6 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 ## Resolved support ticket lifecycle — 2026-10-23
 - [x] Keep resolved tickets replyable; player replies reopen them, while only closed tickets are terminal for players.
 - [x] Close resolved tickets immediately without confirmation; retain confirmation for open/needs-info and server-side ownership/CAS/idempotency.
-- [/] Extend lifecycle/API/UI regression tests, build and deploy locally/AWS preserving roles, keys, tickets and game state.
+- [x] Extend lifecycle/API/UI regression tests, build and deploy locally/AWS preserving roles, keys, tickets and game state.
+
+- Release `93c382a` verified locally/AWS; resolved replies reopen and resolved closure skips confirmation in actual Chromium UI. Full Go suite, support/API race tests, vet and eight Node harnesses passed; public HTTPS exact JS hash verified. Role 740333804 persists, state/campaigns/frontend manifest/unrelated services preserved. AWS backup `/var/backups/opg3d/hub-20261023T165717Z-93c382a`.
