@@ -5591,4 +5591,4 @@ Implemented PUT with required expected_ctime_change; delivery-edit permission en
 - [x] Cover auth/CSRF/replay/rate limits/recovery/concurrency/shop persistence and game resync; full Go tests/race/vet/build and browser/UI tests with desktop/mobile visual inspection.
 - [x] Back up/deploy on AWS, preserve accounts/campaigns/existing services and frontend assets, verify HTTPS/security/health; commit isolated changes and record hardware-dependent passkey test limitations.
 
-Deployment completed: runtime `23.1.3-hub-9d1db88`, AWS and local health/HUB verified; see docs/OPG3D_HUB_DEPLOYMENT_2026-10-23.md. Real-device passkey enrollment and in-game wallet refresh remain owner verification; no Android frontend edits.
+Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB verified; see docs/OPG3D_HUB_DEPLOYMENT_2026-10-23.md. Real-device passkey enrollment and in-game wallet refresh remain owner verification; no Android frontend edits.

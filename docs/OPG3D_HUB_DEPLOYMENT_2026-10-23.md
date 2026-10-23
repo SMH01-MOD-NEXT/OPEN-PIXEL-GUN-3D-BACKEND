@@ -2,10 +2,12 @@
 
 ## Release
 
-- Feature: `9a52f57`; final code/UX/test fix: `9d1db88`.
-- Runtime version: `23.1.3-hub-9d1db88` (Linux amd64, CGO disabled).
-- Binary SHA-256: `828ed32726ba8b1f998a2ba01a13710d94a22bf4e34b53fa8af33a3fa639e62a`.
+- Feature: `9a52f57`; code/UX/test fix: `9d1db88`; complete runtime configuration: `8bb5520`.
+- Runtime version: `23.1.3-hub-8bb5520` (Linux amd64, CGO disabled).
+- Binary SHA-256: `956a553eb6aaab48b45c83e43e9b660ecad7904bb94a48387169f2c3239a85ed`.
 - Public URL: `https://opg3d.smh01.net.eu.org/`.
+- Final binary built and tested from an isolated `git archive 8bb5520` source
+  snapshot, not from uncommitted working-tree code.
 - Local backend rebuilt/restarted; health and HUB endpoints checked.
 - AWS `opg3d-backend.service` updated; health passed. Shared Caddy and legacy
   game gateway stayed running. Caddy root redirect replaced by the HUB proxy;
@@ -15,7 +17,7 @@
 
 ## Preservation checks
 
-Both swaps compared the stopped-server authoritative state before/after startup:
+Every swap compared the stopped-server authoritative state before/after startup:
 byte-identical. Two accounts/profiles retained. Neither local state nor frontend
 files were copied onto AWS. Native frontend manifest stayed:
 `0f4238d665f654816693fd07fdddfebc05b237140f85e4d017c396e57bbac86f`.
@@ -29,6 +31,7 @@ Protected AWS backups:
 
 - `/var/backups/opg3d/hub-20261023T144310Z-9a52f57`
 - `/var/backups/opg3d/hub-20261023T144545Z-9d1db88`
+- `/var/backups/opg3d/hub-20261023T144811Z-8bb5520` (final release)
 
 They contain old binaries/env/state and sanitized receipts. First backup also
 has `backend.env.after` with the generated stable key, mode 0600. Later backups
