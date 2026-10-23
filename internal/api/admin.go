@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/clienterrors"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
 )
@@ -33,6 +34,7 @@ func (s *Server) registerAdminRoutes() {
 	s.mux.HandleFunc("GET /api/v1/admin/catalog", s.admin(s.handleAdminCatalog))
 	s.mux.HandleFunc("GET /api/v1/admin/players/{id}/inventory", s.admin(s.handleAdminInventory))
 	s.mux.HandleFunc("POST /api/v1/admin/players/{id}/inventory", s.admin(s.handleAdminEditInventory))
+	s.mux.HandleFunc("GET /api/v1/admin/client-errors", s.admin(s.handleAdminClientErrors))
 	s.mux.HandleFunc("GET /api/v1/admin/stats", s.admin(s.handleAdminStats))
 	s.mux.HandleFunc("GET /api/v1/admin/players", s.admin(s.handleAdminPlayers))
 	s.mux.HandleFunc("GET /api/v1/admin/players/{id}", s.admin(s.handleAdminPlayer))
@@ -93,6 +95,7 @@ func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
 func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"stats":         s.st.Stats(),
+		"client_errors": s.clientErrors.Query(clienterrors.Query{}, time.Now()).Summary,
 		"server":        s.cfg.ServerName,
 		"version":       s.cfg.Update.Version,
 		"maintenance":   s.cfg.Maintenance,

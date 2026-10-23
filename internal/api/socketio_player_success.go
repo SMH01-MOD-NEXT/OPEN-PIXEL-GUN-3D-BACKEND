@@ -35,6 +35,7 @@ func (s *Server) answerPlayerSuccessInit(session *sioSession, head sioHead, reqI
 				fields["progress_revision_error"] = err.Error()
 				body["error"], body["err_code"], body["result"] = 1, 1, "progress_store_failed"
 			} else if applied {
+				s.diagnostic(playerID, "info", "resync_completed", "Authoritative progress download acknowledged by client", revision)
 				session.clearPendingProgressRevision(revision)
 			}
 		}

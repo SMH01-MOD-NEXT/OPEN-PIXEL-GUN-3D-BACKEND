@@ -26,6 +26,7 @@
           ><button data-route="players" data-i18n="players"></button
           ><button data-route="catalog" data-i18n="catalog"></button
           ><button data-route="support" data-i18n="support"></button
+          ><button data-route="clientErrors" data-i18n="clientErrors"></button
           ><button data-route="logs" data-i18n="logs"></button
           ><button data-route="settings" data-i18n="settings"></button>
         </nav>
@@ -60,6 +61,9 @@
               <span class="badge">23.1.3</span>
             </div>
             <div id="stats" class="cards"></div>
+            <h2 data-i18n="diagnostics24h"></h2>
+            <div id="diagnosticStats" class="cards"></div>
+            <p id="diagnosticHealth" class="muted"></p>
             <div class="quick-links">
               <button data-route="players">
                 <strong data-i18n="managePlayers"></strong
@@ -69,6 +73,19 @@
                 ><span data-i18n="browseCatalogHint"></span>
               </button>
             </div>
+          </section>
+          <section id="page-clientErrors" class="page" hidden>
+            <div class="toolbar">
+              <label class="search-field"><span data-i18n="diagnosticSearch"></span><input id="diagnosticQ" type="search" data-placeholder="diagnosticSearch" /></label>
+              <label><span data-i18n="player"></span><input id="diagnosticPlayer" data-aria="player" /></label>
+              <label><span data-i18n="diagnosticLevel"></span><select id="diagnosticLevel"><option value="" data-i18n="diagnosticAll"></option><option value="error" data-i18n="diagnosticError"></option><option value="warning" data-i18n="diagnosticWarning"></option><option value="info" data-i18n="diagnosticInfo"></option></select></label>
+              <label><span data-i18n="diagnosticSource"></span><select id="diagnosticSource"><option value="" data-i18n="diagnosticAll"></option><option value="client" data-i18n="diagnosticClient"></option><option value="backend" data-i18n="diagnosticBackend"></option></select></label>
+              <button id="diagnosticFind" class="primary" data-i18n="find"></button>
+            </div>
+            <p class="muted" data-i18n="diagnosticRetention"></p>
+            <p id="diagnosticResult" role="status" aria-live="polite"></p>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="diagnosticLast"></th><th data-i18n="diagnosticEvent"></th><th data-i18n="diagnosticOccurrences"></th><th data-i18n="players"></th><th data-i18n="diagnosticDetails"></th></tr></thead><tbody id="diagnosticRows"></tbody></table></div>
+            <div class="toolbar"><button id="diagnosticPrev" data-i18n="diagnosticPrev"></button><button id="diagnosticNext" data-i18n="diagnosticNext"></button></div>
           </section>
           <section id="page-players" class="page" hidden>
             <div id="playerList">

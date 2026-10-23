@@ -57,10 +57,11 @@ type registerRequest struct {
 }
 
 type accountResponse struct {
-	PlayerID string `json:"player_id"`
-	Session  string `json:"session"`
-	Nick     string `json:"nick"`
-	Created  bool   `json:"created"`
+	DiagnosticsToken string `json:"diagnostics_token,omitempty"`
+	PlayerID         string `json:"player_id"`
+	Session          string `json:"session"`
+	Nick             string `json:"nick"`
+	Created          bool   `json:"created"`
 }
 
 // handleRegister is account registration and login in one call: the device id
@@ -118,10 +119,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		"created":   created,
 	})
 	s.writeJSON(w, http.StatusOK, accountResponse{
-		PlayerID: account.PlayerID,
-		Session:  account.Session,
-		Nick:     account.Nick,
-		Created:  created,
+		DiagnosticsToken: s.diagnosticsCredentials.Mint(account.PlayerID, time.Now()),
+		PlayerID:         account.PlayerID,
+		Session:          account.Session,
+		Nick:             account.Nick,
+		Created:          created,
 	})
 }
 

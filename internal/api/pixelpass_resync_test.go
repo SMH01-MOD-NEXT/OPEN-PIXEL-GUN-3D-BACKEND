@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/clienterrors"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/pixelpass"
 	"reflect"
 	"strconv"
@@ -39,6 +40,10 @@ func TestPixelPassConflictArmsAuthoritativeReloadNotFalseGrant(t *testing.T) {
 	if status["opg3d_admin_resync"] != revisionTestPlayerID+":"+strconv.FormatUint(p.ProgressRevision, 10) {
 		t.Fatal("native reload bridge not armed")
 	}
+	q := s.clientErrors.Query(clienterrors.Query{Text: "resync_required"}, time.Now())
+	if q.Total != 1 || q.Groups[0].Revision != p.ProgressRevision {
+		t.Fatal("resync diagnostic missing", q)
+	}
 	current := p.ProgressRevision
 	s.answerUpdateProgress(session, claim, 104)
 	p, _ = s.st.Profile(revisionTestPlayerID)
@@ -50,6 +55,9 @@ func TestPixelPassConflictArmsAuthoritativeReloadNotFalseGrant(t *testing.T) {
 	fresh.setProgressWriteRevision(current)
 	s.answerProgressStatus(fresh, sioHead{}, 105)
 	completeRevisionDownload(t, s, fresh, current)
+	if q = s.clientErrors.Query(clienterrors.Query{Text: "resync_completed"}, time.Now()); q.Total != 1 {
+		t.Fatal("resync completion diagnostic missing", q)
+	}
 	p, _ = s.st.Profile(revisionTestPlayerID)
 	if !reflect.DeepEqual(p.PixelPass, before.PixelPass) {
 		t.Fatal("reload lost premium/crowns/claims")

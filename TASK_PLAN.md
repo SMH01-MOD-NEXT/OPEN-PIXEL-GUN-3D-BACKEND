@@ -5503,3 +5503,14 @@ No frontend edits, no account/pass resets, no invented match statistics.
 - [x] Two distinct accounts in a real Photon room on map 1001; offline=false, stock join/leave, and final encrypted live counts 2→1→0 verified with abrupt socket closures. Both apps relaunched without resets.
 - [x] Conservative backend-only counts for stock group 0 / mmrank 0; exclude ambiguous ranks, offline, stale, banned and duplicates. Owner transport close clears immediately. Document self-report/Photon-only disconnect and cold-catalog limits.
 - [x] Full tests/race/vet/build passed; safe local rollout healthy, state byte-identical across restart; official Sweden unchanged. Isolated source/documentation commit; unrelated plan/frontend changes preserved.
+
+## Client error telemetry and admin diagnostics — 2026-10-23
+- [x] Inspect client logging/resync, authenticated backend and admin conventions.
+- [x] Add bounded, sanitized, persistent diagnostic events and authenticated ingestion.
+- [x] Capture Unity client errors off-thread and annotate real resync lifecycle.
+- [x] Add localized admin errors tab, filters and dashboard counters.
+- [x] Test privacy/auth/rate limits/persistence/UI; build production client and backend.
+- [x] Fix scoped diagnostics authentication after live gameplay identity reconciliation.
+- [x] Deploy backend v2 and signed module build 49 to AWS; verify health/admin stats.
+- [ ] Finish real-device delivery verification of module 49 (Nothing disconnected from ADB).
+- [x] Commit verified changes and document release/deployment limitations.

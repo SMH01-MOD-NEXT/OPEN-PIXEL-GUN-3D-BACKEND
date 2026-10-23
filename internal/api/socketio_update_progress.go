@@ -95,10 +95,15 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 				profile, syncErr := s.st.RequestProfileProgressResync(playerID, session.progressWriteContext())
 				if syncErr == nil {
 					body["result"] = "progress_resync_required"
+					s.diagnostic(playerID, "warning", "resync_required", "Pixel Pass state conflict; authoritative progress download required", profile.ProgressRevision)
 					s.log.Event("socket.pixelpass_resync_required", map[string]any{"player_id": playerID, "req_id": reqID, "revision": profile.ProgressRevision, "reason": err.Error()})
 				} else {
+					s.diagnostic(playerID, "error", "resync_failed", "Unable to schedule authoritative progress download", 0)
 					s.log.Event("socket.pixelpass_resync_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": syncErr.Error()})
 				}
+			}
+			if !errors.Is(err, store.ErrPixelPassStateConflict) {
+				s.diagnostic(playerID, "error", "progress_update_failed", err.Error(), 0)
 			}
 			s.log.Event("socket.progress_update_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": err.Error()})
 			return body

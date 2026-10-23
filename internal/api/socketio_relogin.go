@@ -73,6 +73,7 @@ func (s *Server) reloginOnlinePlayerAfterProgressEdit(playerID string, revision 
 		canonicalID = account.PlayerID
 	}
 	aborted := s.sio.reloginPlayer(canonicalID)
+	s.diagnostic(canonicalID, "info", "operator_resync_scheduled", "Operator progress edit scheduled authoritative reload", revision)
 	s.log.Event("admin.progress_relogin", map[string]any{
 		"player_id": canonicalID,
 		"revision":  revision,

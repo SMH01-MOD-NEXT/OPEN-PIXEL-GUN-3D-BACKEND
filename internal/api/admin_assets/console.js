@@ -199,7 +199,7 @@
   }
   async function navigate(value) {
     if (!discard()) return;
-    if (!["overview", "players", "catalog", "support", "logs", "settings"].includes(value))
+    if (!["overview", "players", "catalog", "support", "clientErrors", "logs", "settings"].includes(value))
       value = "overview";
     if (route === "logs" && value !== "logs") stopLogs();
     route = value;
@@ -220,11 +220,13 @@
         catalog: "catalogRouteHint",
         support: "supportHint",
         logs: "logsHint",
+        clientErrors: "clientErrorsHint",
         settings: "settingsHint",
       }[route],
     );
     if (!connected) return;
     if (route === "overview") await loadStats();
+    if (route === "clientErrors") await loadDiagnostics();
     if (route === "players" && !selected) await loadPlayers();
     if (route === "catalog") {
       updateTarget();
@@ -252,7 +254,36 @@
           "</span></div>",
       )
       .join("");
+    renderDiagnosticStats(d.client_errors || {});
   }
+  let diagnosticOffset = 0, diagnosticSeq = 0;
+  function renderDiagnosticStats(s) {
+    el("diagnosticStats").innerHTML = [
+      ["diagnosticErrors",s.errors], ["diagnosticGroups",s.groups],
+      ["diagnosticPlayers",s.players], ["diagnosticResyncs",s.resyncs],
+      ["diagnosticCompleted",s.completed],
+    ].map(([key,value]) => '<div class="card"><b>'+esc(value || 0)+'</b><span>'+esc(t(key))+'</span></div>').join("");
+    el("diagnosticHealth").textContent = s.unavailable ? t("diagnosticUnavailable") : t("diagnosticLimited",{count:s.rate_limited || 0});
+  }
+  async function loadDiagnostics() {
+    const seq=++diagnosticSeq;
+    el("diagnosticResult").textContent=t("loading");
+    const params=new URLSearchParams({q:el("diagnosticQ").value.trim(),player:el("diagnosticPlayer").value.trim(),level:el("diagnosticLevel").value,source:el("diagnosticSource").value,offset:String(diagnosticOffset),limit:"50"});
+    const data=await api("GET","/api/v1/admin/client-errors?"+params);
+    if(seq!==diagnosticSeq || route!=="clientErrors") return;
+    const groups=data.groups || [];
+    const time=v=>v?new Date(v).toLocaleString(language):"—";
+    el("diagnosticRows").innerHTML=groups.map(g=>
+      '<tr><td>'+esc(time(g.last))+'</td><td><strong>'+esc(g.code)+'</strong><small>'+esc(t(g.source==="backend"?"diagnosticBackend":"diagnosticClient"))+' · '+esc(t(g.level==="error"?"diagnosticError":g.level==="warning"?"diagnosticWarning":"diagnosticInfo"))+'</small><p>'+esc(g.message)+'</p></td><td>'+esc(g.count)+'</td><td>'+esc(g.players)+'</td><td><details><summary>'+esc(t("diagnosticDetails"))+'</summary><dl><dt>'+esc(t("diagnosticModule"))+'</dt><dd>'+esc(g.version || "—")+' / '+esc(g.module || "—")+'</dd><dt>'+esc(t("diagnosticRevision"))+'</dt><dd>'+esc(g.revision || "—")+'</dd><dt>'+esc(t("diagnosticFirst"))+'</dt><dd>'+esc(time(g.first))+'</dd><dt>'+esc(t("diagnosticSample"))+'</dt><dd>'+esc(g.player_id)+'</dd></dl><pre>'+esc(g.stack || g.message)+'</pre></details></td></tr>'
+    ).join("");
+    el("diagnosticResult").textContent=data.summary?.unavailable ? t("diagnosticUnavailable") : !data.total ? t("diagnosticEmpty") : t("diagnosticShown",{first:groups.length?diagnosticOffset+1:0,last:diagnosticOffset+groups.length,total:data.total});
+    el("diagnosticPrev").disabled=diagnosticOffset===0;
+    el("diagnosticNext").disabled=diagnosticOffset+50>=data.total;
+  }
+  el("diagnosticFind").onclick=()=>{diagnosticOffset=0;loadDiagnostics().catch(report);};
+  el("diagnosticPrev").onclick=()=>{diagnosticOffset=Math.max(0,diagnosticOffset-50);loadDiagnostics().catch(report);};
+  el("diagnosticNext").onclick=()=>{diagnosticOffset+=50;loadDiagnostics().catch(report);};
+  ["diagnosticQ","diagnosticPlayer"].forEach(id=>el(id).addEventListener("keydown",e=>{if(e.key==="Enter") el("diagnosticFind").click();}));
   async function loadPlayers() {
     const seq = ++listSeq;
     el("playersHint").textContent = t("loading");
@@ -1076,6 +1107,7 @@
     ++playerSeq;
     ++catalogSeq;
     ++listSeq;
+    ++diagnosticSeq;diagnosticOffset=0;
     stopLogs();
     token = "";
     sessionStorage.removeItem("opg3d_admin_token");
@@ -1084,7 +1116,7 @@
     connectedUI(false);
     logLines = [];
     drawLogs();
-    ["players", "stats", "ownedItems", "catalogItems", "metadata"].forEach(
+    ["players", "stats", "ownedItems", "catalogItems", "metadata", "diagnosticRows", "diagnosticStats", "diagnosticResult", "diagnosticHealth"].forEach(
       (id) => (el(id).textContent = ""),
     );
     Object.values(RAW).forEach((id) => (el(id).value = ""));

@@ -858,3 +858,8 @@ dialog .form-grid label {
     scroll-behavior: auto !important;
   }
 }
+
+#page-clientErrors td { vertical-align: top; }
+#page-clientErrors td p { max-width: 32rem; overflow-wrap: anywhere; }
+#page-clientErrors pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 36rem; }
+#page-clientErrors details { min-width: 12rem; }

@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/clienterrors"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/config"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/secrets"
@@ -39,11 +40,13 @@ const maxRequestBody = 1 << 20
 // Server implements http.Handler.
 type Server struct {
 	// Serializes ban commits against encrypted gameplay dispatch.
-	banMu sync.RWMutex
-	cfg   *config.Config
-	log   *logs.Logger
-	st    *store.Store
-	mux   *http.ServeMux
+	clientErrors           *clienterrors.Store
+	diagnosticsCredentials *clienterrors.Credentials
+	banMu                  sync.RWMutex
+	cfg                    *config.Config
+	log                    *logs.Logger
+	st                     *store.Store
+	mux                    *http.ServeMux
 	// sio holds the live socket.io sessions of the config channel, which
 	// outlive the individual requests that carry them.
 	sio *sioHub
@@ -62,6 +65,11 @@ type Server struct {
 // New builds the router.
 func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
 	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log)), settings: newSettings(cfg)}
+	s.clientErrors, _ = clienterrors.Open(cfg.DataDir)
+	s.diagnosticsCredentials, _ = clienterrors.OpenCredentials(cfg.DataDir)
+	if s.clientErrors.Query(clienterrors.Query{}, time.Now()).Summary.Unavailable {
+		log.Event("client.diagnostics_unavailable", nil)
+	}
 	s.configNonce = newConfigNonce()
 	if err := s.settings.load(); err != nil {
 		// A settings file that cannot be read must not stop the server: the
@@ -77,6 +85,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/loader/info", s.handleLoaderInfo)
 	s.mux.HandleFunc("GET /api/v1/frontend/manifest", s.handleFrontendManifest)
 	s.mux.HandleFunc("GET /api/v1/frontend/{hash}/library.so", s.handleFrontendBinary)
+	s.mux.HandleFunc("POST /api/v1/client-errors", s.handleClientErrors)
 	// Real protocol.
 	s.mux.HandleFunc("GET /api/v1/ping", s.handlePing)
 	s.mux.HandleFunc("GET /api/v1/time", s.handleTime)
@@ -222,7 +231,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // durable/live trace. The response is still sent in full to the authenticated
 // operator; only the diagnostic copy is omitted.
 func redactHTTPBodyTrace(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, "/api/v1/admin/")
+	return strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/client-errors"
 }
 
 func redactedHTTPBody(size int) string {
