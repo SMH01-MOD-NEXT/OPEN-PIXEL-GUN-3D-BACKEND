@@ -63,6 +63,10 @@ func mailboxWireNews(n store.MailboxNews) map[string]any {
 	}
 	if items := n.Rewards.Tokens(); len(items) > 0 {
 		out["items"] = items
+		// Stock 0x33BA980 requires items AND a nonnegative idReward. Without
+		// id_reward the constructor keeps -1, hiding the whole reward section.
+		// Use the news ID as a stable reward ID, matching command 187 / slot 42.
+		out["id_reward"] = n.ID
 	}
 	return out
 }

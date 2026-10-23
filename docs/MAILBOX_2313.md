@@ -84,11 +84,24 @@ Unknown IDs are omitted, not fabricated. Message IDs are bounded positive Int32;
 both stock JSON integers and decimal-string IDs are accepted, at most 500 per call.
 
 Text-only news omits reward fields. Gift letters add `items` as **strings**, e.g.
-`["1015:1000","2015:500","203001:1"]`. No custom claim event or HTTP endpoint is
+`["1015:1000","2015:500","203001:1"]`, plus **`id_reward: <message ID>`**.
+The reward ID is stable and positive; it deliberately equals the message ID so
+command 187 and slot 42 use the same server ledger key. No custom claim event or HTTP endpoint is
 invented. Read flags remain stock-client-local. The admin list HTML-escapes text.
 
 ## Stock reward contract and safety
 
+- **Visibility gate:** `NewsLobbyController` at `0x340F8DC` calls the model helper
+  `0x33BA980`, which requires `_items.Count > 0` **and** `idReward >= 0`.
+  Constructor `0x33B6C30..0x33B6C3C` defaults `idReward` to -1 and only fills it
+  from `id_reward` at `0x33B7284..0x33B7340`. Sending `items` alone hides rewards.
+  The DeveloperMessage helper `0x33BAB9C` also validates that reward ID. `r_message`
+  is a separate big-reward-banner mode and is not needed for normal multi gifts.
+- Existing gift records with an older `reward_wire_version` are migrated once on
+  store open: only the wire version and monotonically increasing `ctime_change`
+  change, forcing stock to re-fetch its cached body. IDs, schedules, gifts, account
+  balances and durable claim receipts are untouched. Newly created gifts already
+  carry the current wire version; later restarts do not invalidate them again.
 - `NewsLobbyController.GetRewardByMessgae` RVA `0x340E9C8` invokes the mailbox
   grant path `0x33B904C`. It checks claim membership (`0x1B52ED4`), starts one
   progress transaction, grants each `OfferItem` via `0x335E104` with cause **62**

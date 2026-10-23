@@ -5533,3 +5533,11 @@ No frontend edits, no account/pass resets, no invented match statistics.
 - [x] Safely restart local backend, verify letters/state, commit isolated changes. No frontend writes or AWS deployment.
 
 Verification: full Go tests and race suite, go vet, production build and all console regression scripts passed. Local :8080 is running the new build; news #2/#3/#4 imported, former text-only #1 archived. Campaign import changed only mailbox_news, not accounts/profiles/balances. Physical in-game acceptance remains manual (no adb devices).
+
+## Mailbox reward visibility repair — 2026-10-23
+- [x] Trace stock UI/parser gates for gifts and compare the live mailbox payload.
+- [x] Correct backend wire contract and invalidate cached letters without resetting claims.
+- [x] Add regression tests, run tests/race/vet/build, restart local backend and commit only this repair.
+- [ ] Frontend remains read-only; actual in-game reward display requires user verification.
+
+Root cause: stock 0x33BA980 requires items.Count>0 AND idReward>=0; absent id_reward left -1. Backend now emits stable id_reward=news.ID. One-time gift-wire migration bumps ctime_change only, preserving profiles, claims, IDs, rewards and schedules. Full tests/race/vet/build and console tests passed; local :8080 running repaired build. Restart verified only mailbox wire/cache fields changed. No connected Android device; awaiting user acceptance.

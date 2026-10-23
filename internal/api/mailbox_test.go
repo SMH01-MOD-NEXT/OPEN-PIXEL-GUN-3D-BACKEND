@@ -257,3 +257,33 @@ func TestMailboxRewardStockUpdateProgressDispatch(t *testing.T) {
 		t.Fatal("claim did not reach durable reducer", after.Coins, after.Gems)
 	}
 }
+
+// Regression: the stock UI's 0x33BA980 gate is items.Count > 0 AND
+// idReward >= 0. Merely asserting that items exists missed the hidden gifts.
+func TestMailboxGiftWireCarriesStockRewardIdentity(t *testing.T) {
+	for _, r := range []store.MailboxRewards{
+		{Coins: 1000, Gems: 500, Weapon: 203001}, {Coins: 2626, Gems: 1010},
+		{Coins: 3131, Gems: 1010, Weapon: 143001},
+	} {
+		n := store.MailboxNews{ID: 27, MailboxNewsDraft: store.MailboxNewsDraft{Type: "DeveloperMessage", Rewards: r}}
+		encoded, err := json.Marshal(mailboxWireNews(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire map[string]any
+		if err = json.Unmarshal(encoded, &wire); err != nil {
+			t.Fatal(err)
+		}
+		id, ok := wire["id_reward"].(float64)
+		if !ok || id < 0 || id != float64(n.ID) {
+			t.Fatal("stock hides gifts without stable id_reward", wire)
+		}
+		items, ok := wire["items"].([]any)
+		if !ok || len(items) != len(r.Tokens()) {
+			t.Fatal("invalid stock gift list", wire)
+		}
+		if wire["r_message"] != nil || wire["reward_type"] != nil || wire["reward_cnt"] != nil {
+			t.Fatal("unexpected alternate reward path", wire)
+		}
+	}
+}

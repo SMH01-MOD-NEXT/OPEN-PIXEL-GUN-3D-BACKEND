@@ -32,9 +32,10 @@ type MailboxNewsDraft struct {
 type MailboxNews struct {
 	ID int `json:"id"`
 	MailboxNewsDraft
-	Date     int64 `json:"date"`
-	Changed  int   `json:"ctime_change"`
-	Archived bool  `json:"archived,omitempty"`
+	Date              int64 `json:"date"`
+	Changed           int   `json:"ctime_change"`
+	Archived          bool  `json:"archived,omitempty"`
+	RewardWireVersion int   `json:"reward_wire_version,omitempty"`
 }
 
 func normalizeMailboxText(t MailboxText, limit int) (MailboxText, bool) {
@@ -127,6 +128,9 @@ func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
 	}
 	now := time.Now().Unix()
 	n := MailboxNews{ID: id, MailboxNewsDraft: d, Date: now, Changed: int(now)}
+	if len(d.Rewards.Tokens()) > 0 {
+		n.RewardWireVersion = mailboxRewardWireVersion
+	}
 	if d.PublishAt != nil {
 		n.Date = d.PublishAt.Unix()
 	}
@@ -176,4 +180,26 @@ func (s *Store) ArchiveMailboxNews(id int) error {
 		return nil
 	}
 	return ErrNotFound
+}
+
+// Version 1 adds the required stock id_reward field. Bump cached gift bodies
+// exactly once, retaining message/reward IDs, publication times and all claims.
+const mailboxRewardWireVersion = 1
+
+func migrateMailboxRewardWire(news []MailboxNews, now time.Time) bool {
+	changed := false
+	for i := range news {
+		n := &news[i]
+		if len(n.Rewards.Tokens()) == 0 || n.RewardWireVersion >= mailboxRewardWireVersion {
+			continue
+		}
+		version := int(now.Unix())
+		if version <= n.Changed {
+			version = n.Changed + 1
+		}
+		n.Changed = version
+		n.RewardWireVersion = mailboxRewardWireVersion
+		changed = true
+	}
+	return changed
 }

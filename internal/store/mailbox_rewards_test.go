@@ -213,3 +213,75 @@ func TestMailboxClaimTransferUnionAndIDChange(t *testing.T) {
 		t.Fatal("rename reset ledger")
 	}
 }
+
+func TestMailboxGiftWireMigrationInvalidatesCacheOnceWithoutRegrant(t *testing.T) {
+	s, dir, ctx := syncedGameplayStore(t)
+	n := rewardNews(t, s, nil)
+	if _, err := s.ApplyProfileCounterCommands(socketUniqID, ctx, mailClaim(n, "claimed-before-wire-fix")); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	future := rewardNews(t, s, &at)
+	text, err := s.CreateMailboxNews(mailboxDraft())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the existing version with items but no id_reward. Also exercise
+	// monotonic invalidation when ctime_change is already ahead of the clock.
+	s.state.MailboxNews[0].RewardWireVersion = 0
+	s.state.MailboxNews[1].RewardWireVersion = 0
+	s.state.MailboxNews[1].Changed = int(time.Now().Add(time.Hour).Unix())
+	futureChanged := s.state.MailboxNews[1].Changed
+	if err = s.persistLocked(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.Profile(socketUniqID)
+	beforeJSON, _ := json.Marshal(before)
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	news := reopened.MailboxNews()
+	if news[0].ID != n.ID || news[0].Changed <= n.Changed || news[0].RewardWireVersion != mailboxRewardWireVersion {
+		t.Fatal("cached gift not invalidated", news[0])
+	}
+	if news[1].ID != future.ID || news[1].Changed <= futureChanged || !news[1].PublishAt.Equal(at) || news[1].Date != future.Date {
+		t.Fatal("future letter altered", news[1])
+	}
+	if !reflect.DeepEqual(news[2], text) {
+		t.Fatal("text-only news changed")
+	}
+	after, _ := reopened.Profile(socketUniqID)
+	afterJSON, _ := json.Marshal(after)
+	if string(beforeJSON) != string(afterJSON) {
+		t.Fatal("repair changed account progress/claims")
+	}
+	if _, err = reopened.ApplyProfileCounterCommands(socketUniqID, ctx, mailClaim(n, "after-wire-fix")); err != nil {
+		t.Fatal(err)
+	}
+	after, _ = reopened.Profile(socketUniqID)
+	if after.Coins != before.Coins || after.Gems != before.Gems {
+		t.Fatal("repair rearmed claim")
+	}
+	again, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(news, again.MailboxNews()) {
+		t.Fatal("wire fix invalidates cache on every restart")
+	}
+}
+func TestMailboxNewGiftsAlreadyCarryCurrentWireVersion(t *testing.T) {
+	s, dir, _ := syncedGameplayStore(t)
+	n := rewardNews(t, s, nil)
+	if n.RewardWireVersion != mailboxRewardWireVersion {
+		t.Fatal("new gift missing wire version")
+	}
+	again, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(n, again.MailboxNews()[0]) {
+		t.Fatal("new gift unnecessarily invalidated on restart")
+	}
+}

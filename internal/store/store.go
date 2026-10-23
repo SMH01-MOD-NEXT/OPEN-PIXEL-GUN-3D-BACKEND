@@ -165,6 +165,11 @@ func OpenWithOptions(dir string, opts Options) (*Store, error) {
 			return nil, fmt.Errorf("store: persist Pixel Pass tutorial repair: %w", err)
 		}
 	}
+	if migrateMailboxRewardWire(s.state.MailboxNews, time.Now().UTC()) {
+		if err := s.persistLocked(); err != nil {
+			return nil, fmt.Errorf("store: persist mailbox reward wire repair: %w", err)
+		}
+	}
 	return s, nil
 }
 
