@@ -5549,3 +5549,12 @@ Root cause: stock 0x33BA980 requires items.Count>0 AND idReward>=0; absent id_re
 - [ ] Actual stock in-game claim remains pending user acceptance; frontend read-only.
 
 Measured defect: numeric currency catalog tokens produced Currency=1200; mailbox UI requires Coins=1010/Gems=1000. Send Coins::N/Gems::N and migrate gift-wire v0/v1 to v2 once. Exact independent wire expectations now cover all three campaign letters. Full Go tests/race/vet/build and all console scripts passed. Restart verified only gift wire version/ctime changed for #2/#3/#4; all profiles, balances, receipts, schedules and other state unchanged. Local health/admin HTTP 200. Claim-button conditions traced; server has no claim receipts, but physical client button/claim remains unverified, not declared fixed. No frontend/AWS changes.
+
+## AWS scheduled mailbox campaign deployment — 2026-10-23
+- [x] Confirm explicit AWS approval, inspect production services/state and validate the two existing scheduled drafts; frontend unchanged.
+- [x] Validate and build the fixed static linux/amd64 backend; rehearse startup against a private production-state copy.
+- [x] Back up production binary/config/data, atomically deploy backend only and preserve all live player data; keep gateway/frontend unchanged.
+- [x] Idempotently import only the October 26/31 scheduled letters through private admin API; verify gifts, UTC publication, persistence and public admin denial.
+- [x] Document release/rollback and commit isolated deployment notes; report actual AWS status.
+
+AWS outcome: version 23.1.3-mailbox-rewards-9255aec, SHA256 fe56aba8a6aa17bf1e8f9342d7adc7db35522ceac10e0fe48bc47c4eb7c359e0. Production #1 scheduled 2026-10-26T12:00:00Z (2626 Coins/1010 Gems); #2 scheduled 2026-10-31T12:00:00Z (3131 Coins/1010 Gems/Pumpkin Thrower 143001). No temporary test gift imported. Private backup /var/backups/opg3d/mailbox-20261023T120115Z-9255aec. Full tests/race/vet/static build/console checks passed; private-copy rehearsal and repeat-import idempotency passed. Startup preserved full state; final comparison changed only mailbox_news. Public ping/loader 200; admin 404; private unauthenticated admin 401. Backend PID 25457; gateway PID 21993 unchanged; config/client manifest and auxiliary data unchanged. Actual scheduled-publication/claim on AWS awaits the stated dates; local in-game gift acceptance was confirmed by user.

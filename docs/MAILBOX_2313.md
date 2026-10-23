@@ -1,7 +1,7 @@
 # Stock 23.1.3 mailbox news
 
 Backend-only implementation. The frontend repository is read-only for this task;
-no APK/native module changes or official AWS deployment are required.
+no APK/native module changes are required. See the AWS campaign deployment below.
 
 ## Operator workflow
 
@@ -179,3 +179,40 @@ rollback, new accounts, transfer/rename and authoritative slot-42 projection.
 Local operation is separate from official AWS. No Android device was connected
 when implemented, so actual in-game display/read-cache behavior is a manual
 acceptance check, not a claimed completed device test.
+
+## AWS campaign deployment — 2026-10-23
+
+User explicitly approved AWS publication after confirming local reward display and
+claim behavior. Backend release `23.1.3-mailbox-rewards-9255aec` was rebuilt as a
+static linux/amd64 binary from `9255aec`; SHA256
+`fe56aba8a6aa17bf1e8f9342d7adc7db35522ceac10e0fe48bc47c4eb7c359e0`.
+
+Production previously had no mailbox records. Imported through the private admin
+API, not by copying local state:
+
+| AWS ID | Publication (UTC) | Gift |
+| --- | --- | --- |
+| 1 | 2026-10-26 12:00:00Z | 2626 coins, 1010 gems |
+| 2 | 2026-10-31 12:00:00Z | 3131 coins, 1010 gems, Pumpkin Thrower (143001) |
+
+Both use DeveloperMessage, RU/EN text, wire version 2 and no expiry. The temporary
+local test letter was **not** imported. IDs are instance-local, not copied from
+local #3/#4. Repeat-import verification reused matching records without duplicates.
+
+Before switching, full tests/race/vet, static build and all console tests passed.
+A separate private production-state copy verified byte-equivalent logical startup
+state and successful idempotent campaign import. The real backend was stopped,
+its binary/config/data backed up, executable atomically replaced and service
+started. Final state comparison changed **only mailbox_news**: two accounts and
+two profiles, balances, receipts, configuration, client manifest and auxiliary
+files were unchanged. No client module update or gateway restart occurred.
+Backend/gateway active; public ping/loader HTTP200, public admin HTTP404,
+private unauthenticated admin HTTP401. In-game publication/claim of future AWS
+letters remains pending their scheduled dates; local gift acceptance is user-confirmed.
+
+Restricted backup: `/var/backups/opg3d/mailbox-20261023T120115Z-9255aec`.
+Do not overwrite live player data with local snapshots or restore old progress as
+a code rollback. The pre-mailbox binary predates the new persisted fields; after
+campaign publication/claims, assess schema preservation before reverting it.
+Prefer a compatible forward repair. Backup includes configuration and private
+player data and must remain root-only.

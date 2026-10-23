@@ -80,3 +80,14 @@ User-approved signed native publication on2026-10-23: build33, version `23.1.3-b
 Published artifact first and active.json last, atomically. Public manifest signature, artifact size/hash, ping200 and loader-info200 verified; `/admin` and `/api/v1/admin/state` remain404. Backend/gateway PIDs22117/21993 unchanged and both active. No backend restart, executable/configuration replacement or account-data copy.
 
 Retained previous build20 artifact, with manifest/key backup and pre-signed monotonic rollback34 under root-only `/var/backups/opg3d/aws-release33-20261023-080204`. Rollback not published. Do not downgrade active build numbers or restore old player state as a code rollback. Clients download33 at their next full launcher start; no running-game hot swap or APK reinstall.
+
+## Backend mailbox campaign — 2026-10-23
+
+Explicit user-approved backend release `23.1.3-mailbox-rewards-9255aec`, static
+linux/amd64 SHA256 `fe56aba8a6aa17bf1e8f9342d7adc7db35522ceac10e0fe48bc47c4eb7c359e0`.
+Only backend service updated. Two scheduled global gift letters imported through
+private admin: October 26 at 12:00 UTC (2626 coins / 1010 gems) and October 31 at
+12:00 UTC (3131 coins / 1010 gems / Pumpkin Thrower). No temporary test letter.
+Accounts/profiles/config/client release and gateway preserved; public health and
+loader200, admin404; internal unauthenticated admin401. Backup and schema-aware
+rollback cautions: see [Mailbox campaign deployment](MAILBOX_2313.md#aws-campaign-deployment--2026-10-23).
