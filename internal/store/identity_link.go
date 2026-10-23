@@ -77,12 +77,21 @@ func (s *Store) ReconcileAuthenticatedIdentity(bootstrapID, session, gameID, soc
 
 // AdoptSocketIdentityForAccount joins an already validated socket handshake to
 // the id auth_v2 carries. No session token is retained on the socket object.
-func (s *Store) AdoptSocketIdentityForAccount(bootstrapID, gameID, socketDevice, ip string) (IdentityReconciliation, error) {
+func (s *Store) AdoptSocketIdentityForAccount(bootstrapID, gameID, socketDevice, ip string, expected ...Account) (IdentityReconciliation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sourceID := s.resolvePlayerIDLocked(bootstrapID)
-	if s.state.Accounts[sourceID] == nil {
+	source := s.state.Accounts[sourceID]
+	if source == nil {
 		return IdentityReconciliation{}, ErrNotFound
+	}
+	// A validated handshake cannot be reused after account recreation/rebinding.
+	// Compare under the same lock as reconciliation to close the check/use race.
+	if len(expected) > 0 {
+		e := expected[0]
+		if e.PlayerID != source.PlayerID || e.DeviceID != source.DeviceID || e.SocketDevice != source.SocketDevice || !e.CreatedAt.Equal(source.CreatedAt) {
+			return IdentityReconciliation{}, ErrIdentityConflict
+		}
 	}
 	return s.reconcileIdentityLocked(sourceID, gameID, socketDevice, ip)
 }

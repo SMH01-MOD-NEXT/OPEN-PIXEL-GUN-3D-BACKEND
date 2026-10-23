@@ -5566,3 +5566,14 @@ AWS outcome: version 23.1.3-mailbox-rewards-9255aec, SHA256 fe56aba8a6aa17bf1e8f
 - [x] Rebuild/restart local backend without changing existing letters or player state; document and commit isolated changes. AWS update requires confirmation.
 
 Implemented PUT with required expected_ctime_change; delivery-edit permission enforced under the same store lock as claims. Published gifts/schedules immutable, text still editable; claims/IDs remain intact. Admin RU/EN Edit/Save/Cancel includes prefill, UTC, dirty-discard confirmation, stale revision errors without losing text and duplicate-submit guard. Full tests/race/vet/static build/all console scripts passed. Local restart PID 52605: exact whole-state preservation, admin controls200, unauthenticated PUT401, stale PUT409, no-op unchanged. AWS not updated this turn; game frontend and scheduled campaign unchanged.
+
+## Personal mailbox OTP and HTTPS — 2026-10-23
+- [x] Trace personal stock mailbox delivery/cache removal and authenticated recipient isolation; inspect DNS and existing EC2 TLS without altering other sites.
+- [x] Add bounded ephemeral 5-minute OTP challenges, browser binding, per-account/IP limits, single-use verification and scoped web sessions; never persist/log codes or expose them in admin/news.
+- [x] Integrate owner-only personal subscription/fetch/expiry, preserving global campaigns and game frontend; add localized login test surface and integration documentation.
+- [x] Verify isolation, impersonation rejection, expiry/replay/concurrency, CSRF/cookies, bans, restart semantics, rate limits and sensitive-log redaction; run full tests/race/vet/build.
+- [/] Prepare isolated domain vhost/Certbot webroot and renewal; wait for user Cloudflare A record if absent, then verify public HTTPS before enabling web login.
+- [/] Back up/deploy approved backend/TLS changes safely, preserve accounts/campaigns/client and existing sites, verify health; commit isolated changes and report limitations.
+
+- Verified: all Go tests/race/vet and six console Node suites pass; localized stock personal schema and encrypted reply redaction covered. Existing-account socket auth now rejects ID-only/device-replacement impersonation.
+- EC2: Certbot installed, timer active, isolated ACME webroot reachable publicly; main Caddy and existing forward site remain healthy. Domain A record still absent; certificate issuance/public HTTPS pending DNS.

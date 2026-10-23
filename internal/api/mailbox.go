@@ -33,6 +33,9 @@ func (s *Server) pushMailboxSubscription(session *sioSession, namespace, transpo
 		return
 	}
 	body := map[string]any{}
+	if topic == mailboxPersonalUpdated {
+		body = s.personalMailboxMap(session)
+	}
 	if topic == mailboxUpdated {
 		for _, n := range s.st.MailboxNews() {
 			if n.VisibleAt(time.Now()) {
@@ -42,12 +45,23 @@ func (s *Server) pushMailboxSubscription(session *sioSession, namespace, transpo
 	}
 	// The stock client subscribes once. Remember the encrypted subscription to
 	// refresh publication/archival on its ordinary keepalive, without new threads.
-	if s.replyEncrypted(session, namespace, transport, codec, topic, 0, body) && topic == mailboxUpdated {
+	if s.replyEncrypted(session, namespace, transport, codec, topic, 0, body) {
 		signature, _ := json.Marshal(body)
 		session.mu.Lock()
-		session.mailboxNamespace = namespace
-		session.mailboxCodec = codec
-		session.mailboxSignature = string(signature)
+		if topic == mailboxUpdated {
+			session.mailboxNamespace = namespace
+			session.mailboxCodec = codec
+			session.mailboxSignature = string(signature)
+		} else {
+			session.personalMailboxNamespace = namespace
+			session.personalMailboxCodec = codec
+			session.personalMailboxSignature = string(signature)
+			session.personalMailboxSeen = map[int]bool{}
+			for id := range body {
+				n, _ := strconv.Atoi(id)
+				session.personalMailboxSeen[n] = true
+			}
+		}
 		session.mu.Unlock()
 	}
 }
@@ -104,6 +118,13 @@ func (s *Server) answerMailboxMessages(session *sioSession, head sioHead, reqID 
 			news[strconv.Itoa(n.ID)] = mailboxWireNews(n)
 		}
 	}
+	for _, l := range s.personalMailboxLetters(session) {
+		if wanted[l.ID] {
+			if wire := s.personalMailboxWire(session, l); wire != nil {
+				news[strconv.Itoa(l.ID)] = wire
+			}
+		}
+	}
 	body := sioOK(reqID)
 	body["news"] = news
 	return body
@@ -144,21 +165,26 @@ func (s *Server) handleAdminMailboxNews(w http.ResponseWriter, r *http.Request) 
 func (s *Server) refreshMailbox(session *sioSession) {
 	session.mu.Lock()
 	codec, ns, previous := session.mailboxCodec, session.mailboxNamespace, session.mailboxSignature
+	personalCodec, personalNS, personalPrevious := session.personalMailboxCodec, session.personalMailboxNamespace, session.personalMailboxSignature
 	session.mu.Unlock()
-	if codec == nil || previous == "" {
-		return
-	}
-	body := map[string]any{}
-	for _, n := range s.st.MailboxNews() {
-		if n.VisibleAt(time.Now()) {
-			body[strconv.Itoa(n.ID)] = n.Changed
+	if codec != nil && previous != "" {
+		body := map[string]any{}
+		for _, n := range s.st.MailboxNews() {
+			if n.VisibleAt(time.Now()) {
+				body[strconv.Itoa(n.ID)] = n.Changed
+			}
+		}
+		signature, _ := json.Marshal(body)
+		if string(signature) != previous {
+			s.pushMailboxSubscription(session, ns, "keepalive", codec, sioHead{"type": mailboxUpdated})
 		}
 	}
-	signature, _ := json.Marshal(body)
-	if string(signature) == previous {
-		return
+	if personalCodec != nil && personalPrevious != "" {
+		signature, _ := json.Marshal(s.personalMailboxMap(session))
+		if string(signature) != personalPrevious {
+			s.pushMailboxSubscription(session, personalNS, "keepalive", personalCodec, sioHead{"type": mailboxPersonalUpdated})
+		}
 	}
-	s.pushMailboxSubscription(session, ns, "keepalive", codec, sioHead{"type": mailboxUpdated})
 }
 func (s *Server) handleAdminArchiveMailboxNews(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

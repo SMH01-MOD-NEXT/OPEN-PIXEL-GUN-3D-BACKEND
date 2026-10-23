@@ -10,6 +10,7 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ type Config struct {
 	MaxBodyLog    int
 	DiscoveryPort int
 	AdminToken    string
+	WebAuthOrigin string // Exact HTTPS origin; empty disables website login.
 	Maintenance   bool
 
 	// BundleDir is the directory under ContentDir holding the asset bundles the
@@ -277,6 +279,7 @@ type Config struct {
 // Load resolves configuration from the environment.
 func Load() (*Config, error) {
 	cfg := &Config{
+		WebAuthOrigin:                      strings.TrimSpace(os.Getenv("OPG3D_WEB_AUTH_ORIGIN")),
 		ServerName:                         env("OPG3D_SERVER_NAME", "open-pixel-gun-3d-backend"),
 		Addr:                               env("OPG3D_ADDR", ":8080"),
 		DataDir:                            env("OPG3D_DATA_DIR", "data"),
@@ -351,6 +354,12 @@ func Load() (*Config, error) {
 
 	if cfg.DiscoveryPort < 0 || cfg.DiscoveryPort > 65535 {
 		return nil, fmt.Errorf("config: OPG3D_DISCOVERY_PORT out of range: %d", cfg.DiscoveryPort)
+	}
+	if cfg.WebAuthOrigin != "" {
+		u, err := url.Parse(cfg.WebAuthOrigin)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || cfg.StableSessions {
+			return nil, fmt.Errorf("config: OPG3D_WEB_AUTH_ORIGIN must be an exact HTTPS origin and requires random game sessions")
+		}
 	}
 	return cfg, nil
 }

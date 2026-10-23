@@ -91,3 +91,22 @@ func TestSioCodecRejectsBadMaterial(t *testing.T) {
 		})
 	}
 }
+
+func TestWebAuthOriginFailsClosed(t *testing.T) {
+	for _, origin := range []string{"http://game.example", "https://game.example/", "https://game.example/path", "https://user@game.example", "https://game.example?x=1", "https://game.example#f"} {
+		t.Run(origin, func(t *testing.T) {
+			t.Setenv("OPG3D_WEB_AUTH_ORIGIN", origin)
+			if _, err := Load(); err == nil {
+				t.Fatal("unsafe web origin accepted")
+			}
+		})
+	}
+	t.Setenv("OPG3D_WEB_AUTH_ORIGIN", "https://game.example")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPG3D_STABLE_SESSIONS", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("deterministic game credentials accepted for OTP")
+	}
+}

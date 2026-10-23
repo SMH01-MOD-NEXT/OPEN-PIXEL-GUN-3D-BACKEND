@@ -154,17 +154,21 @@ type sioSession struct {
 	created time.Time
 	out     chan sioFrame
 
-	eventMu          sync.Mutex // keep encrypted event attachment groups contiguous
-	mailboxCodec     *sio.Codec
-	mailboxNamespace string
-	mailboxSignature string
-	mu               sync.Mutex
-	lastSeen         time.Time
-	lastPong         time.Time
-	transport        string
-	upgraded         bool
-	packets          uint64
-	clientPinged     bool
+	eventMu                  sync.Mutex // keep encrypted event attachment groups contiguous
+	mailboxCodec             *sio.Codec
+	mailboxNamespace         string
+	mailboxSignature         string
+	personalMailboxCodec     *sio.Codec
+	personalMailboxNamespace string
+	personalMailboxSignature string
+	personalMailboxSeen      map[int]bool
+	mu                       sync.Mutex
+	lastSeen                 time.Time
+	lastPong                 time.Time
+	transport                string
+	upgraded                 bool
+	packets                  uint64
+	clientPinged             bool
 
 	// The identity the client presented when it authorised this session.
 	// Only auth_v2 carries it; every later event names nothing but its req_id
@@ -177,8 +181,10 @@ type sioSession struct {
 	// bootstrapPlayerID is authenticated once from the HTTP/native account
 	// context on the socket handshake. The reusable token is validated and
 	// discarded immediately; it is never retained in this session.
-	bootstrapPlayerID string
-	remoteIP          string
+	bootstrapPlayerID         string
+	bootstrapOwnerFingerprint string
+	mailboxOwnerFingerprint   string
+	remoteIP                  string
 
 	// authHash is the account hash the client presented in auth_v2. It is kept
 	// because get_binded_ids is answered with id/hash pairs and the hash the
@@ -522,6 +528,9 @@ func (s *Server) bindSocketBootstrap(session *sioSession, r *http.Request) {
 		return
 	}
 	session.setBootstrapIdentity(account.PlayerID, clientIP(r))
+	session.mu.Lock()
+	session.bootstrapOwnerFingerprint = webOwnerFingerprint(account)
+	session.mu.Unlock()
 	s.log.Event("socket.bootstrap_identity_accepted", map[string]any{
 		"sid": session.sid, "player_id": account.PlayerID, "ip": clientIP(r),
 	})

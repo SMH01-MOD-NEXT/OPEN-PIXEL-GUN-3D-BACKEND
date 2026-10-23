@@ -1055,6 +1055,16 @@ func (s *Store) AdoptSocketIdentity(uniqID, device, ip string) (Account, bool, e
 	}
 
 	if account, ok := s.state.Accounts[uniqID]; ok {
+		// SECURITY: public player IDs are not credentials. Never let an unproved
+		// socket replace an existing binding. Authenticated bootstrap reconciliation
+		// remains the explicit path for a legitimate device change.
+		expected := account.SocketDevice
+		if expected == "" {
+			expected = account.DeviceID
+		}
+		if device == "" || expected == "" || device != expected {
+			return Account{}, false, ErrIdentityConflict
+		}
 		account.LastSeenAt = now
 		if ip != "" {
 			account.LastIP = ip

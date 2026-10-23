@@ -32,6 +32,7 @@ import (
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/secrets"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/webauth"
 )
 
 // maxRequestBody caps what the server will read and buffer per request.
@@ -60,6 +61,7 @@ type Server struct {
 	// on. It is fixed for the life of the process, so the poll answer and the
 	// push state the same fingerprint for the same document.
 	configNonce string
+	webAuth     *webauth.Service
 }
 
 // New builds the router.
@@ -76,11 +78,18 @@ func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
 		// environment seed is still a valid configuration to serve from.
 		log.Event("settings.load_failed", map[string]any{"error": err.Error()})
 	}
+	if cfg.WebAuthOrigin != "" && !cfg.StableSessions {
+		s.webAuth, _ = webauth.New()
+		if s.webAuth == nil {
+			log.Event("web_auth.unavailable", nil)
+		}
+	}
 	s.routes()
 	return s
 }
 
 func (s *Server) routes() {
+	s.registerWebAuthRoutes()
 	// Native-only launcher protocol; no credentials or profile writes.
 	s.mux.HandleFunc("GET /api/v1/loader/info", s.handleLoaderInfo)
 	s.mux.HandleFunc("GET /api/v1/frontend/manifest", s.handleFrontendManifest)
@@ -231,7 +240,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // durable/live trace. The response is still sent in full to the authenticated
 // operator; only the diagnostic copy is omitted.
 func redactHTTPBodyTrace(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/client-errors"
+	return strings.HasPrefix(r.URL.Path, "/api/v1/web-auth/") || strings.HasPrefix(r.URL.Path, "/account/") || strings.HasPrefix(r.URL.Path, "/api/v1/admin/") || r.URL.Path == "/api/v1/client-errors"
 }
 
 func redactedHTTPBody(size int) string {
@@ -262,6 +271,9 @@ func discardTraceBody(w http.ResponseWriter) {
 // redactedRawQuery keeps routable query context in diagnostics without writing
 // reusable account credentials to disk.
 func redactedRawQuery(r *http.Request) string {
+	if strings.HasPrefix(r.URL.Path, "/api/v1/web-auth/") || strings.HasPrefix(r.URL.Path, "/account/") {
+		return "<redacted>"
+	}
 	query := r.URL.Query()
 	for _, key := range []string{"opg3d_session", "session", "token", "access_token", "socket_ticket"} {
 		if _, present := query[key]; present {

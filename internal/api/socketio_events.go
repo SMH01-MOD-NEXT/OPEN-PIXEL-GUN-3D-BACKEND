@@ -336,6 +336,24 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	session.setAuthHash(head.text("hash"))
 
 	bootstrapID, remoteIP := session.bootstrapIdentity()
+	prior, priorErr := s.st.Account(uniqID)
+	matchedExistingDevice := priorErr == nil && device != "" && (prior.SocketDevice == device || (prior.SocketDevice == "" && prior.DeviceID == device))
+	session.mu.Lock()
+	session.mailboxOwnerFingerprint = ""
+	nativeFingerprint := session.bootstrapOwnerFingerprint
+	session.mu.Unlock()
+	nativeProof := false
+	nativeAccount, nativeErr := s.st.Account(bootstrapID)
+	if nativeErr == nil && nativeFingerprint != "" {
+		nativeProof = nativeFingerprint == webOwnerFingerprint(nativeAccount)
+	}
+	if bootstrapID != "" && nativeFingerprint != "" && !nativeProof {
+		session.setIdentity(uniqID, device, "")
+		body := sioDenied(reqID)
+		body["err_code"] = sioErrNotAuthorized
+		return body
+	}
+
 	if _, banned := s.st.MatchBan(uniqID, device, remoteIP); banned {
 		session.setIdentity(uniqID, device, "")
 		return socketBanReply(reqID)
@@ -358,7 +376,7 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	var err error
 	var reconciliation store.IdentityReconciliation
 	if bootstrapID != "" {
-		reconciliation, err = s.st.AdoptSocketIdentityForAccount(bootstrapID, uniqID, device, remoteIP)
+		reconciliation, err = s.st.AdoptSocketIdentityForAccount(bootstrapID, uniqID, device, remoteIP, nativeAccount)
 		account = reconciliation.Account
 	} else {
 		// The stock 23.1.3 client does not preserve custom query parameters on
@@ -402,6 +420,16 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		return socketBanReply(reqID)
 	}
 	session.setIdentity(uniqID, device, account.PlayerID)
+	// Recent-IP correlation alone is deliberately NOT a mail credential.
+	// A newly bound legacy socket must reconnect with its stored device proof.
+	if nativeProof || matchedExistingDevice || created {
+		session.mu.Lock()
+		session.mailboxOwnerFingerprint = webOwnerFingerprint(account)
+		if nativeProof {
+			session.bootstrapOwnerFingerprint = webOwnerFingerprint(account)
+		}
+		session.mu.Unlock()
+	}
 	s.retireOlderMapPresence(session)
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		session.setProgressWriteRevision(profile.ProgressRevision)
@@ -1034,6 +1062,10 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 		// body already survived json.Marshal inside encodeEncryptedEvent.
 		sent = nil
 	}
+	traceBody := s.log.Body(sent)
+	if event == "mailbox_get_messages" || event == mailboxPersonalUpdated {
+		traceBody = "<personal mailbox body redacted>"
+	}
 	s.log.Event("socket.event_answered", map[string]any{
 		"sid":         session.sid,
 		"transport":   transport,
@@ -1042,7 +1074,7 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 		"req_id":      reqID,
 		"attachments": sioReplyAttachments,
 		"mode":        codec.Mode().String(),
-		"body":        s.log.Body(sent),
+		"body":        traceBody,
 	})
 	return true
 }
