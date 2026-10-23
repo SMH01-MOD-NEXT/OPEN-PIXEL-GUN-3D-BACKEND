@@ -5625,3 +5625,12 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Extend lifecycle/API/UI regression tests, build and deploy locally/AWS preserving roles, keys, tickets and game state.
 
 - Release `93c382a` verified locally/AWS; resolved replies reopen and resolved closure skips confirmation in actual Chromium UI. Full Go suite, support/API race tests, vet and eight Node harnesses passed; public HTTPS exact JS hash verified. Role 740333804 persists, state/campaigns/frontend manifest/unrelated services preserved. AWS backup `/var/backups/opg3d/hub-20261023T165717Z-93c382a`.
+
+## Server economy anti-cheat phase 1 — 2026-10-23
+- [x] Inspect command reducers and every snapshot upload channel; identify missing price/match authority.
+- [x] User approved gradual mode: unknown purchases/rewards remain compatible; no invented prices, bans or frontend edits.
+- [x] Add centralized coverage observations for commands/prefs/progress/document/slots/replace/client state; retain existing authoritative mailbox/pass/exchange validation and durable receipts.
+- [x] Add bounded operator diagnostics and correlated authoritative reload for rejected proven mailbox/exchange transactions.
+- [x] Test compatibility, verified/rejected/replayed operations, every snapshot path, rollback, concurrency and restart persistence.
+- [/] Build/deploy locally/AWS with protected backups; preserve accounts, role 740333804, campaigns, keys, tickets and frontend.
+- [ ] Follow-up, NOT enabled in this phase: recover ordinary prices/resources and trusted combat contracts before enforcing their grants/ownership.

@@ -78,6 +78,7 @@ func New(cfg *config.Config, log *logs.Logger, st *store.Store) *Server {
 	s := &Server{cfg: cfg, log: log, st: st, mux: http.NewServeMux(), sio: newSioHub(cfg.StableSessions, newSioCodec(cfg, log)), settings: newSettings(cfg)}
 	s.clientErrors, _ = clienterrors.Open(cfg.DataDir)
 	s.diagnosticsCredentials, _ = clienterrors.OpenCredentials(cfg.DataDir)
+	st.SetEconomyObserver(s.observeEconomy)
 	if s.clientErrors.Query(clienterrors.Query{}, time.Now()).Summary.Unavailable {
 		log.Event("client.diagnostics_unavailable", nil)
 	}

@@ -105,10 +105,11 @@ type Options struct {
 
 // Store is the concurrency-safe state holder.
 type Store struct {
-	mu    sync.RWMutex
-	path  string
-	state state
-	opts  Options
+	mu              sync.RWMutex
+	path            string
+	state           state
+	opts            Options
+	economyObserver func(EconomyObservation)
 }
 
 // Open loads (or creates) the state file in dir with default options.

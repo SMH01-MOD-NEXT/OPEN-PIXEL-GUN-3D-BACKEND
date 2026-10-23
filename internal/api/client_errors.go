@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -89,4 +90,16 @@ func (s *Server) handleAdminClientErrors(w http.ResponseWriter, r *http.Request)
 	result := s.clientErrors.Query(clienterrors.Query{Text: q.Get("q"), Player: q.Get("player"), Level: q.Get("level"), Source: q.Get("source"), Offset: offset, Limit: limit}, time.Now())
 	w.Header().Set("Cache-Control", "no-store")
 	s.writeJSON(w, 200, result)
+}
+
+// Observation is coverage telemetry, not proof of cheating or a ban trigger.
+// Use the existing bounded/rate-limited journal without mirroring every attempt
+// into unbounded ordinary logs. The sink never calls back into gameplay state.
+func (s *Server) observeEconomy(e store.EconomyObservation) {
+	code, level := "economy_observed", "info"
+	if e.Outcome == "rejected" {
+		code, level = "economy_rejected", "warning"
+	}
+	message := fmt.Sprintf("mode=gradual channel=%s outcome=%s rule=%s verified=%d unverified=%d replayed=%d changed_slots=%d counters_changed=%t opaque_changed=%t currency=%d inventory=%d progression=%d combat=%d loadout=%d; observation is not a cheating verdict", e.Channel, e.Outcome, e.Rule, e.Verified, e.Unverified, e.Replayed, e.ChangedSlots, e.CountersChanged, e.OpaqueChanged, e.Currency, e.Inventory, e.Progression, e.Combat, e.Loadout)
+	_, _ = s.clientErrors.Add(e.Player, "backend", []clienterrors.Event{{Level: level, Code: code, Message: message, Module: "economy_phase1", Revision: e.Revision}}, time.Now())
 }

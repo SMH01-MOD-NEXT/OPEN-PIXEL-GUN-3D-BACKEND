@@ -3,7 +3,6 @@
 package api
 
 import (
-	"errors"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
 )
 
@@ -88,21 +87,21 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 			body[sioUpdateProgressErrCodeKey] = 1
 			body["error"] = 1
 			body["result"] = "progress_store_failed"
-			// Stock reconnect alone can retain the same optimistic local pass
+			// Stock reconnect alone can retain the same optimistic local economy
 			// state forever. Arm the real full-download handshake before its
 			// error/reconnect path; never abort the transport or grant early.
-			if errors.Is(err, store.ErrPixelPassStateConflict) {
+			if store.RequiresEconomyResync(err) {
 				profile, syncErr := s.st.RequestProfileProgressResync(playerID, session.progressWriteContext())
 				if syncErr == nil {
 					body["result"] = "progress_resync_required"
-					s.diagnostic(playerID, "warning", "resync_required", "Pixel Pass state conflict; authoritative progress download required", profile.ProgressRevision)
-					s.log.Event("socket.pixelpass_resync_required", map[string]any{"player_id": playerID, "req_id": reqID, "revision": profile.ProgressRevision, "reason": err.Error()})
+					s.diagnostic(playerID, "warning", "resync_required", "Server-backed economy conflict; authoritative progress download required", profile.ProgressRevision)
+					s.log.Event("socket.economy_resync_required", map[string]any{"player_id": playerID, "req_id": reqID, "revision": profile.ProgressRevision, "reason": err.Error()})
 				} else {
 					s.diagnostic(playerID, "error", "resync_failed", "Unable to schedule authoritative progress download", 0)
-					s.log.Event("socket.pixelpass_resync_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": syncErr.Error()})
+					s.log.Event("socket.economy_resync_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": syncErr.Error()})
 				}
 			}
-			if !errors.Is(err, store.ErrPixelPassStateConflict) {
+			if !store.RequiresEconomyResync(err) {
 				s.diagnostic(playerID, "error", "progress_update_failed", err.Error(), 0)
 			}
 			s.log.Event("socket.progress_update_failed", map[string]any{"player_id": playerID, "req_id": reqID, "err": err.Error()})

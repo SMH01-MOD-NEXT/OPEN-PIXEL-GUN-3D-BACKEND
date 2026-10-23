@@ -453,9 +453,10 @@ func (s *Store) ensureProfileLocked(playerID, nick string) (*Profile, error) {
 // Merging rather than replacing is deliberate: the client sends the keys it
 // currently cares about, not the full set, so a replace would delete state on
 // every partial sync. Deleting a key is an explicit admin action.
-func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
@@ -465,6 +466,16 @@ func (s *Store) MergeProfilePrefs(playerID string, prefs map[string]string, cont
 		return Profile{}, err
 	} else if !allowed {
 		return profile.clone(), nil
+	}
+	if len(context) != 0 && s.economyObserver != nil {
+		oldValues, newValues := map[string]any{}, map[string]any{}
+		for k, v := range profile.Prefs {
+			oldValues[k] = v
+		}
+		for k, v := range prefs {
+			newValues[k] = v
+		}
+		observation = snapshotObservation(profile, "prefs", oldValues, newValues, false)
 	}
 	before := profile.clone()
 	if profile.Prefs == nil {
@@ -492,9 +503,10 @@ func isCoreProgressKey(key string) bool {
 
 // MergeProfileProgress folds a progress payload into the stored profile, for
 // the same reason MergeProfilePrefs merges.
-func (s *Store) MergeProfileProgress(playerID string, progress map[string]any, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) MergeProfileProgress(playerID string, progress map[string]any, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	profile, ok := s.state.Profiles[playerID]
 	if !ok {
@@ -504,6 +516,9 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any, c
 		return Profile{}, err
 	} else if !allowed {
 		return profile.clone(), nil
+	}
+	if len(context) != 0 && s.economyObserver != nil {
+		observation = snapshotObservation(profile, "progress", profile.Progress, progress, false)
 	}
 	before := profile.clone()
 
@@ -537,13 +552,14 @@ func (s *Store) MergeProfileProgress(playerID string, progress map[string]any, c
 // whole, because a slot's members are the client's own encoding of that one
 // slot, and half merging two versions of it would produce a state neither side
 // ever held.
-func (s *Store) MergeProfileProgressDocument(playerID string, document map[string]any, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) MergeProfileProgressDocument(playerID string, document map[string]any, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, "")
 	if err != nil {
@@ -553,6 +569,9 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 		return Profile{}, err
 	} else if !allowed {
 		return profile.clone(), nil
+	}
+	if len(context) != 0 && s.economyObserver != nil {
+		observation = snapshotObservation(profile, "document", profile.ProgressDocument, document, false)
 	}
 	before := profile.clone()
 
@@ -587,13 +606,14 @@ func (s *Store) MergeProfileProgressDocument(playerID string, document map[strin
 // as it was. That is the rule the boot document already follows, for the same
 // reason: the client owns the slot set, and half merging two versions of one
 // slot would produce a state neither side ever held.
-func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, "")
 	if err != nil {
@@ -603,6 +623,9 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any,
 		return Profile{}, err
 	} else if !allowed {
 		return profile.clone(), nil
+	}
+	if len(context) != 0 && s.economyObserver != nil {
+		observation = snapshotObservation(profile, "slots", profile.ProgressSlots, slots, false)
 	}
 	before := profile.clone()
 
@@ -634,14 +657,15 @@ func (s *Store) MergeProfileProgressSlots(playerID string, slots map[string]any,
 // sent by replace_progress. Unlike create_slots, that event is a snapshot: a
 // slot omitted by the client is no longer part of the profile. Callers must
 // validate and unwrap every wire {d,h} record before invoking this method.
-func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]any, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, existed := s.state.Profiles[playerID]
 	profilesWereNil := s.state.Profiles == nil
@@ -663,6 +687,9 @@ func (s *Store) ReplaceProfileProgressSlots(playerID string, slots map[string]an
 		s.state.Profiles[playerID] = profile
 	}
 
+	if len(context) != 0 && s.economyObserver != nil {
+		observation = snapshotObservation(profile, "replace_slots", profile.ProgressSlots, slots, true)
+	}
 	before := profile.clone()
 	account := s.state.Accounts[playerID]
 	accountNick := ""
@@ -736,13 +763,14 @@ func projectReplacementSlotState(profile *Profile, slots map[string]any) {
 // MergeProfileClientState preserves structured fields that do not belong to
 // one of the progress documents. As with progress, a partial client update is
 // merged and unknown members survive unchanged.
-func (s *Store) MergeProfileClientState(playerID string, values map[string]any, context ...ProgressWriteContext) (Profile, error) {
+func (s *Store) MergeProfileClientState(playerID string, values map[string]any, context ...ProgressWriteContext) (result Profile, resultErr error) {
 	playerID = strings.TrimSpace(playerID)
 	if playerID == "" {
 		return Profile{}, errors.New("store: empty player id")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(playerID)
 	profile, err := s.ensureProfileLocked(playerID, "")
 	if err != nil {
@@ -752,6 +780,9 @@ func (s *Store) MergeProfileClientState(playerID string, values map[string]any, 
 		return Profile{}, err
 	} else if !allowed {
 		return profile.clone(), nil
+	}
+	if len(context) != 0 && s.economyObserver != nil {
+		observation = snapshotObservation(profile, "client_state", profile.ClientState, values, false)
 	}
 	before := profile.clone()
 	account := s.state.Accounts[playerID]

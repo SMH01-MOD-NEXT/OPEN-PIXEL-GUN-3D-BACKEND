@@ -89,21 +89,30 @@ func setMatchingCounter(slot map[string]any, key string, want int64) {
 // ApplyProfileCounterCommands atomically persists measured counters AND inventory
 // commands before acknowledgement. Its name is retained for API compatibility.
 // A purchase charge and its ownership change share one candidate and one fsync.
-// This compatibility reducer is not price validation or an anticheat system.
+// Verified semantic reducers enforce their contracts; other stock operations
+// remain compatible and are explicitly observed as unverified, not trusted.
 func (s *Store) ApplyProfileCounterCommands(playerID string, ctx ProgressWriteContext, commands []any) (int, error) {
 	return s.applyProfileCounterCommandsAt(playerID, ctx, commands, time.Now().UTC())
 }
 
-func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWriteContext, commands []any, now time.Time) (int, error) {
+func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWriteContext, commands []any, now time.Time) (result int, resultErr error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *EconomyObservation
+	defer s.finishEconomyObservation(&observation, &resultErr)
 	playerID = s.resolvePlayerIDLocked(strings.TrimSpace(playerID))
 	p, ok := s.state.Profiles[playerID]
 	if !ok {
 		return 0, ErrNotFound
 	}
+	if s.economyObserver != nil {
+		observation = &EconomyObservation{Player: playerID, Revision: p.ProgressRevision, Channel: "commands", Outcome: "accepted", Rule: "coverage"}
+	}
 	allowed, err := allowProfileClientWrite(p, []ProgressWriteContext{ctx})
 	if err != nil || !allowed {
+		if observation != nil && err == nil {
+			observation.Outcome = "deferred"
+			observation.Rule = "revision"
+		}
 		return 0, err
 	}
 	device, err := progressDeviceKey(ctx.Device)
@@ -148,6 +157,8 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 		if !candidate.ProgressCommandReceipts[receipt] && !seen[receipt] {
 			seen[receipt] = true
 			active = append(active, raw)
+		} else if observation != nil {
+			observation.Replayed++
 		}
 	}
 	commands = active
@@ -163,6 +174,29 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 	skip, err = reduceCurrencyExchange(&candidate, commands, now, skip)
 	if err != nil {
 		return 0, err
+	}
+	if observation != nil {
+		for i := range commands {
+			if skip[i] {
+				observation.Verified++
+			} else {
+				observation.Unverified++
+				c, _ := commands[i].(map[string]any)
+				id, _ := counterInt64(c["id"])
+				switch {
+				case id == 10 || id == 66:
+					observation.Currency++
+				case id == 64 || id == 65:
+					observation.Progression++
+				case statsCommand(id):
+					observation.Combat++
+				case id == 25 || id == 197:
+					observation.Loadout++
+				default:
+					observation.Inventory++
+				}
+			}
+		}
 	}
 	applied := 0
 	for commandPosition, raw := range commands {
