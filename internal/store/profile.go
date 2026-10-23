@@ -49,9 +49,10 @@ type Profile struct {
 	Gems       int64  `json:"gems"`
 
 	// PixelPass is the server-owned season ledger, not a client snapshot field.
-	MailboxClaims    map[string]bool         `json:"mailbox_claims,omitempty"`
-	PixelPass        *PixelPassLedger        `json:"pixel_pass_ledger,omitempty"`
-	BattleStatistics *BattleStatisticsLedger `json:"battle_statistics_ledger,omitempty"`
+	WebExchangeReceipts map[string]WebExchangeReceipt `json:"web_exchange_receipts,omitempty"`
+	MailboxClaims       map[string]bool               `json:"mailbox_claims,omitempty"`
+	PixelPass           *PixelPassLedger              `json:"pixel_pass_ledger,omitempty"`
+	BattleStatistics    *BattleStatisticsLedger       `json:"battle_statistics_ledger,omitempty"`
 
 	// Prefs mirrors the client's own key/value state verbatim. The 23.1.3
 	// client owns these keys, so they are kept as they arrive instead of being
@@ -107,6 +108,12 @@ type Profile struct {
 // clone deep copies a profile, including the client-owned nested maps.
 func (p *Profile) clone() Profile {
 	out := *p
+	if p.WebExchangeReceipts != nil {
+		out.WebExchangeReceipts = map[string]WebExchangeReceipt{}
+		for k, v := range p.WebExchangeReceipts {
+			out.WebExchangeReceipts[k] = v
+		}
+	}
 	out.PixelPass = p.PixelPass.clone()
 	if p.MailboxClaims != nil {
 		out.MailboxClaims = map[string]bool{}

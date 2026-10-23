@@ -37,9 +37,10 @@ type Letter struct {
 	Active          bool
 }
 type Session struct {
-	Token, CSRF string
-	Identity    Identity
-	ExpiresAt   time.Time
+	Token, CSRF     string
+	Identity        Identity
+	ExpiresAt       time.Time
+	AuthenticatedAt time.Time
 }
 type challenge struct {
 	identity         Identity
@@ -222,7 +223,7 @@ func (s *Service) Verify(ip, token, code string, valid func(Identity) bool) (Ses
 	}
 	c.closed = true
 	s.sessions[sk] = &session{identity: c.identity, created: now, seen: now}
-	return Session{Token: next, CSRF: s.csrf(sk), Identity: c.identity, ExpiresAt: now.Add(SessionTTL)}, nil
+	return Session{Token: next, CSRF: s.csrf(sk), Identity: c.identity, ExpiresAt: now.Add(SessionTTL), AuthenticatedAt: now}, nil
 }
 func (s *Service) Current(token string, valid func(Identity) bool) (Session, error) {
 	k, ok := tokenKey(token)
@@ -242,7 +243,7 @@ func (s *Service) Current(token string, valid func(Identity) bool) (Session, err
 		return Session{}, ErrInvalid
 	}
 	c.seen = now
-	return Session{CSRF: s.csrf(k), Identity: c.identity, ExpiresAt: c.created.Add(SessionTTL)}, nil
+	return Session{CSRF: s.csrf(k), Identity: c.identity, ExpiresAt: c.created.Add(SessionTTL), AuthenticatedAt: c.created}, nil
 }
 func (s *Service) Logout(token, csrf string) bool {
 	k, ok := tokenKey(token)
@@ -267,4 +268,53 @@ func (s *Service) Cancel(token string) {
 	if c := s.challenges[k]; c != nil {
 		c.closed = true
 	}
+}
+
+// Issue is called only after another fully verified authentication ceremony.
+func (s *Service) Issue(identity Identity) (Session, error) { return s.IssueAt(identity, time.Time{}) }
+
+// IssueAt rotates credentials without extending the fresh-authentication window.
+func (s *Service) IssueAt(identity Identity, authenticatedAt time.Time) (Session, error) {
+	token, err := randomToken()
+	if err != nil {
+		return Session{}, err
+	}
+	k, _ := tokenKey(token)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	s.prune(now)
+	if identity.PlayerID == "" || len(s.sessions) >= maxRecords {
+		return Session{}, ErrLimited
+	}
+	if authenticatedAt.IsZero() || authenticatedAt.After(now) {
+		authenticatedAt = now
+	}
+	s.sessions[k] = &session{identity: identity, created: authenticatedAt, seen: now}
+	return Session{Token: token, CSRF: s.csrf(k), Identity: identity, ExpiresAt: authenticatedAt.Add(SessionTTL), AuthenticatedAt: authenticatedAt}, nil
+}
+func (s *Service) Revoke(token string) {
+	k, ok := tokenKey(token)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, k)
+}
+func (s *Service) RevokeIdentity(identity Identity) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, v := range s.sessions {
+		if v.identity == identity {
+			delete(s.sessions, k)
+		}
+	}
+}
+func (s *Service) Limit(key string, n int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	s.prune(now)
+	return s.allow(key, n, now)
 }

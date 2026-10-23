@@ -119,6 +119,8 @@ func setWebCookie(w http.ResponseWriter, name, value string, age int) {
 	http.SetCookie(w, c)
 }
 func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
+	s.hubAuthMu.Lock()
+	defer s.hubAuthMu.Unlock()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -172,13 +174,16 @@ func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, status, "invalid_or_expired_code", "")
 			return
 		}
+		if s.stageHubMFA(w, r, login) {
+			return
+		}
 		// Do not retain a previous session on a successful account switch.
 		if prior, e := s.webAuth.Current(cookieValue(r, sessionCookie), valid); e == nil {
 			s.webAuth.Logout(cookieValue(r, sessionCookie), prior.CSRF)
 		}
 		setWebCookie(w, challengeCookie, "", -1)
 		setWebCookie(w, sessionCookie, login.Token, int(webauth.SessionTTL.Seconds()))
-		s.writeJSON(w, 200, map[string]any{"player_id": login.Identity.PlayerID, "csrf_token": login.CSRF, "scopes": []string{"bug_reports"}, "expires_at": login.ExpiresAt})
+		s.writeJSON(w, 200, map[string]any{"player_id": login.Identity.PlayerID, "csrf_token": login.CSRF, "scopes": []string{"hub", "exchange", "bug_reports"}, "expires_at": login.ExpiresAt})
 	case "/api/v1/web-auth/me":
 		login, err := s.webAuth.Current(cookieValue(r, sessionCookie), valid)
 		if err != nil {
@@ -187,9 +192,11 @@ func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a, _ := s.st.Account(login.Identity.PlayerID)
-		s.writeJSON(w, 200, map[string]any{"player_id": a.PlayerID, "nick": a.Nick, "csrf_token": login.CSRF, "scopes": []string{"bug_reports"}, "expires_at": login.ExpiresAt})
+		s.writeJSON(w, 200, map[string]any{"player_id": a.PlayerID, "nick": a.Nick, "csrf_token": login.CSRF, "scopes": []string{"hub", "exchange", "bug_reports"}, "expires_at": login.ExpiresAt})
 	case "/api/v1/web-auth/cancel":
 		s.webAuth.Cancel(cookieValue(r, challengeCookie))
+		s.dropHubFlow(r)
+		setWebCookie(w, hubFlowCookie, "", -1)
 		setWebCookie(w, challengeCookie, "", -1)
 		s.writeJSON(w, 200, map[string]bool{"ok": true})
 	case "/api/v1/web-auth/logout":
@@ -198,6 +205,8 @@ func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		setWebCookie(w, sessionCookie, "", -1)
+		s.dropHubFlow(r)
+		setWebCookie(w, hubFlowCookie, "", -1)
 		s.writeJSON(w, 200, map[string]bool{"ok": true})
 	}
 }

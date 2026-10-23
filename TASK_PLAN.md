@@ -5579,3 +5579,14 @@ Implemented PUT with required expected_ctime_change; delivery-edit permission en
 - EC2: Certbot installed, timer active, isolated ACME webroot reachable publicly; main Caddy and existing forward site remain healthy. DNS A appeared during implementation; Certbot certificate issued, HTTPS activated and renewal dry-run/deploy hook verified.
 - Deployed binary `5b85499` to AWS and local; both health200, byte-identical startup state and unchanged frontend manifest/campaigns. Public HTTPS login/assets200, unknown-account/cancel202/200, cross-origin/forged-proto403, admin including rewritten-path aliases404. Existing forward site200. Details: docs/WEB_AUTH_DEPLOYMENT_2026-10-23.md.
 - Manual follow-up only: real Android mailbox layout/cache timing; no frontend modification or claim of instantaneous stock-client deletion. Full bug-report website remains out of scope.
+
+## OPG3D HUB, shop and stronger website authentication — 2026-10-23
+- [x] Inspect backend/game repositories read-only where required, stock item registry, authoritative exchange offers, presence and existing mailbox login; load web-design guidance.
+- [x] User confirmed the existing server currency-exchange shop only; use its authoritative offers/rates, not client-authored arsenal pricing.
+- [x] Build responsive RU/EN OPG3D HUB with public game statistics, download-unavailable state until an owner-supplied link, SmaliPG developer footer and authenticated profile/wallet.
+- [x] Extract suitable real game imagery from existing APK/bundles into a separately tracked website asset set; never modify Android/game frontend.
+- [x] Implement confirmed shop projection and server-validated atomic/idempotent purchases with ownership, balance, stale-session and persistence safeguards.
+- [x] Add persistent, protected account security storage; TOTP enrollment/confirmation/recovery and second-stage game-OTP login. Never log secrets or expose incomplete MFA as a full session.
+- [x] Add WebAuthn/passkey enrollment/removal with fresh authenticated confirmation, required user verification, origin/RP/challenge binding, and direct login without an in-game letter; use maintained libraries, not handwritten WebAuthn cryptography.
+- [x] Cover auth/CSRF/replay/rate limits/recovery/concurrency/shop persistence and game resync; full Go tests/race/vet/build and browser/UI tests with desktop/mobile visual inspection.
+- [ ] Back up/deploy on AWS, preserve accounts/campaigns/existing services and frontend assets, verify HTTPS/security/health; commit isolated changes and record hardware-dependent passkey test limitations.

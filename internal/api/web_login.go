@@ -30,6 +30,10 @@ func loadWebLoginText() map[string]map[string]string {
 func (s *Server) registerWebLoginPage() {
 	for route, file := range map[string]string{"GET /account/login": "index.html", "GET /account/login.js": "login.js", "GET /account/text.json": "text.json"} {
 		s.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+			if file == "index.html" {
+				s.serveHubPage(w, r)
+				return
+			}
 			if !s.webRequestAllowed(r) {
 				s.writeError(w, 403, "web_login_unavailable", "")
 				return

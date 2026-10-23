@@ -1,0 +1,41 @@
+{
+  "source": "Pixel Gun 3D 23.1.3, main.268411.com.pixel.gun3d.obb; owner-provided local game assets",
+  "notice": "Game artwork belongs to its respective rights holders; not original OPG3D artwork and not relicensed as GPL.",
+  "images": [
+    {
+      "file": "hero.png",
+      "resource": "levelloadingspreview/loading_ranch_preview",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "e6734975946ae495d470790edb0eb0e931cfbc7572810202350fda33c59b8a04"
+    },
+    {
+      "file": "battlepass.png",
+      "resource": "offericons/bp_currency_5",
+      "width": 512,
+      "height": 512,
+      "sha256": "04be21c8bbe9f660eb9eb2963f91390ec2c860abf029c7288bee8e8eafd5922b"
+    },
+    {
+      "file": "coins.png",
+      "resource": "offericons/currencycoin_banktier_3",
+      "width": 256,
+      "height": 256,
+      "sha256": "d5fa8d4d31c25e40ca33e109c5f4801eca2fb5f6d81586220acd903ad32cf7bd"
+    },
+    {
+      "file": "gems.png",
+      "resource": "offericons/currencygem_banktier_2",
+      "width": 492,
+      "height": 492,
+      "sha256": "13e5a7334539eb72355c27dcb46d0e46d4aeae72284700dc165c471c194b9b55"
+    },
+    {
+      "file": "pixelpass.png",
+      "resource": "offericons/pixelpasscurrency_1",
+      "width": 512,
+      "height": 512,
+      "sha256": "909d1954c65f87f80d30db5d0bb8faaba6e1469a41c244d6675dcfc3330c324f"
+    }
+  ]
+}
