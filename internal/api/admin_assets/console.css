@@ -863,3 +863,5 @@ dialog .form-grid label {
 #page-clientErrors td p { max-width: 32rem; overflow-wrap: anywhere; }
 #page-clientErrors pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 36rem; }
 #page-clientErrors details { min-width: 12rem; }
+
+#supportTickets article,#playerEvidence{overflow-wrap:anywhere} .support-message-text{white-space:pre-wrap} .support-evidence-line{font-size:14px;overflow-wrap:anywhere} #supportTickets textarea{width:100%;min-height:120px} #supportAdminFlag{width:20px;min-height:20px}

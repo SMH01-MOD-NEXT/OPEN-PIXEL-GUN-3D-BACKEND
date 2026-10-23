@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/hubsecurity"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/support"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/webauth"
 	"github.com/go-webauthn/webauthn/protocol"
 	wa "github.com/go-webauthn/webauthn/webauthn"
@@ -45,20 +46,33 @@ func (s *Server) initHub() {
 		return
 	}
 	if len(s.cfg.HubSecurityKey) != 32 {
-		if _, err := os.Stat(filepath.Join(s.cfg.DataDir, "hub-security.enc")); !os.IsNotExist(err) {
-			s.webAuth = nil
-			s.log.Event("hub.security_key_missing", nil)
+		for _, name := range []string{"hub-security.enc", "web-sessions.enc", "support.enc"} {
+			if _, err := os.Stat(filepath.Join(s.cfg.DataDir, name)); !os.IsNotExist(err) {
+				s.webAuth = nil
+				s.log.Event("hub.security_key_missing", nil)
+				break
+			}
 		}
 		return
 	}
+	sessions, err := webauth.Open(filepath.Join(s.cfg.DataDir, "web-sessions.enc"), s.cfg.HubSecurityKey)
+	if err != nil {
+		s.webAuth = nil
+		s.log.Event("hub.sessions_unavailable", nil)
+		return
+	}
+	s.webAuth = sessions
 	path := filepath.Join(s.cfg.DataDir, "hub-security.enc")
-	var err error
 	s.hubSecurity, err = hubsecurity.Open(path, s.cfg.HubSecurityKey)
 	if err != nil {
 		s.log.Event("hub.security_unavailable", nil)
 		s.webAuth = nil
 		return
 	} // fail CLOSED, never silently bypass existing MFA
+	s.support, err = support.Open(filepath.Join(s.cfg.DataDir, "support.enc"), s.cfg.HubSecurityKey)
+	if err != nil {
+		s.log.Event("support.unavailable", nil)
+	}
 	u, err := url.Parse(s.cfg.WebAuthOrigin)
 	if err != nil {
 		return
@@ -115,7 +129,7 @@ func (s *Server) currentHubSession(r *http.Request, mutation, fresh bool) (webau
 	if !s.webRequestAllowed(r) {
 		return webauth.Session{}, false
 	}
-	login, err := s.webAuth.Current(cookieValue(r, sessionCookie), func(i webauth.Identity) bool { return s.validWebIdentity(i, webClientIP(r)) })
+	login, err := s.webAuth.Current(cookieValue(r, sessionCookie), func(i webauth.Identity) bool { return s.validHubSessionIdentity(i, webClientIP(r)) })
 	if err != nil {
 		return webauth.Session{}, false
 	}
@@ -182,7 +196,7 @@ func (s *Server) handleHubAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.dropHubFlow(r)
-		login, e := s.webAuth.Issue(f.Identity)
+		login, e := s.webAuth.Issue(s.sessionIdentity(f.Identity))
 		if e != nil {
 			s.writeError(w, 503, "security_unavailable", "")
 			return
@@ -235,7 +249,7 @@ func (s *Server) handleHubAuth(w http.ResponseWriter, r *http.Request) {
 			s.writeError(w, 401, "invalid_passkey", "")
 			return
 		}
-		login, e := s.webAuth.Issue(webauth.Identity{PlayerID: u.ID, Fingerprint: u.Record.Fingerprint})
+		login, e := s.webAuth.Issue(s.sessionIdentity(webauth.Identity{PlayerID: u.ID, Fingerprint: u.Record.Fingerprint}))
 		if e != nil {
 			s.writeError(w, 503, "security_unavailable", "")
 			return
@@ -399,7 +413,7 @@ func (s *Server) handleHubAuth(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) rotateHubSession(w http.ResponseWriter, r *http.Request, previous webauth.Session, recovery []string) {
 	s.webAuth.RevokeIdentity(previous.Identity)
-	login, e := s.webAuth.IssueAt(previous.Identity, previous.AuthenticatedAt)
+	login, e := s.webAuth.IssueAt(s.sessionIdentity(previous.Identity), previous.AuthenticatedAt)
 	if e != nil {
 		s.writeError(w, 503, "security_unavailable", "")
 		return
@@ -407,4 +421,14 @@ func (s *Server) rotateHubSession(w http.ResponseWriter, r *http.Request, previo
 	setWebCookie(w, sessionCookie, login.Token, int(webauth.SessionTTL.Seconds()))
 	setWebCookie(w, hubFlowCookie, "", -1)
 	s.writeJSON(w, 200, map[string]any{"csrf_token": login.CSRF, "recovery_codes": recovery, "ok": true})
+}
+
+func (s *Server) sessionIdentity(i webauth.Identity) webauth.Identity {
+	if s.hubSecurity != nil {
+		i.Epoch = s.hubSecurity.Get(i.PlayerID, i.Fingerprint).Epoch
+	}
+	return i
+}
+func (s *Server) validHubSessionIdentity(i webauth.Identity, ip string) bool {
+	return s.validWebIdentity(i, ip) && i.Epoch == s.sessionIdentity(i).Epoch
 }

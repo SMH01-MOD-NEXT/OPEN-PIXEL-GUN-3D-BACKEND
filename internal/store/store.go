@@ -82,11 +82,12 @@ func (b Ban) Active(now time.Time) bool {
 }
 
 type state struct {
-	Accounts    map[string]*Account `json:"accounts"`
-	Profiles    map[string]*Profile `json:"profiles,omitempty"`
-	Aliases     map[string]string   `json:"aliases,omitempty"`
-	Bans        []Ban               `json:"bans"`
-	MailboxNews []MailboxNews       `json:"mailbox_news,omitempty"`
+	Evidence    map[string]PlayerEvidence `json:"player_evidence,omitempty"`
+	Accounts    map[string]*Account       `json:"accounts"`
+	Profiles    map[string]*Profile       `json:"profiles,omitempty"`
+	Aliases     map[string]string         `json:"aliases,omitempty"`
+	Bans        []Ban                     `json:"bans"`
+	MailboxNews []MailboxNews             `json:"mailbox_news,omitempty"`
 }
 
 // Options tunes how a store behaves.

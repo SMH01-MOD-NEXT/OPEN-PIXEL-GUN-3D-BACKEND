@@ -35,6 +35,7 @@ type Passkey struct {
 }
 type Record struct {
 	Fingerprint string    `json:"fingerprint"`
+	Epoch       uint64    `json:"auth_epoch,omitempty"`
 	Handle      []byte    `json:"handle"`
 	Secret      string    `json:"totp_secret,omitempty"`
 	LastStep    int64     `json:"last_step"`
@@ -235,6 +236,7 @@ func (s *Store) Enable(id, fp, secret, code string) ([]string, error) {
 		return nil, ErrUnavailable
 	}
 	r = copyRecord(r)
+	r.Epoch++
 	r.Secret = secret
 	r.LastStep = step
 	r.Recovery = hashes
@@ -277,6 +279,7 @@ func (s *Store) Disable(id, fp string) error {
 		return ErrInvalid
 	}
 	r = copyRecord(r)
+	r.Epoch++
 	r.Secret = ""
 	r.LastStep = 0
 	r.Recovery = nil
@@ -294,6 +297,7 @@ func (s *Store) Recovery(id, fp string) ([]string, error) {
 		return nil, ErrUnavailable
 	}
 	r = copyRecord(r)
+	r.Epoch++
 	r.Recovery = hashes
 	return codes, s.persist(id, r)
 }
@@ -314,6 +318,7 @@ func (s *Store) AddKey(id, fp, name string, c wa.Credential) error {
 		}
 	}
 	r = copyRecord(r)
+	r.Epoch++
 	r.Keys = append(r.Keys, Passkey{Credential: c, Name: name, CreatedAt: s.now()})
 	return s.persist(id, r)
 }
@@ -360,6 +365,7 @@ func (s *Store) RemoveKey(id, fp, key string) error {
 	r = copyRecord(r)
 	for i, k := range r.Keys {
 		if keyID(k.Credential) == key {
+			r.Epoch++
 			r.Keys = append(r.Keys[:i], r.Keys[i+1:]...)
 			return s.persist(id, r)
 		}

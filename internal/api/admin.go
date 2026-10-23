@@ -26,6 +26,7 @@ import (
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/clienterrors"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/support"
 )
 
 // registerAdminRoutes mounts the operator API and console.
@@ -63,6 +64,8 @@ func (s *Server) registerAdminRoutes() {
 // are joined here because an operator judging an account needs all three at
 // once, and three round trips per row would make the list useless.
 type adminPlayer struct {
+	SupportAdmin bool           `json:"support_admin"`
+	Evidence     map[string]any `json:"support_evidence,omitempty"`
 	PlayerID     string         `json:"player_id"`
 	DeviceID     string         `json:"device_id"`
 	SocketDevice string         `json:"socket_device,omitempty"`
@@ -83,6 +86,10 @@ func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
 		PlayerID: account.PlayerID, DeviceID: account.DeviceID, SocketDevice: account.SocketDevice,
 		Nick: account.Nick, CreatedAt: account.CreatedAt, LastSeenAt: account.LastSeenAt,
 		LastIP: account.LastIP, Aliases: s.st.Aliases(account.PlayerID),
+	}
+	row.Evidence = s.buildSupportEvidence(account)
+	if s.support != nil {
+		row.SupportAdmin = s.support.Admin(support.Actor{PlayerID: account.PlayerID, Fingerprint: webIdentity(account).Fingerprint})
 	}
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		row.Profile = &profile

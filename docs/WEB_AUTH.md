@@ -77,9 +77,10 @@ middleware, and no bug-report write endpoints are included in this change.
   from creation to provide code-free updates to an already subscribed socket.
 - Browser challenges are independent. A new request does not invalidate another
   browser's code; a new request from the same browser cancels its old one.
-- Web session:24h absolute,1h idle. Identity recreation/rebinding/rename and
-  active account/device/IP bans invalidate it. Restart invalidates every
-  process-local challenge/session. No OTPs or session cookies go into state.json.
+- Web session: 90 days absolute, persisted encrypted across restarts under the
+  stable HUB key. Identity recreation/rebinding/rename, security-epoch changes
+  and active bans invalidate it. Challenges remain process-local; raw OTPs and
+  browser cookies never go into state.json. See `HUB_SUPPORT_AND_SESSIONS.md`.
 - OTP letters never contain gifts or reward IDs and never enter admin news.
 - The stock typo `mailbox_udpated_me_messages` is preserved. Active letters
   use reserved positive Int32 IDs, Russian/English dictionaries and explicit

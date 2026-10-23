@@ -5597,3 +5597,14 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Remove both hero-image captions without replacing the image or changing the Android frontend.
 - [x] Test, rebuild, deploy locally and on AWS; verify the public HTML no longer contains the captions.
 - Verified release `46dd492`: both `/` and `/account/login` retain the image without either caption; all Go tests passed; local/AWS health and authoritative state preserved. Backup: `/var/backups/opg3d/hub-20261023T150610Z-46dd492`.
+
+## Persistent HUB sessions and support tickets — 2026-10-23
+- [x] Inspect existing browser session lifecycle, HUB navigation, admin player metadata and authoritative stores without touching the Android frontend.
+- [x] Resolve access to recovery tickets when the player cannot complete game-mail login; do not grant game-account access from a claimed public player ID.
+- [x] Test navigation/session lifecycle (old restart/idle expiry confirmed; immediate navigation-only loss not independently reproduced); implement protected persistent 90-day server sessions and Secure/HttpOnly cookies, durable revocation, expiration, logout and preservation of the 5-minute security step-up requirement.
+- [x] Implement persistent support tickets (recovery, bug report, question), short separate structured recovery questions, optional additional details, conversation history and statuses open/needs_info/resolved/closed.
+- [x] Enforce ticket ownership, recovery-claim separation, backend-controlled support-admin roles, pagination, input bounds, CSRF/rate limits, idempotency and audit logging without secret disclosure.
+- [x] Add player/admin HUB support screens and existing operator-console controls; display actual available IP/device/account metadata with provenance and unavailable states, never fabricate historical ownership evidence.
+- [x] Inspect existing client telemetry fields read-only; persist safe allowlisted device observations and meaningful future authoritative purchase/spending history without rewriting game frontend or inventing old transactions.
+- [x] Test persistence/restart/logout/expiry/navigation, access isolation and roles/statuses/structured forms; run Go/race/vet/build and UI/visual QA desktop/mobile.
+- [/] Commit isolated changes, back up/deploy locally and AWS preserving state, encryption keys, scheduled campaigns, frontend manifest and unrelated services; verify public HTTPS endpoints.

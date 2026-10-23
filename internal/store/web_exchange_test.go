@@ -42,6 +42,9 @@ func TestWebExchangeRatesAtomicRetryRestartAndReceiptFence(t *testing.T) {
 				t.Fatal("wallet mirror", o.ID, key)
 			}
 		}
+		if len(p.WalletHistory) == 0 || p.WalletHistory[len(p.WalletHistory)-1].Source != "web_exchange" || p.WalletHistory[len(p.WalletHistory)-1].OfferID != o.ID {
+			t.Fatal("missing authoritative wallet evidence")
+		}
 		if p.ProgressRevision == before.ProgressRevision {
 			t.Fatal("missing fence")
 		}

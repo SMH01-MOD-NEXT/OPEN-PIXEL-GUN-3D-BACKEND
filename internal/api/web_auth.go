@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ func webOwnerFingerprint(a store.Account) string {
 	return hex.EncodeToString(h[:])
 }
 func (s *Server) validWebIdentity(identity webauth.Identity, ip string) bool {
+	identity.Epoch = 0
 	a, err := s.st.Account(identity.PlayerID)
 	if err != nil || webIdentity(a) != identity {
 		return false
@@ -86,7 +88,26 @@ func (s *Server) webRequestAllowed(r *http.Request) bool {
 		return false
 	}
 	if r.URL.RawQuery != "" {
-		return false
+		if r.URL.Path != "/api/v1/hub/support/admin" && r.URL.Path != "/api/v1/hub/support" {
+			return false
+		}
+		for k, v := range r.URL.Query() {
+			if len(v) != 1 {
+				return false
+			}
+			if k == "offset" {
+				n, e := strconv.Atoi(v[0])
+				if e != nil || n < 0 || n > 10000 {
+					return false
+				}
+			} else if k == "status" {
+				if v[0] != "" && v[0] != "open" && v[0] != "needs_info" && v[0] != "closed" && v[0] != "resolved" {
+					return false
+				}
+			} else {
+				return false
+			}
+		}
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
 		return false
@@ -113,6 +134,9 @@ func cookieValue(r *http.Request, name string) string {
 }
 func setWebCookie(w http.ResponseWriter, name, value string, age int) {
 	c := &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: age}
+	if age > 0 {
+		c.Expires = time.Now().Add(time.Duration(age) * time.Second)
+	}
 	if age < 0 {
 		c.Expires = time.Unix(1, 0)
 	}
@@ -177,6 +201,12 @@ func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
 		if s.stageHubMFA(w, r, login) {
 			return
 		}
+		s.webAuth.Revoke(login.Token)
+		login, err = s.webAuth.Issue(s.sessionIdentity(login.Identity))
+		if err != nil {
+			s.writeError(w, 503, "security_unavailable", "")
+			return
+		}
 		// Do not retain a previous session on a successful account switch.
 		if prior, e := s.webAuth.Current(cookieValue(r, sessionCookie), valid); e == nil {
 			s.webAuth.Logout(cookieValue(r, sessionCookie), prior.CSRF)
@@ -185,7 +215,7 @@ func (s *Server) handleWebAuth(w http.ResponseWriter, r *http.Request) {
 		setWebCookie(w, sessionCookie, login.Token, int(webauth.SessionTTL.Seconds()))
 		s.writeJSON(w, 200, map[string]any{"player_id": login.Identity.PlayerID, "csrf_token": login.CSRF, "scopes": []string{"hub", "exchange", "bug_reports"}, "expires_at": login.ExpiresAt})
 	case "/api/v1/web-auth/me":
-		login, err := s.webAuth.Current(cookieValue(r, sessionCookie), valid)
+		login, err := s.webAuth.Current(cookieValue(r, sessionCookie), func(i webauth.Identity) bool { return s.validHubSessionIdentity(i, ip) })
 		if err != nil {
 			setWebCookie(w, sessionCookie, "", -1)
 			s.writeError(w, 401, "not_authenticated", "")

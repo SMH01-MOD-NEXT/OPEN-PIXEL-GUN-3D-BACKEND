@@ -68,9 +68,11 @@ Coins and Gems.
    Up to 8 passkeys/account. Credentials have random opaque user handles.
    Challenges expire after 3 minutes, are cookie/session bound where applicable,
    and are one-use. Clone warnings/decreasing signature counters fail closed.
-6. Mail/MFA attempts and API calls are bounded/rate-limited. Flows and sessions
-   are process-local, so restarting the backend signs browsers out; **enrolled
-   TOTP/passkeys and consumed recovery codes survive restarts**.
+6. Mail/MFA attempts and API calls are bounded/rate-limited. Challenges and MFA
+   flows are process-local. Browser sessions now persist for up to 90 days in
+   encrypted `web-sessions.enc`; enrolled factors and consumed recovery codes
+   also survive restarts. See [HUB support and sessions](HUB_SUPPORT_AND_SESSIONS.md)
+   for the current lifecycle, support tickets, staff roles and ownership evidence.
 
 `OPG3D_HUB_SECURITY_KEY` must contain 32 cryptographically random bytes encoded as
 64 hex characters. Generate it **once**, store in the protected service env file,

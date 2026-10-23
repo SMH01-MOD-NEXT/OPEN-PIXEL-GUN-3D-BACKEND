@@ -102,12 +102,14 @@ func TestHubOTPThenMFAAndSecurityRevocation(t *testing.T) {
 }
 func TestHubFailClosedAndPublicPrivacy(t *testing.T) {
 	s := hubTest(t)
+	seedSocketAccount(t, s, "123456789", "private-device-sentinel")
+	a, _ := s.st.Account("123456789")
 	for _, path := range []string{"/", "/account/login", "/hub/app.js", "/hub/text.json", "/hub/assets/coins.png", "/api/v1/hub/stats"} {
 		w := hubCall(t, s, "GET", path, nil, "")
 		if w.Code != 200 {
 			t.Fatal(path, w.Code)
 		}
-		if strings.Contains(w.Body.String(), "device_id") {
+		if strings.Contains(w.Body.String(), a.DeviceID) || strings.Contains(w.Body.String(), a.SocketDevice) {
 			t.Fatal("private data leak")
 		}
 	}

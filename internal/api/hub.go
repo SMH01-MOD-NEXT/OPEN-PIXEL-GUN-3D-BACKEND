@@ -16,6 +16,7 @@ import (
 var hubFiles embed.FS
 
 func (s *Server) registerHubRoutes() {
+	s.registerSupportRoutes()
 	root, _ := fs.Sub(hubFiles, "hub")
 	files := http.FileServer(http.FS(root))
 	s.mux.HandleFunc("GET /{$}", s.serveHubPage)
@@ -110,7 +111,7 @@ func (s *Server) handleHub(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		owner, err := s.st.Account(login.Identity.PlayerID)
-		if err != nil || webIdentity(owner) != login.Identity {
+		if err != nil || !s.validWebIdentity(login.Identity, webClientIP(r)) {
 			s.writeError(w, 401, "login_required", "")
 			return
 		}

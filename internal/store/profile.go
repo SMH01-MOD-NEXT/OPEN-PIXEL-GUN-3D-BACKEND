@@ -41,12 +41,13 @@ var (
 
 // Profile is the server-side player profile.
 type Profile struct {
-	PlayerID   string `json:"player_id"`
-	Nick       string `json:"nick"`
-	Level      int    `json:"level"`
-	Experience int64  `json:"experience"`
-	Coins      int64  `json:"coins"`
-	Gems       int64  `json:"gems"`
+	WalletHistory []WalletEvent `json:"wallet_history,omitempty"`
+	PlayerID      string        `json:"player_id"`
+	Nick          string        `json:"nick"`
+	Level         int           `json:"level"`
+	Experience    int64         `json:"experience"`
+	Coins         int64         `json:"coins"`
+	Gems          int64         `json:"gems"`
 
 	// PixelPass is the server-owned season ledger, not a client snapshot field.
 	WebExchangeReceipts map[string]WebExchangeReceipt `json:"web_exchange_receipts,omitempty"`
@@ -126,6 +127,16 @@ func (p *Profile) clone() Profile {
 		out.Prefs = make(map[string]string, len(p.Prefs))
 		for key, value := range p.Prefs {
 			out.Prefs[key] = value
+		}
+	}
+	if p.WalletHistory != nil {
+		out.WalletHistory = make([]WalletEvent, len(p.WalletHistory))
+		for i, e := range p.WalletHistory {
+			out.WalletHistory[i] = e
+			out.WalletHistory[i].Delta = map[string]int64{}
+			for k, v := range e.Delta {
+				out.WalletHistory[i].Delta[k] = v
+			}
 		}
 	}
 	out.Progress = cloneAnyMap(p.Progress)

@@ -162,6 +162,8 @@
                 </div>
                 <span id="playerBan" class="badge"></span>
               </div>
+              <details class="panel"><summary data-i18n="s_evidence"></summary><div id="playerEvidence"></div></details>
+              <div class="panel"><label><input id="supportAdminFlag" type="checkbox" /><span data-i18n="s_role"></span></label><p class="muted" data-i18n="s_roleHint"></p><button id="saveSupportRole" data-i18n="s_roleSave"></button></div>
               <div class="tabs" role="tablist" id="playerTabs">
                 <button
                   data-tab="profile"
@@ -444,11 +446,13 @@
           </section>
           <section id="page-support" class="page" hidden>
             <div class="tabs" id="supportTabs">
+              <button data-support="tickets" data-i18n="s_adminTitle"></button>
               <button data-support="identity" data-i18n="changeID"></button
               ><button data-support="transfer" data-i18n="transfer"></button
               ><button data-support="reconcile" data-i18n="reconcile"></button>
             </div>
-            <div id="support-identity" class="panel compact">
+            <div id="support-tickets" class="panel"><div id="supportTickets"></div></div>
+            <div id="support-identity" class="panel compact" hidden>
               <h3 data-i18n="changeID"></h3>
               <p class="muted" data-i18n="changeIDHint"></p>
               <label><span data-i18n="oldID"></span><input id="cidOld" /></label

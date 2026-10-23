@@ -111,6 +111,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.st.ObserveDevice(account, store.DeviceObservation{IP: ip, UserAgent: r.UserAgent(), Source: "http_game_login"}); err != nil {
+		s.log.Event("support.evidence_write_failed", nil)
+	}
 	s.log.Event("account.login", map[string]any{
 		"player_id": account.PlayerID,
 		"device_id": account.DeviceID,
@@ -300,6 +303,9 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := s.st.ObserveDevice(account, store.DeviceObservation{IP: ip, UserAgent: r.UserAgent(), Model: firstNonEmpty(legacyFields["device_model"], legacyFields["model"]), OS: firstNonEmpty(legacyFields["os_version"], legacyFields["operating_system"]), Platform: legacyFields["platform"], Version: legacyFields["app_version"], Source: "legacy_game_login"}); err != nil {
+		s.log.Event("support.evidence_write_failed", nil)
+	}
 	s.log.Event("account.legacy_auth", map[string]any{
 		"player_id": account.PlayerID,
 		"device_id": deviceID,

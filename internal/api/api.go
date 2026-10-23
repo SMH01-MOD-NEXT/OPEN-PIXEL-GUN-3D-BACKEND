@@ -33,6 +33,7 @@ import (
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/logs"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/secrets"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/support"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/webauth"
 	wa "github.com/go-webauthn/webauthn/webauthn"
 )
@@ -64,6 +65,7 @@ type Server struct {
 	// push state the same fingerprint for the same document.
 	configNonce string
 	webAuth     *webauth.Service
+	support     *support.Store
 	hubSecurity *hubsecurity.Store
 	hubWA       *wa.WebAuthn
 	hubAuthMu   sync.Mutex

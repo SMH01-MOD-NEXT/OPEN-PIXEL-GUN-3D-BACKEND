@@ -123,6 +123,7 @@ func (s *Store) webExchange(playerID string, request WebExchangeRequest, owner *
 	candidate.ProgressRevision = nextProgressRevision(candidate.ProgressRevision)
 	candidate.AppliedProgressRevisions = nil
 	candidate.UpdatedAt = now
+	recordWalletEvent(*p, &candidate, "web_exchange", offer.ID, now)
 	before := *p
 	*p = candidate
 	if err := s.persistLocked(); err != nil {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Package webauth owns short-lived, process-local login state. It never writes
-// codes, browser credentials or web sessions to the gameplay store.
+// Package webauth owns ephemeral login challenges and encrypted durable sessions.
+// Raw session tokens and OTPs are never persisted, nor written to gameplay state.
 package webauth
 
 import (
@@ -17,15 +17,18 @@ import (
 )
 
 const ChallengeTTL = 5 * time.Minute
-const SessionTTL = 24 * time.Hour
-const IdleTTL = time.Hour
+const SessionTTL = 90 * 24 * time.Hour
+const IdleTTL = SessionTTL
 const maxRecords = 2048
 const maxBuckets = 8192
 
 var ErrLimited = errors.New("login limited")
 var ErrInvalid = errors.New("invalid login")
 
-type Identity struct{ PlayerID, Fingerprint string }
+type Identity struct {
+	PlayerID, Fingerprint string
+	Epoch                 uint64 `json:"epoch,omitempty"`
+}
 type Challenge struct {
 	Token, Reference string
 	ExpiresAt        time.Time
@@ -60,6 +63,9 @@ type bucket struct {
 }
 type Service struct {
 	mu         sync.Mutex
+	path       string
+	storageKey [32]byte
+	failed     bool
 	key        [32]byte
 	challenges map[[32]byte]*challenge
 	sessions   map[[32]byte]*session
@@ -207,7 +213,7 @@ func (s *Service) Verify(ip, token, code string, valid func(Identity) bool) (Ses
 		return Session{}, ErrLimited
 	}
 	c := s.challenges[k]
-	if c == nil || c.closed || !now.Before(c.expires) {
+	if s.failed || c == nil || c.closed || !now.Before(c.expires) {
 		return Session{}, ErrInvalid
 	}
 	c.attempts++
@@ -223,6 +229,10 @@ func (s *Service) Verify(ip, token, code string, valid func(Identity) bool) (Ses
 	}
 	c.closed = true
 	s.sessions[sk] = &session{identity: c.identity, created: now, seen: now}
+	if e := s.persist(); e != nil {
+		delete(s.sessions, sk)
+		return Session{}, e
+	}
 	return Session{Token: next, CSRF: s.csrf(sk), Identity: c.identity, ExpiresAt: now.Add(SessionTTL), AuthenticatedAt: now}, nil
 }
 func (s *Service) Current(token string, valid func(Identity) bool) (Session, error) {
@@ -235,7 +245,7 @@ func (s *Service) Current(token string, valid func(Identity) bool) (Session, err
 	now := s.now()
 	s.prune(now)
 	c := s.sessions[k]
-	if c == nil {
+	if s.failed || c == nil {
 		return Session{}, ErrInvalid
 	}
 	if !valid(c.identity) {
@@ -255,7 +265,13 @@ func (s *Service) Logout(token, csrf string) bool {
 	if s.sessions[k] == nil || subtle.ConstantTimeCompare([]byte(csrf), []byte(s.csrf(k))) != 1 {
 		return false
 	}
+	old := s.sessions[k]
 	delete(s.sessions, k)
+	if s.persist() != nil {
+		s.sessions[k] = old
+		s.failed = true
+		return false
+	}
 	return true
 }
 func (s *Service) Cancel(token string) {
@@ -284,13 +300,17 @@ func (s *Service) IssueAt(identity Identity, authenticatedAt time.Time) (Session
 	defer s.mu.Unlock()
 	now := s.now()
 	s.prune(now)
-	if identity.PlayerID == "" || len(s.sessions) >= maxRecords {
+	if s.failed || identity.PlayerID == "" || len(s.sessions) >= maxRecords {
 		return Session{}, ErrLimited
 	}
 	if authenticatedAt.IsZero() || authenticatedAt.After(now) {
 		authenticatedAt = now
 	}
 	s.sessions[k] = &session{identity: identity, created: authenticatedAt, seen: now}
+	if e := s.persist(); e != nil {
+		delete(s.sessions, k)
+		return Session{}, e
+	}
 	return Session{Token: token, CSRF: s.csrf(k), Identity: identity, ExpiresAt: authenticatedAt.Add(SessionTTL), AuthenticatedAt: authenticatedAt}, nil
 }
 func (s *Service) Revoke(token string) {
@@ -301,14 +321,20 @@ func (s *Service) Revoke(token string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, k)
+	if s.persist() != nil {
+		s.failed = true
+	}
 }
 func (s *Service) RevokeIdentity(identity Identity) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, v := range s.sessions {
-		if v.identity == identity {
+		if v.identity.PlayerID == identity.PlayerID && v.identity.Fingerprint == identity.Fingerprint {
 			delete(s.sessions, k)
 		}
+	}
+	if s.persist() != nil {
+		s.failed = true
 	}
 }
 func (s *Service) Limit(key string, n int) bool {

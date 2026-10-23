@@ -430,6 +430,11 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 		}
 		session.mu.Unlock()
 	}
+	if nativeProof || matchedExistingDevice || created {
+		if err := s.st.ObserveDevice(account, store.DeviceObservation{IP: remoteIP, Model: firstNonEmpty(head.text("device_model"), head.text("model")), OS: firstNonEmpty(head.text("os_version"), head.text("operating_system")), Platform: head.text("platform"), Version: head.text("app_version"), Source: "authenticated_game_client"}); err != nil {
+			s.log.Event("support.evidence_write_failed", nil)
+		}
+	}
 	s.retireOlderMapPresence(session)
 	if profile, err := s.st.Profile(account.PlayerID); err == nil {
 		session.setProgressWriteRevision(profile.ProgressRevision)

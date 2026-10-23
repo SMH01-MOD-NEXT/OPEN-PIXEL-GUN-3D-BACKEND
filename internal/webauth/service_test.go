@@ -21,8 +21,8 @@ func testService(t *testing.T) (*Service, *time.Time) {
 }
 func TestOwnerExpirySingleUseAndWebSessions(t *testing.T) {
 	s, now := testService(t)
-	owner := Identity{"1", "owner"}
-	other := Identity{"2", "other"}
+	owner := Identity{PlayerID: "1", Fingerprint: "owner"}
+	other := Identity{PlayerID: "2", Fingerprint: "other"}
 	c, err := s.Start("ip", "1", owner)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestOwnerExpirySingleUseAndWebSessions(t *testing.T) {
 }
 func TestAttemptsConcurrencyBindingAndRestart(t *testing.T) {
 	s, _ := testService(t)
-	id := Identity{"1", "owner"}
+	id := Identity{PlayerID: "1", Fingerprint: "owner"}
 	valid := func(i Identity) bool { return i == id }
 	c, _ := s.Start("ip", "1", id)
 	code := s.Letters(id, nil)[0].Code
@@ -166,7 +166,7 @@ func TestDummyRateBoundsAndPrune(t *testing.T) {
 }
 func TestAbsoluteSessionExpiryAndCancel(t *testing.T) {
 	s, now := testService(t)
-	id := Identity{"1", "owner"}
+	id := Identity{PlayerID: "1", Fingerprint: "owner"}
 	valid := func(i Identity) bool { return i == id }
 	c, _ := s.Start("ip", "1", id)
 	code := s.Letters(id, nil)[0].Code
@@ -180,13 +180,13 @@ func TestAbsoluteSessionExpiryAndCancel(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 47; i++ {
-		*now = now.Add(30 * time.Minute)
+	for i := 0; i < 89; i++ {
+		*now = now.Add(24 * time.Hour)
 		if _, e := s.Current(login.Token, valid); e != nil {
 			t.Fatal(e)
 		}
 	}
-	*now = now.Add(30 * time.Minute)
+	*now = now.Add(24 * time.Hour)
 	if _, e := s.Current(login.Token, valid); e == nil {
 		t.Fatal("absolute expiry")
 	}

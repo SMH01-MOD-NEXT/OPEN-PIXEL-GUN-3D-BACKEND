@@ -13,7 +13,7 @@ const el = id => {
   return nodes.get(id);
 };
 let posted, failure;
-const context = vm.createContext({
+const context = vm.createContext({renderSupportEvidence:()=>{},
   el, RAW:{}, selected:'test-player', dirty:false,
   player:{nick:'Test',profile:{level:7,experience:100,coins:20,gems:3,progress_slots:{'3':{PixelPassCurrency:600,BattlePassCurrency:345}}}},
   t:key=>key, status:()=>{}, base:id=>'/players/'+id, showPlayer:async()=>{},

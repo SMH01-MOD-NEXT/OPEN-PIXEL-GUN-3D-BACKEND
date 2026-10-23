@@ -290,6 +290,7 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 	candidate.ProgressDocument["3"] = cloneAnyMap(currencies)
 	mirrorRawSlots(&candidate)
 	candidate.UpdatedAt = time.Now().UTC()
+	recordWalletEvent(*p, &candidate, "accepted_game_commands", 0, now)
 	before := *p
 	*p = candidate
 	if err := s.persistLocked(); err != nil {

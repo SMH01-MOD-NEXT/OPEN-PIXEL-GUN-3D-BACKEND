@@ -198,6 +198,35 @@
     all(".tab-panel").forEach((n) => (n.hidden = n.id !== "tab-" + tab));
     if (tab === "inventory") renderOwned();
   }
+  // Render untrusted ticket text with textContent, never HTML.
+  const sn = (tag, text, cls) => { const e=document.createElement(tag); if(text!==undefined)e.textContent=text; if(cls)e.className=cls; return e; };
+  const sb = (key, fn) => { const b=sn('button',t(key)); b.type='button';b.onclick=()=>Promise.resolve().then(fn).catch(report);return b; };
+  function renderSupportEvidence(root,e,ip,audit){
+    root.replaceChildren(sn('p',t('s_evidenceWarning'),'warning'));
+    const dl=sn('dl');for(const k of ['player_id','nick','level','created_at','last_seen_at','last_ip','device_id','socket_device'])dl.append(sn('dt',t('s_ev_'+k)),sn('dd',String(e[k]??t('s_notProvided'))));
+    if(ip)dl.append(sn('dt',t('s_submissionIP')),sn('dd',ip));root.append(dl,sn('h3',t('s_observations')));
+    if(!e.observations?.length)root.append(sn('p',t('s_noHistory'),'muted'));
+    for(const o of e.observations||[])root.append(sn('p',[o.at,o.ip,o.model||t('s_modelUnknown'),o.os,o.platform,o.version,o.user_agent,o.source].filter(Boolean).join(' · '),'support-evidence-line'));
+    root.append(sn('h3',t('s_walletHistory')),sn('p',t('s_walletWarning'),'muted'));
+    for(const w of [...(e.wallet_history||[])].reverse())root.append(sn('p',w.at+' · '+w.source+(w.offer_id?' #'+w.offer_id:'')+' · '+Object.entries(w.delta).map(([k,v])=>k+': '+v).join(' / '),'support-evidence-line'));
+    if(audit?.length){root.append(sn('h3',t('s_audit')));for(const a of audit)root.append(sn('p',a.at+' · '+a.actor+' · '+a.action,'support-evidence-line'))}
+  }
+  let supportOffset=0,supportStatus='';
+  async function loadSupportTickets(offset=0){
+    supportOffset=offset;const d=await api('GET','/api/v1/admin/support?offset='+offset+(supportStatus?'&status='+supportStatus:'')),root=el('supportTickets');
+    root.replaceChildren(sn('h3',t('s_adminTitle')));const select=sn('select');for(const v of ['', 'open','needs_info','resolved','closed']){const o=sn('option',v?t('s_'+v):t('s_all'));o.value=v;o.selected=v===supportStatus;select.append(o)}select.setAttribute('aria-label',t('s_status'));select.onchange=()=>{supportStatus=select.value;loadSupportTickets().catch(report)};root.append(select,sb('refresh',()=>loadSupportTickets(supportOffset)));
+    if(!d.tickets?.length)root.append(sn('p',t('s_empty')));
+    for(const ticket of d.tickets||[]){const row=sn('article',undefined,'panel');row.append(sn('strong',ticket.subject),sn('p',t('s_'+ticket.kind)+' · '+t('s_'+ticket.status)),sn('p',ticket.id,'mono'),sb('s_openTicket',()=>loadSupportTicket(ticket.id)));root.append(row)}
+    if(offset)root.append(sb('previous',()=>loadSupportTickets(Math.max(0,offset-30))));if(offset+30<d.total)root.append(sb('next',()=>loadSupportTickets(offset+30)));root.append(sn('p',t('s_total',{n:d.total})));
+  }
+  async function loadSupportTicket(id){
+    const d=await api('GET','/api/v1/admin/support/'+id),ticket=d.ticket,root=el('supportTickets');root.replaceChildren(sb('s_back',()=>loadSupportTickets(supportOffset)),sb('refresh',()=>loadSupportTicket(id)),sn('h3',ticket.subject),sn('p',ticket.id,'mono'),sn('p',t('s_'+ticket.status)));
+    if(ticket.target_id)root.append(sn('p',t('s_target')+': '+ticket.target_id));const answers=sn('dl');for(const[k,v]of Object.entries(ticket.answers||{}))answers.append(sn('dt',t('s_'+k)),sn('dd',['yes','no','unknown'].includes(v)?t('s_'+v):(v||t('s_notProvided'))));root.append(answers);
+    for(const m of ticket.messages||[]){if(!m.text)continue;const row=sn('article',undefined,'panel');row.append(sn('strong',t(m.author==='support'?'s_staff':'s_player')),sn('p',m.at),sn('p',m.text,'support-message-text'));root.append(row)}
+    const evidence=sn('details');evidence.append(sn('summary',t('s_evidence')));const body=sn('div');renderSupportEvidence(body,d.player_evidence||{},d.submission_ip,d.audit);evidence.append(body);root.append(evidence);
+    const form=sn('form'),label=sn('label',t('s_reply')),text=sn('textarea');text.maxLength=6000;text.rows=5;label.append(text);const statusLabel=sn('label',t('s_status')),select=sn('select');for(const v of ['open','needs_info','resolved','closed']){const o=sn('option',t('s_'+v));o.value=v;o.selected=v===ticket.status;select.append(o)}statusLabel.append(select);const submit=sn('button',t('s_update'));submit.type='submit';form.append(label,statusLabel,submit);const operation=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');form.onsubmit=async event=>{event.preventDefault();if(!form.reportValidity()||submit.disabled)return;submit.disabled=true;try{await api('POST','/api/v1/admin/support/'+id,{text:text.value.trim(),status:select.value,revision:ticket.revision,operation});await loadSupportTicket(id)}catch(e){report(e)}finally{submit.disabled=false}};root.append(form);
+  }
+  el('saveSupportRole').onclick=async()=>{const b=el('saveSupportRole');if(b.disabled||!selected)return;b.disabled=true;try{await api('PUT',base(selected)+'/support-role',{enabled:el('supportAdminFlag').checked});await showPlayer(selected,true)}catch(e){report(e)}finally{b.disabled=false}};
   async function navigate(value) {
     if (!discard()) return;
     if (!["overview", "players", "catalog", "support", "mailbox", "clientErrors", "logs", "settings"].includes(value))
@@ -230,6 +259,7 @@
     if (route === "overview") await loadStats();
     if (route === "clientErrors") await loadDiagnostics();
     if (route === "mailbox") await loadMailboxNews();
+    if (route === "support") await loadSupportTickets();
     if (route === "players" && !selected) await loadPlayers();
     if (route === "catalog") {
       updateTarget();
@@ -497,6 +527,8 @@
       ([key, id]) => (el(id).value = JSON.stringify(f[key] || {}, null, 2)),
     );
     el("metadata").textContent = JSON.stringify(player, null, 2);
+    el("supportAdminFlag").checked = !!player.support_admin;
+    renderSupportEvidence(el("playerEvidence"), player.support_evidence || {});
     el("banDetails").textContent = player.banned
       ? t("banDetailsText", {
           kind: player.ban_kind || t("none"),
@@ -1010,6 +1042,7 @@
         all('[id^="support-"]').forEach(
           (p) => (p.hidden = p.id !== "support-" + n.dataset.support),
         );
+        if (n.dataset.support === "tickets") loadSupportTickets().catch(report);
       }),
   );
   all("[data-support]")[0].setAttribute("aria-selected", "true");
@@ -1222,7 +1255,7 @@
     connectedUI(false);
     logLines = [];
     drawLogs();
-    ["players", "stats", "ownedItems", "catalogItems", "metadata", "diagnosticRows", "diagnosticStats", "diagnosticResult", "diagnosticHealth"].forEach(
+    ["supportTickets", "playerEvidence", "players", "stats", "ownedItems", "catalogItems", "metadata", "diagnosticRows", "diagnosticStats", "diagnosticResult", "diagnosticHealth"].forEach(
       (id) => (el(id).textContent = ""),
     );
     Object.values(RAW).forEach((id) => (el(id).value = ""));
