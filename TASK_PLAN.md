@@ -5632,5 +5632,10 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Add centralized coverage observations for commands/prefs/progress/document/slots/replace/client state; retain existing authoritative mailbox/pass/exchange validation and durable receipts.
 - [x] Add bounded operator diagnostics and correlated authoritative reload for rejected proven mailbox/exchange transactions.
 - [x] Test compatibility, verified/rejected/replayed operations, every snapshot path, rollback, concurrency and restart persistence.
-- [/] Build/deploy locally/AWS with protected backups; preserve accounts, role 740333804, campaigns, keys, tickets and frontend.
+- [x] Build/deploy locally/AWS with protected backups; preserve accounts, role 740333804, campaigns, keys, tickets and frontend.
 - [ ] Follow-up, NOT enabled in this phase: recover ordinary prices/resources and trusted combat contracts before enforcing their grants/ownership.
+
+- Release `29de1c6` is running locally (PID 97201) and on AWS; binary SHA256 `d577516201d3af6494f28a60e7d33fca99567d7e1154ec54ca55e7333bb254fc`.
+- Verification passed: full Go tests, race (store/API/diagnostics), vet and all eight Node harnesses; no adb device attached, so no physical-client test claimed.
+- Production read-only checks: HTTPS ping 200, public operator API still 404, protected diagnostic journal available, role 740333804 retained. Data bytes/campaigns/security key/encrypted stores/frontend manifest unchanged; Caddy/gateway not restarted.
+- AWS protected backup: `/var/backups/opg3d/hub-20261023T175050Z-29de1c6`. No synthetic suspicious grants submitted to live accounts; new behavior exercised with isolated store/API fixtures.
