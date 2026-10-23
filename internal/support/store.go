@@ -459,7 +459,7 @@ func (s *Store) Update(id string, a Actor, admin bool, u Update) (Ticket, error)
 		return Ticket{}, ErrLimit
 	}
 	playerClose := !admin && u.Status == "closed" && strings.TrimSpace(u.Text) == ""
-	if !admin && (t.Status != "open" && t.Status != "needs_info" || u.Status != "" && !playerClose) {
+	if !admin && (t.Status != "open" && t.Status != "needs_info" && t.Status != "resolved" || u.Status != "" && !playerClose) {
 		return Ticket{}, ErrDenied
 	}
 	if u.Status != "" && u.Status != "open" && u.Status != "needs_info" && u.Status != "resolved" && u.Status != "closed" {
@@ -475,7 +475,7 @@ func (s *Store) Update(id string, a Actor, admin bool, u Update) (Ticket, error)
 			author = "support"
 		}
 		t.Messages = append(t.Messages, Message{len(t.Messages) + 1, author, strings.TrimSpace(u.Text), now})
-		if !admin && t.Status == "needs_info" {
+		if !admin && (t.Status == "needs_info" || t.Status == "resolved") {
 			t.Status = "open"
 		}
 	}

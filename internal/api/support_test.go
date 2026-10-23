@@ -248,3 +248,44 @@ func TestSupportHTTPOwnerClose(t *testing.T) {
 		t.Fatal("reply after close", w.Code)
 	}
 }
+
+func TestSupportHTTPResolvedReplyAndClose(t *testing.T) {
+	s := hubTest(t)
+	guest, csrf := supportInit(t, s)
+	w := supportCall(t, s, "POST", "/api/v1/hub/support/tickets", support.Create{Kind: "recovery", TargetID: "123456789", Subject: "Recover account", Answers: map[string]string{"old_device": "unknown", "changed_device": "no"}, Operation: fmt.Sprintf("%032x", 1)}, csrf, guest)
+	if w.Code != 201 {
+		t.Fatal(w.Code)
+	}
+	var d struct {
+		Ticket support.Ticket `json:"ticket"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &d)
+	id := d.Ticket.ID
+	path := "/api/v1/hub/support/tickets/" + id
+	// Use the actual store's privileged actor, never an owner-supplied status.
+	ticket, err := s.support.Update(id, support.Actor{Operator: true}, true, support.Update{Status: "resolved", Revision: 1, Operation: fmt.Sprintf("%032x", 2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := support.Update{Text: "Need more help", Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 3)}
+	w = supportCall(t, s, "POST", path, request, csrf, guest)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	json.Unmarshal(w.Body.Bytes(), &d)
+	if d.Ticket.Status != "open" {
+		t.Fatal("not reopened")
+	}
+	ticket, err = s.support.Update(id, support.Actor{Operator: true}, true, support.Update{Status: "resolved", Revision: d.Ticket.Revision, Operation: fmt.Sprintf("%032x", 4)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = supportCall(t, s, "POST", path, support.Update{Status: "closed", Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 5)}, csrf, guest)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	json.Unmarshal(w.Body.Bytes(), &d)
+	if d.Ticket.Status != "closed" {
+		t.Fatal("not closed")
+	}
+}

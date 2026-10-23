@@ -147,7 +147,7 @@ func TestAuthenticatedTicketsRolesAndLifecycle(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if status != "open" {
+		if status == "closed" {
 			if _, e = s.Update(ticket.ID, a, false, Update{Text: "reply", Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 20+n)}); e == nil {
 				t.Fatal("closed player reply")
 			}
@@ -218,7 +218,7 @@ func TestValidation(t *testing.T) {
 
 func TestPlayerClosureOwnershipLifecycleAndDurability(t *testing.T) {
 	for _, authenticated := range []bool{false, true} {
-		for _, initial := range []string{"open", "needs_info"} {
+		for _, initial := range []string{"open", "needs_info", "resolved"} {
 			t.Run(fmt.Sprint(authenticated, initial), func(t *testing.T) {
 				s, a, c := fixture(t)
 				if authenticated {
@@ -291,7 +291,7 @@ func TestPlayerClosureOwnershipLifecycleAndDurability(t *testing.T) {
 		}
 	}
 }
-func TestPlayerClosureConflictAndResolvedGuard(t *testing.T) {
+func TestPlayerClosureConflictAndResolvedClosure(t *testing.T) {
 	s, a, c := fixture(t)
 	ticket, _, _ := s.Create(a, c, "")
 	request := Update{Status: "closed", Revision: 1, Operation: fmt.Sprintf("%032x", 3)}
@@ -303,7 +303,44 @@ func TestPlayerClosureConflictAndResolvedGuard(t *testing.T) {
 		t.Fatal("stale closure", err)
 	}
 	request.Revision = updated.Revision
-	if _, err = s.Update(ticket.ID, a, false, request); !errors.Is(err, ErrDenied) {
+	if got, err := s.Update(ticket.ID, a, false, request); err != nil || got.Status != "closed" {
 		t.Fatal("resolved closure", err)
+	}
+}
+
+func TestResolvedPlayerReplyReopensAndPersists(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		t.Run(fmt.Sprint(authenticated), func(t *testing.T) {
+			s, a, c := fixture(t)
+			if authenticated {
+				a.PlayerID = "123"
+				a.Fingerprint = "owner"
+			}
+			ticket, _, err := s.Create(a, c, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ticket, err = s.Update(ticket.ID, Actor{Operator: true}, true, Update{Status: "resolved", Revision: 1, Operation: fmt.Sprintf("%032x", 2)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := Update{Text: "Still need help", Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 3)}
+			got, err := s.Update(ticket.ID, a, false, request)
+			if err != nil || got.Status != "open" || len(got.Messages) != len(ticket.Messages)+1 {
+				t.Fatal("resolved reply", err)
+			}
+			retry, err := s.Update(ticket.ID, a, false, request)
+			if err != nil || retry.Revision != got.Revision || len(retry.Messages) != len(got.Messages) {
+				t.Fatal("idempotent reply", err)
+			}
+			s, err = Open(s.path, s.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err = s.Get(ticket.ID, a, false)
+			if err != nil || got.Status != "open" || got.Messages[len(got.Messages)-1].Text != "Still need help" {
+				t.Fatal("restart", err)
+			}
+		})
 	}
 }

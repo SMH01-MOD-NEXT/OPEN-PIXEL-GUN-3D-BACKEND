@@ -5618,3 +5618,8 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Commit, build and deploy locally/AWS with protected backups and verify role persistence, state/campaign/key/frontend preservation.
 
 - Release `97392d8` deployed locally/AWS; player 740333804 support-admin role persisted across both restarts. Full Go suite, support/API race tests, vet, eight Node harnesses and actual Chromium mobile/desktop confirmation checks passed. Public HTTPS serves new assets; protected operator routes remain 404. Accounts/profiles, campaigns, keys, frontend manifest and unrelated services preserved. AWS backup: `/var/backups/opg3d/hub-20261023T164645Z-97392d8`.
+
+## Resolved support ticket lifecycle — 2026-10-23
+- [x] Keep resolved tickets replyable; player replies reopen them, while only closed tickets are terminal for players.
+- [x] Close resolved tickets immediately without confirmation; retain confirmation for open/needs-info and server-side ownership/CAS/idempotency.
+- [/] Extend lifecycle/API/UI regression tests, build and deploy locally/AWS preserving roles, keys, tickets and game state.
