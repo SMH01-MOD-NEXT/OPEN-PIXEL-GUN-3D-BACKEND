@@ -5592,3 +5592,7 @@ Implemented PUT with required expected_ctime_change; delivery-edit permission en
 - [x] Back up/deploy on AWS, preserve accounts/campaigns/existing services and frontend assets, verify HTTPS/security/health; commit isolated changes and record hardware-dependent passkey test limitations.
 
 Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB verified; see docs/OPG3D_HUB_DEPLOYMENT_2026-10-23.md. Real-device passkey enrollment and in-game wallet refresh remain owner verification; no Android frontend edits.
+
+## HUB hero caption removal — 2026-10-23
+- [x] Remove both hero-image captions without replacing the image or changing the Android frontend.
+- [/] Test, rebuild, deploy locally and on AWS; verify the public HTML no longer contains the captions.

@@ -201,3 +201,17 @@ func TestHubOnlineIsUniqueLiveGameSocketsNotWebSessions(t *testing.T) {
 	a.lastSeen = time.Now().Add(-61 * time.Second)
 	a.mu.Unlock()
 }
+
+func TestHubHeroArtworkHasNoCaption(t *testing.T) {
+	s := hubTest(t)
+	for _, path := range []string{"/", "/account/login"} {
+		w := hubCall(t, s, "GET", path, nil, "")
+		html := w.Body.String()
+		if w.Code != 200 || !strings.Contains(html, `src="/hub/assets/hero.png"`) {
+			t.Fatal("hero image missing", path)
+		}
+		if strings.Contains(html, `class="image-caption"`) || strings.Contains(html, `data-t="world"`) || strings.Contains(html, "OPEN PIXEL GUN 3D") {
+			t.Fatal("unexpected hero caption", path)
+		}
+	}
+}
