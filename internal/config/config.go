@@ -30,17 +30,19 @@ type Update struct {
 
 // Config is the fully resolved runtime configuration.
 type Config struct {
-	ServerName    string
-	Addr          string
-	DataDir       string
-	LogDir        string
-	ContentDir    string
-	TraceBodies   bool
-	MaxBodyLog    int
-	DiscoveryPort int
-	AdminToken    string
-	WebAuthOrigin string // Exact HTTPS origin; empty disables website login.
-	Maintenance   bool
+	ServerName     string
+	Addr           string
+	DataDir        string
+	LogDir         string
+	ContentDir     string
+	TraceBodies    bool
+	MaxBodyLog     int
+	DiscoveryPort  int
+	AdminToken     string
+	HubSecurityKey []byte
+	HubDownloadURL string
+	WebAuthOrigin  string // Exact HTTPS origin; empty disables website login.
+	Maintenance    bool
 
 	// BundleDir is the directory under ContentDir holding the asset bundles the
 	// client downloads, laid out as <name>/<md5>/<name>. Those files are the
@@ -354,6 +356,20 @@ func Load() (*Config, error) {
 
 	if cfg.DiscoveryPort < 0 || cfg.DiscoveryPort > 65535 {
 		return nil, fmt.Errorf("config: OPG3D_DISCOVERY_PORT out of range: %d", cfg.DiscoveryPort)
+	}
+	cfg.HubDownloadURL = strings.TrimSpace(os.Getenv("OPG3D_HUB_DOWNLOAD_URL"))
+	if cfg.HubDownloadURL != "" {
+		u, e := url.Parse(cfg.HubDownloadURL)
+		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return nil, fmt.Errorf("config: HUB download URL must be HTTPS")
+		}
+	}
+	if raw := strings.TrimSpace(os.Getenv("OPG3D_HUB_SECURITY_KEY")); raw != "" {
+		key, e := hex.DecodeString(raw)
+		if e != nil || len(key) != 32 {
+			return nil, fmt.Errorf("config: HUB security key must contain 32 random bytes encoded as hex")
+		}
+		cfg.HubSecurityKey = key
 	}
 	if cfg.WebAuthOrigin != "" {
 		u, err := url.Parse(cfg.WebAuthOrigin)
