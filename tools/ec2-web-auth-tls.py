@@ -72,7 +72,7 @@ def main():
         certs[:] = [c for c in certs if "opg3d-certbot" not in c.get("tags", [])]
         certs.append({"certificate": str(TLS_DIR / "fullchain.pem"), "key": str(TLS_DIR / "privkey.pem"), "tags": ["opg3d-certbot"]})
         vhost = {"@id": "opg3d-web-auth", "match": [{"host": [DOMAIN]}], "terminal": True, "handle": [{"handler": "subroute", "routes": [
-            {"match": [{"path": ["/admin", "/admin/*", "/api/v1/admin", "/api/v1/admin/*"]}], "handle": [{"handler": "static_response", "status_code": 404}], "terminal": True},
+            {"match": [{"path_regexp": {"name": "opg3d_admin", "pattern": "^(/@[^/]+)?/(admin(/|$)|api/v1/admin(/|$))"}}], "handle": [{"handler": "static_response", "status_code": 404}], "terminal": True},
             {"match": [{"path": ["/"]}], "handle": [{"handler": "static_response", "status_code": 302, "headers": {"Location": ["/account/login"]}}], "terminal": True},
             {"handle": [{"handler": "headers", "response": {"set": {"Strict-Transport-Security": ["max-age=86400"]}}}, {"handler": "reverse_proxy", "upstreams": [{"dial": "127.0.0.1:18080"}]}]}
         ]}]}

@@ -5572,8 +5572,10 @@ Implemented PUT with required expected_ctime_change; delivery-edit permission en
 - [x] Add bounded ephemeral 5-minute OTP challenges, browser binding, per-account/IP limits, single-use verification and scoped web sessions; never persist/log codes or expose them in admin/news.
 - [x] Integrate owner-only personal subscription/fetch/expiry, preserving global campaigns and game frontend; add localized login test surface and integration documentation.
 - [x] Verify isolation, impersonation rejection, expiry/replay/concurrency, CSRF/cookies, bans, restart semantics, rate limits and sensitive-log redaction; run full tests/race/vet/build.
-- [/] Prepare isolated domain vhost/Certbot webroot and renewal; wait for user Cloudflare A record if absent, then verify public HTTPS before enabling web login.
-- [/] Back up/deploy approved backend/TLS changes safely, preserve accounts/campaigns/client and existing sites, verify health; commit isolated changes and report limitations.
+- [x] Prepare isolated domain vhost/Certbot webroot and renewal; wait for user Cloudflare A record if absent, then verify public HTTPS before enabling web login.
+- [x] Back up/deploy approved backend/TLS changes safely, preserve accounts/campaigns/client and existing sites, verify health; commit isolated changes and report limitations.
 
 - Verified: all Go tests/race/vet and six console Node suites pass; localized stock personal schema and encrypted reply redaction covered. Existing-account socket auth now rejects ID-only/device-replacement impersonation.
-- EC2: Certbot installed, timer active, isolated ACME webroot reachable publicly; main Caddy and existing forward site remain healthy. Domain A record still absent; certificate issuance/public HTTPS pending DNS.
+- EC2: Certbot installed, timer active, isolated ACME webroot reachable publicly; main Caddy and existing forward site remain healthy. DNS A appeared during implementation; Certbot certificate issued, HTTPS activated and renewal dry-run/deploy hook verified.
+- Deployed binary `5b85499` to AWS and local; both health200, byte-identical startup state and unchanged frontend manifest/campaigns. Public HTTPS login/assets200, unknown-account/cancel202/200, cross-origin/forged-proto403, admin including rewritten-path aliases404. Existing forward site200. Details: docs/WEB_AUTH_DEPLOYMENT_2026-10-23.md.
+- Manual follow-up only: real Android mailbox layout/cache timing; no frontend modification or claim of instantaneous stock-client deletion. Full bug-report website remains out of scope.
