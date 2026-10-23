@@ -59,6 +59,7 @@
           <section id="page-mailbox" class="page" hidden>
             <p data-i18n="mailboxHint"></p>
             <form id="mailboxForm" class="panel">
+              <p id="mailboxEditorStatus" role="status"></p>
               <div class="form-grid">
                 <label><span data-i18n="mailboxType"></span><select id="mailboxType">
                   <option value="Update" data-i18n="mailboxUpdate"></option>
@@ -79,6 +80,7 @@
                 <label><span data-i18n="mailboxBodyEn"></span><textarea id="mailboxBodyEn" maxlength="16384" rows="6"></textarea></label>
               </div>
               <button id="mailboxPublish" type="submit" class="primary" data-i18n="mailboxPublish"></button>
+              <button id="mailboxCancel" type="button" data-i18n="mailboxCancel" hidden></button>
             </form>
             <p id="mailboxResult" role="status"></p>
             <div id="mailboxNews"></div>

@@ -216,3 +216,43 @@ a code rollback. The pre-mailbox binary predates the new persisted fields; after
 campaign publication/claims, assess schema preservation before reverting it.
 Prefer a compatible forward repair. Backup includes configuration and private
 player data and must remain root-only.
+
+## Editing news in the admin console
+
+Each non-archived news card has **Edit**. It fills the existing RU/EN form and UTC
+schedule/reward fields. **Save changes** updates the same letter; **Cancel editing**
+returns to creation mode. Switching/canceling asks before discarding dirty text.
+The game frontend is unchanged.
+
+- Before publication, text, category, gifts and publication time can be changed.
+- After publication, or if any account has claimed, gift amounts/weapon and the
+  publication timestamp are locked. Text remains editable; gifts still require
+  DeveloperMessage. A published letter cannot be moved back into the future to
+  bypass this lock. Archived letters are read-only.
+- Message ID / id_reward / claims never change. Text edits cannot rearm rewards.
+  No-op saves preserve ctime. Real changes use a strictly increasing ctime_change
+  even within one second, so subscribed clients refetch on the next keepalive.
+- Conflicting forms return HTTP409; entered text remains in the form. Copy it if
+  needed and reopen **Edit** from the refreshed list to use the latest revision.
+
+Authenticated `PUT /api/v1/admin/mailbox/news/{id}` accepts the complete creation
+Draft plus required positive integer `expected_ctime_change` from the loaded news.
+Unknown/trailing/oversized/malformed fields are rejected (HTTP400); missing news
+is404, stale revision / archived / locked delivery is409 with distinct error
+codes. Disk failure is503 and restores the old in-memory record before replying.
+GET admin news includes server-computed `delivery_editable`; this flag is neither
+client-editable nor included in the game's message payload.
+
+Regressions cover future edits/restart, identity/date preservation, no-op saves,
+parallel optimistic updates, archived and exact publication-boundary locks,
+existing receipts after clock rollback, claim replay after text edits, invalid
+payloads, disk rollback, private route authentication, keepalive invalidation,
+RU/EN prefill/save/cancel, UTC serialization, double-submit and unsaved conflict
+preservation. Full tests/race/vet/static build and all console tests passed.
+
+Local release `23.1.3-mailbox-edit` was rebuilt and restarted. Startup and admin
+no-op/conflict probes preserved the **entire** existing local state, including all
+letters and player progress. Binary SHA256
+`0be1c86617e294e77391cd4c6f460c70e31237392069f990c74b3620c10bab35`.
+AWS still runs the previously approved mailbox-campaign release; this editing
+release has **not** been deployed to AWS pending operator confirmation.

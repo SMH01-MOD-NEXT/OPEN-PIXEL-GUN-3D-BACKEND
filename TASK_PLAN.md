@@ -5558,3 +5558,11 @@ Measured defect: numeric currency catalog tokens produced Currency=1200; mailbox
 - [x] Document release/rollback and commit isolated deployment notes; report actual AWS status.
 
 AWS outcome: version 23.1.3-mailbox-rewards-9255aec, SHA256 fe56aba8a6aa17bf1e8f9342d7adc7db35522ceac10e0fe48bc47c4eb7c359e0. Production #1 scheduled 2026-10-26T12:00:00Z (2626 Coins/1010 Gems); #2 scheduled 2026-10-31T12:00:00Z (3131 Coins/1010 Gems/Pumpkin Thrower 143001). No temporary test gift imported. Private backup /var/backups/opg3d/mailbox-20261023T120115Z-9255aec. Full tests/race/vet/static build/console checks passed; private-copy rehearsal and repeat-import idempotency passed. Startup preserved full state; final comparison changed only mailbox_news. Public ping/loader 200; admin 404; private unauthenticated admin 401. Backend PID 25457; gateway PID 21993 unchanged; config/client manifest and auxiliary data unchanged. Actual scheduled-publication/claim on AWS awaits the stated dates; local in-game gift acceptance was confirmed by user.
+
+## Editable mailbox news — 2026-10-23
+- [x] Add validated atomic updates with optimistic revision checks, stable reward IDs and preserved receipts; lock rewards/scheduling after publication or any claim.
+- [x] Add localized admin edit/save/cancel workflow with prefilled fields and conflict handling; leave game frontend unchanged.
+- [x] Cover validation, races, persistence failure, no-op, cache refresh, claim replay and console editing regressions; run full tests/race/vet/build.
+- [x] Rebuild/restart local backend without changing existing letters or player state; document and commit isolated changes. AWS update requires confirmation.
+
+Implemented PUT with required expected_ctime_change; delivery-edit permission enforced under the same store lock as claims. Published gifts/schedules immutable, text still editable; claims/IDs remain intact. Admin RU/EN Edit/Save/Cancel includes prefill, UTC, dirty-discard confirmation, stale revision errors without losing text and duplicate-submit guard. Full tests/race/vet/static build/all console scripts passed. Local restart PID 52605: exact whole-state preservation, admin controls200, unauthenticated PUT401, stale PUT409, no-op unchanged. AWS not updated this turn; game frontend and scheduled campaign unchanged.

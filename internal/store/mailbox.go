@@ -82,42 +82,51 @@ func (n MailboxNews) VisibleAt(now time.Time) bool {
 	return !n.Archived && (n.PublishAt == nil || !now.Before(*n.PublishAt))
 }
 
-// CreateMailboxNews stores a global announcement. Gifts are granted only by
-// an authenticated stock command 187, never on creation or on message fetch.
-func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
+// Shared normalization prevents create/update validation from drifting.
+func normalizeMailboxDraft(d MailboxNewsDraft) (MailboxNewsDraft, error) {
 	var ok bool
 	if d.Header, ok = normalizeMailboxText(d.Header, 512); !ok {
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	if d.ShortDescription, ok = normalizeMailboxText(d.ShortDescription, 2048); !ok {
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	if d.Description, ok = normalizeMailboxText(d.Description, 16384); !ok {
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	switch d.Type {
 	case "DeveloperMessage", "Entertainment", "Update", "Upcoming", "Contest":
 	default:
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	r := d.Rewards
 	if r.Coins < 0 || r.Coins > 10000000 || r.Gems < 0 || r.Gems > 10000000 || r.Weapon < 0 {
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	if r.Weapon != 0 {
 		if _, ok := catalog.Find(10, r.Weapon); !ok {
-			return MailboxNews{}, ErrInvalidMailboxNews
+			return d, ErrInvalidMailboxNews
 		}
 	}
 	if len(r.Tokens()) > 0 && d.Type != "DeveloperMessage" {
-		return MailboxNews{}, ErrInvalidMailboxNews
+		return d, ErrInvalidMailboxNews
 	}
 	if d.PublishAt != nil {
 		t := d.PublishAt.UTC().Truncate(time.Second)
 		if t.Unix() < 1 || t.Unix() > 2147483647 {
-			return MailboxNews{}, ErrInvalidMailboxNews
+			return d, ErrInvalidMailboxNews
 		}
 		d.PublishAt = &t
+	}
+	return d, nil
+}
+
+// CreateMailboxNews stores a global announcement. Gifts are granted only by
+// an authenticated stock command 187, never on creation or on message fetch.
+func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
+	d, err := normalizeMailboxDraft(d)
+	if err != nil {
+		return MailboxNews{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -206,4 +215,122 @@ func migrateMailboxRewardWire(news []MailboxNews, now time.Time) bool {
 		changed = true
 	}
 	return changed
+}
+
+var ErrMailboxConflict = errors.New("store: mailbox news revision conflict")
+var ErrMailboxArchived = errors.New("store: archived mailbox news cannot be edited")
+var ErrMailboxDeliveryLocked = errors.New("store: published or claimed mailbox delivery cannot change")
+
+// AdminMailboxNews includes server-computed edit permissions, not game wire fields.
+type AdminMailboxNews struct {
+	MailboxNews
+	DeliveryEditable bool `json:"delivery_editable"`
+}
+
+func mailboxDeliveryEditable(n MailboxNews, now time.Time, claimed bool) bool {
+	return !n.Archived && n.PublishAt != nil && now.Before(*n.PublishAt) && !claimed
+}
+
+func (s *Store) MailboxNewsForAdmin() []AdminMailboxNews {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	claimed := map[string]bool{}
+	for _, p := range s.state.Profiles {
+		for id, yes := range p.MailboxClaims {
+			if yes {
+				claimed[id] = true
+			}
+		}
+	}
+	now := time.Now()
+	out := make([]AdminMailboxNews, 0, len(s.state.MailboxNews))
+	for _, n := range s.state.MailboxNews {
+		editable := mailboxDeliveryEditable(n, now, claimed[fmt.Sprint(n.ID)])
+		if n.PublishAt != nil {
+			at := *n.PublishAt
+			n.PublishAt = &at
+		}
+		out = append(out, AdminMailboxNews{MailboxNews: n, DeliveryEditable: editable})
+	}
+	return out
+}
+
+func mailboxSameSchedule(a, b *time.Time) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && a.Equal(*b))
+}
+
+// UpdateMailboxNews atomically replaces editable fields, never identity/receipts.
+// Scheduling and gift changes are allowed only BEFORE first publication, and
+// only if nobody has claimed. Published letters cannot be moved back into the
+// future to bypass this lock. Optimistic revisions reject stale admin forms.
+func (s *Store) UpdateMailboxNews(id, expectedChanged int, d MailboxNewsDraft) (MailboxNews, error) {
+	if id < 1 || expectedChanged < 1 {
+		return MailboxNews{}, ErrInvalidMailboxNews
+	}
+	d, err := normalizeMailboxDraft(d)
+	if err != nil {
+		return MailboxNews{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.MailboxNews {
+		old := s.state.MailboxNews[i]
+		if old.ID != id {
+			continue
+		}
+		if old.Archived {
+			return MailboxNews{}, ErrMailboxArchived
+		}
+		if old.Changed != expectedChanged {
+			return MailboxNews{}, ErrMailboxConflict
+		}
+		sameSchedule := mailboxSameSchedule(old.PublishAt, d.PublishAt)
+		now := time.Now()
+		if old.Rewards != d.Rewards || !sameSchedule {
+			claimed := false
+			for _, p := range s.state.Profiles {
+				if p.MailboxClaims[fmt.Sprint(id)] {
+					claimed = true
+					break
+				}
+			}
+			if !mailboxDeliveryEditable(old, now, claimed) {
+				return MailboxNews{}, ErrMailboxDeliveryLocked
+			}
+		}
+		if old.Header == d.Header && old.ShortDescription == d.ShortDescription &&
+			old.Description == d.Description && old.Type == d.Type && old.Rewards == d.Rewards && sameSchedule {
+			if old.PublishAt != nil {
+				at := *old.PublishAt
+				old.PublishAt = &at
+			}
+			return old, nil
+		}
+		next := old
+		next.MailboxNewsDraft = d
+		next.Changed = int(now.Unix())
+		if next.Changed <= old.Changed {
+			next.Changed = old.Changed + 1
+		}
+		if !sameSchedule {
+			next.Date = now.Unix()
+			if d.PublishAt != nil {
+				next.Date = d.PublishAt.Unix()
+			}
+		}
+		if len(d.Rewards.Tokens()) > 0 {
+			next.RewardWireVersion = mailboxRewardWireVersion
+		}
+		s.state.MailboxNews[i] = next
+		if err := s.persistLocked(); err != nil {
+			s.state.MailboxNews[i] = old
+			return MailboxNews{}, err
+		}
+		if next.PublishAt != nil {
+			at := *next.PublishAt
+			next.PublishAt = &at
+		}
+		return next, nil
+	}
+	return MailboxNews{}, ErrNotFound
 }

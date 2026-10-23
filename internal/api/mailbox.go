@@ -111,7 +111,7 @@ func (s *Server) answerMailboxMessages(session *sioSession, head sioHead, reqID 
 func (s *Server) handleAdminMailboxNews(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
-		s.writeJSON(w, 200, map[string]any{"news": s.st.MailboxNews(), "limit": store.MailboxNewsLimit})
+		s.writeJSON(w, 200, map[string]any{"news": s.st.MailboxNewsForAdmin(), "limit": store.MailboxNewsLimit})
 		return
 	}
 	var draft store.MailboxNewsDraft
@@ -177,4 +177,42 @@ func (s *Server) handleAdminArchiveMailboxNews(w http.ResponseWriter, r *http.Re
 	}
 	s.log.Event("admin.mailbox_news_archived", map[string]any{"id": id})
 	s.writeJSON(w, 200, map[string]any{"archived": true})
+}
+
+func (s *Server) handleAdminUpdateMailboxNews(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil || id < 1 || id > 2147483647 {
+		s.writeError(w, 400, "invalid_news", "")
+		return
+	}
+	var update struct {
+		store.MailboxNewsDraft
+		ExpectedChanged int `json:"expected_ctime_change"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&update); err != nil || dec.Decode(&struct{}{}) != io.EOF {
+		s.writeError(w, 400, "invalid_news", "")
+		return
+	}
+	n, err := s.st.UpdateMailboxNews(id, update.ExpectedChanged, update.MailboxNewsDraft)
+	switch {
+	case errors.Is(err, store.ErrInvalidMailboxNews):
+		s.writeError(w, 400, "invalid_news", "")
+	case errors.Is(err, store.ErrNotFound):
+		s.writeError(w, 404, "not_found", "")
+	case errors.Is(err, store.ErrMailboxConflict):
+		s.writeError(w, 409, "mailbox_conflict", "")
+	case errors.Is(err, store.ErrMailboxArchived):
+		s.writeError(w, 409, "mailbox_archived", "")
+	case errors.Is(err, store.ErrMailboxDeliveryLocked):
+		s.writeError(w, 409, "mailbox_delivery_locked", "")
+	case err != nil:
+		s.log.Event("admin.mailbox_update_failed", map[string]any{"id": id, "err": err.Error()})
+		s.writeError(w, 503, "mailbox_unavailable", "")
+	default:
+		s.log.Event("admin.mailbox_news_updated", map[string]any{"id": id, "ctime_change": n.Changed})
+		s.writeJSON(w, 200, map[string]any{"news": n})
+	}
 }

@@ -239,11 +239,49 @@
   all("[data-route]").forEach(
     (n) => (n.onclick = () => navigate(n.dataset.route).catch(report)),
   );
-  let mailboxSeq = 0;
+  let mailboxSeq = 0, mailboxEditing = null, mailboxRows = new Map(), mailboxDirty = false;
+  let mailboxPublishing = false;
+  function mailboxEditorLabels() {
+    const saveKey = mailboxEditing ? "mailboxSave" : "mailboxPublish";
+    el("mailboxPublish").dataset.i18n = saveKey;
+    el("mailboxPublish").textContent = t(saveKey);
+    el("mailboxCancel").hidden = !mailboxEditing;
+    el("mailboxEditorStatus").textContent = mailboxEditing ?
+      t("mailboxEditing", {id:mailboxEditing.id}) + " " + t(mailboxEditing.delivery_editable ? "mailboxEditScheduled" : "mailboxEditLocked") : "";
+    const locked = !!mailboxEditing && !mailboxEditing.delivery_editable;
+    ["mailboxPublishAt", "mailboxCoins", "mailboxGems", "mailboxWeapon"].forEach(id => { el(id).disabled = locked; });
+    el("mailboxType").disabled = locked && Object.values(mailboxEditing.rewards || {}).some(v => v > 0);
+  }
+  function resetMailboxEditor() {
+    mailboxEditing = null; mailboxDirty = false;
+    el("mailboxForm").reset();
+    mailboxEditorLabels();
+  }
+  function startMailboxEdit(n) {
+    if (!n || n.archived || mailboxPublishing) return;
+    if (mailboxDirty && !window.confirm(t("mailboxDiscardConfirm"))) return;
+    mailboxEditing = n; mailboxDirty = false;
+    [["mailboxHeader",n.header],["mailboxSummary",n.short_description],["mailboxBody",n.description]].forEach(([prefix, value]) => {
+      el(prefix + "Ru").value = value.Russian || "";
+      el(prefix + "En").value = value.English || "";
+    });
+    el("mailboxType").value = n.type;
+    el("mailboxPublishAt").value = n.publish_at ? new Date(n.publish_at).toISOString().slice(0,19) : "";
+    el("mailboxCoins").value = (n.rewards || {}).coins || 0;
+    el("mailboxGems").value = (n.rewards || {}).gems || 0;
+    el("mailboxWeapon").value = (n.rewards || {}).weapon || 0;
+    mailboxEditorLabels();
+    el("mailboxForm").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  el("mailboxForm").oninput = () => { mailboxDirty = true; };
+  el("mailboxCancel").onclick = () => {
+    if (!mailboxPublishing && (!mailboxDirty || window.confirm(t("mailboxDiscardConfirm")))) resetMailboxEditor();
+  };
   async function loadMailboxNews() {
     const seq = ++mailboxSeq;
     const data = await api("GET", "/api/v1/admin/mailbox/news");
     if (seq !== mailboxSeq || route !== "mailbox") return;
+    mailboxRows = new Map((data.news || []).map(n => [String(n.id),n]));
     el("mailboxNews").innerHTML = (data.news || []).slice().reverse().map(n => {
       const lang = language === "ru" ? "Russian" : "English";
       const text = value => value[lang] || value.English;
@@ -252,18 +290,24 @@
         '</pre><small>#' + esc(n.id) + ' · ' + esc(t("mailbox" + n.type)) + ' · ' +
         esc(new Date(n.date * 1000).toISOString()) + ' · ' + esc(t(n.archived ? "mailboxArchived" : (n.publish_at && Date.parse(n.publish_at) > Date.now() ? "mailboxScheduled" : "mailboxLive"))) +
         '</small><p>' + esc(t("mailboxGiftSummary", {coins:(n.rewards || {}).coins || 0, gems:(n.rewards || {}).gems || 0, weapon:(n.rewards || {}).weapon || 0})) + '</p>' +
-        (n.archived ? '' : '<button type="button" data-mailbox-archive="' + esc(n.id) + '">' + esc(t("mailboxArchive")) + '</button>') + '</article>';
+        (n.archived ? '' : '<button type="button" data-mailbox-edit="' + esc(n.id) + '">' + esc(t("mailboxEdit")) + '</button> ' +
+          '<button type="button" data-mailbox-archive="' + esc(n.id) + '">' + esc(t("mailboxArchive")) + '</button>') + '</article>';
     }).join("");
     el("mailboxResult").textContent = t("mailboxCount", {count:(data.news || []).length, limit:data.limit});
+    mailboxEditorLabels();
   }
   el("mailboxNews").onclick = async event => {
-    const button = event.target.closest("[data-mailbox-archive]");
-    if (!button || button.disabled || !window.confirm(t("mailboxArchiveConfirm"))) return;
+    const button = event.target.closest("[data-mailbox-edit], [data-mailbox-archive]");
+    if (!button || button.disabled || mailboxPublishing) return;
+    if (button.dataset.mailboxEdit !== undefined) { startMailboxEdit(mailboxRows.get(button.dataset.mailboxEdit)); return; }
+    if (!window.confirm(t("mailboxArchiveConfirm"))) return;
     button.disabled = true;
-    try { await api("DELETE", "/api/v1/admin/mailbox/news/" + encodeURIComponent(button.dataset.mailboxArchive)); await loadMailboxNews(); }
-    catch (e) { report(e); button.disabled = false; }
+    try {
+      await api("DELETE", "/api/v1/admin/mailbox/news/" + encodeURIComponent(button.dataset.mailboxArchive));
+      if (mailboxEditing && String(mailboxEditing.id) === button.dataset.mailboxArchive) resetMailboxEditor();
+      await loadMailboxNews();
+    } catch (e) { report(e); button.disabled = false; }
   };
-  let mailboxPublishing = false;
   el("mailboxForm").onsubmit = async event => {
     event.preventDefault();
     if (mailboxPublishing) return;
@@ -274,22 +318,29 @@
     }
     const rewardValue = id => Number(el(id).value || 0);
     draft.rewards = {coins:rewardValue("mailboxCoins"), gems:rewardValue("mailboxGems"), weapon:rewardValue("mailboxWeapon")};
-    if (Object.values(draft.rewards).some(v => !Number.isSafeInteger(v) || v < 0)) { status(t("mailboxInvalid"), true); return; }
+    if (Object.values(draft.rewards).some(v => !Number.isSafeInteger(v) || v < 0) || draft.rewards.coins > 10000000 || draft.rewards.gems > 10000000) { status(t("mailboxInvalid"), true); return; }
     if (Object.values(draft.rewards).some(v => v > 0)) draft.type = "DeveloperMessage";
     const publishAt = el("mailboxPublishAt").value;
     if (publishAt) { const date = new Date(publishAt + "Z"); if (isNaN(date.getTime())) { status(t("mailboxInvalid"), true); return; } draft.publish_at = date.toISOString(); }
+    const editing = mailboxEditing;
+    if (editing) draft.expected_ctime_change = editing.ctime_change;
     mailboxPublishing = true;
-    el("mailboxPublish").disabled = true;
+    el("mailboxPublish").disabled = true; el("mailboxCancel").disabled = true;
     try {
-      await api("POST", "/api/v1/admin/mailbox/news", draft);
-      el("mailboxForm").reset();
-      status(t("mailboxPublished"));
+      await api(editing ? "PUT" : "POST", "/api/v1/admin/mailbox/news" + (editing ? "/" + encodeURIComponent(editing.id) : ""), draft);
+      resetMailboxEditor();
+      status(t(editing ? "mailboxSaved" : "mailboxPublished"));
       await loadMailboxNews();
     } catch (e) {
-      const key = {invalid_news:"mailboxInvalid", mailbox_full:"mailboxFull", mailbox_unavailable:"mailboxUnavailable"}[e.code];
+      const key = {invalid_news:"mailboxInvalid", mailbox_full:"mailboxFull", mailbox_unavailable:"mailboxUnavailable", mailbox_conflict:"mailboxConflict", mailbox_archived:"mailboxEditArchived", mailbox_delivery_locked:"mailboxEditLocked", not_found:"mailboxEditMissing"}[e.code];
       if (key) status(t(key), true); else report(e);
+      // Keep the unsaved form and old revision. Never silently overwrite a
+      // newer edit after a conflict; the operator must reopen the latest copy.
+      if (["mailbox_conflict","mailbox_archived","not_found","mailbox_delivery_locked"].includes(e.code)) {
+        try { await loadMailboxNews(); } catch (refreshError) { report(refreshError); }
+      }
     }
-    finally {mailboxPublishing = false;el("mailboxPublish").disabled = false;}
+    finally {mailboxPublishing = false;el("mailboxPublish").disabled = false;el("mailboxCancel").disabled = false;}
   };
   async function loadStats() {
     const d = await api("GET", "/api/v1/admin/stats"),

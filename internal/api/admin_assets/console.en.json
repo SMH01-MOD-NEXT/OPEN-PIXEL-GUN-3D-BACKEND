@@ -286,5 +286,16 @@
   "mailboxLive": "Published",
   "mailboxArchive": "Remove letter",
   "mailboxArchiveConfirm": "Remove this letter for everyone? Unclaimed gifts will become unavailable. Granted rewards and claim records will be preserved.",
-  "mailboxGiftSummary": "Gift: {coins} coins, {gems} gems, weapon #{weapon}"
+  "mailboxGiftSummary": "Gift: {coins} coins, {gems} gems, weapon #{weapon}",
+  "mailboxEdit": "Edit",
+  "mailboxSave": "Save changes",
+  "mailboxCancel": "Cancel editing",
+  "mailboxEditing": "Editing news #{id}.",
+  "mailboxSaved": "News updated. Connected clients refresh it on the next keepalive or reconnect.",
+  "mailboxEditScheduled": "Before publication, text, gifts and publication time can be changed.",
+  "mailboxEditLocked": "After publication or a claim, only text/category can be edited. Gifts and publication time are locked; existing receipts are preserved.",
+  "mailboxConflict": "This news changed in another session. Unsaved text is preserved. Copy it if needed, then reopen Edit from the refreshed list.",
+  "mailboxEditArchived": "Archived news cannot be edited.",
+  "mailboxEditMissing": "News no longer exists. Unsaved text has been preserved.",
+  "mailboxDiscardConfirm": "Discard unsaved news changes?"
 }

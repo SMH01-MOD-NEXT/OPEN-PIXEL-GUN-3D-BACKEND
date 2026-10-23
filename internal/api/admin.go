@@ -32,6 +32,7 @@ import (
 func (s *Server) registerAdminRoutes() {
 	s.mux.HandleFunc("GET /api/v1/admin/mailbox/news", s.admin(s.handleAdminMailboxNews))
 	s.mux.HandleFunc("POST /api/v1/admin/mailbox/news", s.admin(s.handleAdminMailboxNews))
+	s.mux.HandleFunc("PUT /api/v1/admin/mailbox/news/{id}", s.admin(s.handleAdminUpdateMailboxNews))
 	s.mux.HandleFunc("DELETE /api/v1/admin/mailbox/news/{id}", s.admin(s.handleAdminArchiveMailboxNews))
 	s.mux.HandleFunc("POST /api/v1/admin/players/{id}/inventory/bulk/{mode}", s.admin(s.handleAdminInventoryBulk))
 	s.mux.HandleFunc("GET /api/v1/admin/catalog", s.admin(s.handleAdminCatalog))

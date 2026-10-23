@@ -1,7 +1,7 @@
 // Exercise the actual news renderer/publisher without a browser dependency.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(root+'/internal/api/admin_assets/console.js','utf8'),html=fs.readFileSync(root+'/internal/api/admin_assets/console.html','utf8');
-const nodes=new Map();const el=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,reset(){this.resets=(this.resets||0)+1}});return nodes.get(id)};
+const nodes=new Map();const el=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,dataset:{},scrollIntoView(){},reset(){this.resets=(this.resets||0)+1}});return nodes.get(id)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let response={news:[],limit:500},calls=[],notice='',error,release;
 const ctx=vm.createContext({window:{confirm:()=>true},el,esc,t:(k,v={})=>k+JSON.stringify(v),route:'mailbox',language:'en',Date,status:(s)=>{notice=s},report:e=>{error=e},api:async(method,url,body)=>{calls.push({method,url,body});if(method==='POST'&&release)await new Promise(resolve=>{release.resolve=resolve});return response}});
