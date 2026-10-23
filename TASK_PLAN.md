@@ -5607,4 +5607,6 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Add player/admin HUB support screens and existing operator-console controls; display actual available IP/device/account metadata with provenance and unavailable states, never fabricate historical ownership evidence.
 - [x] Inspect existing client telemetry fields read-only; persist safe allowlisted device observations and meaningful future authoritative purchase/spending history without rewriting game frontend or inventing old transactions.
 - [x] Test persistence/restart/logout/expiry/navigation, access isolation and roles/statuses/structured forms; run Go/race/vet/build and UI/visual QA desktop/mobile.
-- [/] Commit isolated changes, back up/deploy locally and AWS preserving state, encryption keys, scheduled campaigns, frontend manifest and unrelated services; verify public HTTPS endpoints.
+- [x] Commit isolated changes, back up/deploy locally and AWS preserving state, encryption keys, scheduled campaigns, frontend manifest and unrelated services; verify public HTTPS endpoints.
+
+- Release `e3c39a1` deployed locally and AWS. Go/race/vet, seven console harnesses and isolated desktop/mobile browser checks passed. Public support returns 200 with secure 90-day guest cookie; account 401, staff 403, operator routes blocked 404. Existing security key unchanged. Two accounts/profiles, both scheduled campaigns, frontend manifest and unrelated services preserved. Backup: `/var/backups/opg3d/hub-20261023T163117Z-e3c39a1`.

@@ -84,3 +84,18 @@ login. A compatible HUB release fails closed on missing/wrong encryption keys.
 
 HUB 2FA/passkeys protect website access only, not the legacy game's device-ID
 login. User account/device compromise remains a separate risk.
+
+
+## Persistent sessions and support rollout
+
+- Runtime code: `e3c39a1`, version `23.1.3-hub-e3c39a1`.
+- Binary SHA-256: `8def85d06baa39963d30cfa4d55743a87b9687a5cc41c97d1d86910dc202337b`.
+- Built from `git archive HEAD`; installed locally and on EC2. Local tracked PID at verification: 87816.
+- AWS stopped-backend backup: `/var/backups/opg3d/hub-20261023T163117Z-e3c39a1` (binary, protected env, complete data and frontend manifest).
+- Initial authoritative state byte-identical: two accounts/two profiles. Both scheduled reward campaigns unchanged. Frontend manifest SHA-256 remains `0f4238d665f654816693fd07fdddfebc05b237140f85e4d017c396e57bbac86f`.
+- Existing HUB encryption key preserved and explicitly compared with backup without disclosure. Support storage is encrypted mode 0600. Local restart backups now include all three encrypted HUB stores.
+- Caddy/gateway process IDs unchanged; all services active. No DNS, certificate, gateway, Android frontend or unrelated-service changes.
+- Verified HTTPS `/`, public HUB scripts/text, support initialization and health: 200. Anonymous account: 401; anonymous support-admin: 403; public operator endpoints: 404; support mutation without matching Origin: 403. Guest cookie has explicit 90-day Max-Age/expiration and Secure/HttpOnly/Strict flags. No live test tickets or staff-role grants were created during smoke tests.
+- Real handler/store tests cover durable authenticated sessions and revocation across restarts. Live player authentication was not impersonated during deployment. Browsers using pre-release memory-only sessions need one fresh login.
+- `go test -race ./...`, `go vet ./...`, all seven dependency-free console harnesses, and isolated Chromium HUB/operator interaction checks passed. Mobile 390px and desktop 1440px screenshots inspected, including dark theme. Fixture accounts/codes were synthetic.
+- See `HUB_SUPPORT_AND_SESSIONS.md` for staff-role setup, guest ticket access, evidence limitations, bounds and backup/privacy requirements. No automatic ownership recovery, complete historical purchase reconstruction or client telemetry fabrication was added.
