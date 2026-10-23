@@ -5610,3 +5610,9 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Commit isolated changes, back up/deploy locally and AWS preserving state, encryption keys, scheduled campaigns, frontend manifest and unrelated services; verify public HTTPS endpoints.
 
 - Release `e3c39a1` deployed locally and AWS. Go/race/vet, seven console harnesses and isolated desktop/mobile browser checks passed. Public support returns 200 with secure 90-day guest cookie; account 401, staff 403, operator routes blocked 404. Existing security key unchanged. Two accounts/profiles, both scheduled campaigns, frontend manifest and unrelated services preserved. Backup: `/var/backups/opg3d/hub-20261023T163117Z-e3c39a1`.
+
+## Support staff assignment and player ticket closure — 2026-10-23
+- [x] Grant existing player 740333804 the HUB support-admin role locally and on AWS via the protected operator API.
+- [x] Allow ticket owners, including guest recovery capability holders, to close their own open/needs_info ticket without granting any other status control; preserve revisions/idempotency/audit and completed-ticket guards.
+- [x] Add a localized red Close ticket button with accessible confirmation and cancellation; test backend permissions, persistence/retries and actual UI behavior.
+- [/] Commit, build and deploy locally/AWS with protected backups and verify role persistence, state/campaign/key/frontend preservation.

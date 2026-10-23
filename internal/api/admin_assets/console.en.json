@@ -386,5 +386,8 @@
   "s_role": "HUB support administrator",
   "s_roleHint": "Allows reading and processing all tickets on the website. Does not grant the server administration token.",
   "s_roleSave": "Save support permissions",
-  "s_all": "All statuses"
+  "s_all": "All statuses",
+  "s_closeTicket": "Close ticket",
+  "s_closeTitle": "Close this ticket?",
+  "s_closeConfirm": "No longer need help? Closing keeps the conversation history, but you will not be able to send another reply to this ticket."
 }

@@ -206,3 +206,45 @@ func TestHubCookieNavigationRestartEpochAndMissingKey(t *testing.T) {
 		})
 	}
 }
+
+func TestSupportHTTPOwnerClose(t *testing.T) {
+	s := hubTest(t)
+	guest, csrf := supportInit(t, s)
+	w := supportCall(t, s, "POST", "/api/v1/hub/support/tickets", support.Create{Kind: "recovery", TargetID: "123456789", Subject: "Recover account", Answers: map[string]string{"old_device": "unknown", "changed_device": "no"}, Operation: fmt.Sprintf("%032x", 1)}, csrf, guest)
+	if w.Code != 201 {
+		t.Fatal(w.Code)
+	}
+	var d struct {
+		Ticket support.Ticket `json:"ticket"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &d)
+	path := "/api/v1/hub/support/tickets/" + d.Ticket.ID
+	request := support.Update{Status: "closed", Revision: 1, Operation: fmt.Sprintf("%032x", 2)}
+	if w = supportCall(t, s, "POST", path, request, "wrong", guest); w.Code != 403 {
+		t.Fatal("csrf", w.Code)
+	}
+	other, otherCSRF := supportInit(t, s)
+	if w = supportCall(t, s, "POST", path, request, otherCSRF, other); w.Code != 404 {
+		t.Fatal("foreign", w.Code)
+	}
+	for i := 0; i < 2; i++ {
+		w = supportCall(t, s, "POST", path, request, csrf, guest)
+		if w.Code != 200 {
+			t.Fatal("close/retry", w.Code)
+		}
+		json.Unmarshal(w.Body.Bytes(), &d)
+		if d.Ticket.Status != "closed" || d.Ticket.Revision != 2 {
+			t.Fatal("status/revision")
+		}
+		if strings.Contains(w.Body.String(), "closed_by_player") {
+			t.Fatal("private audit leaked")
+		}
+	}
+	request.Text = "reply"
+	request.Status = ""
+	request.Revision = 2
+	request.Operation = fmt.Sprintf("%032x", 3)
+	if w = supportCall(t, s, "POST", path, request, csrf, guest); w.Code != 404 {
+		t.Fatal("reply after close", w.Code)
+	}
+}

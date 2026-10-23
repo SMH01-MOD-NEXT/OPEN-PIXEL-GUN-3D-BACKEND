@@ -215,3 +215,95 @@ func TestValidation(t *testing.T) {
 		t.Fatal("operation")
 	}
 }
+
+func TestPlayerClosureOwnershipLifecycleAndDurability(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		for _, initial := range []string{"open", "needs_info"} {
+			t.Run(fmt.Sprint(authenticated, initial), func(t *testing.T) {
+				s, a, c := fixture(t)
+				if authenticated {
+					a.PlayerID = "123"
+					a.Fingerprint = "owner"
+				}
+				ticket, _, err := s.Create(a, c, "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if initial != "open" {
+					ticket, err = s.Update(ticket.ID, Actor{Operator: true}, true, Update{Status: initial, Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 2)})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				request := Update{Status: "closed", Revision: ticket.Revision, Operation: fmt.Sprintf("%032x", 3)}
+				raw, _, _ := s.Browser("")
+				other := Actor{PlayerID: "123", Fingerprint: "not-owner", Browser: raw}
+				if _, err = s.Update(ticket.ID, other, false, request); !errors.Is(err, ErrDenied) {
+					t.Fatal("foreign closure", err)
+				}
+				for _, status := range []string{"open", "resolved", "needs_info"} {
+					u := request
+					u.Status = status
+					if _, err = s.Update(ticket.ID, a, false, u); !errors.Is(err, ErrDenied) {
+						t.Fatal("owner status escalation", status, err)
+					}
+				}
+				mixed := request
+				mixed.Text = "unexpected reply"
+				if _, err = s.Update(ticket.ID, a, false, mixed); !errors.Is(err, ErrDenied) {
+					t.Fatal("mixed closure", err)
+				}
+				// Failed persistence must not consume the operation or change the ticket.
+				path := s.path
+				s.path = t.TempDir()
+				if _, err = s.Update(ticket.ID, a, false, request); err == nil {
+					t.Fatal("expected write failure")
+				}
+				s.path = path
+				got, _ := s.Get(ticket.ID, a, false)
+				if got.Status != initial || got.Revision != ticket.Revision {
+					t.Fatal("failed write mutated ticket")
+				}
+				got, err = s.Update(ticket.ID, a, false, request)
+				if err != nil || got.Status != "closed" || got.Revision != ticket.Revision+1 || len(got.Messages) != len(ticket.Messages) || got.Audit[len(got.Audit)-1].Action != "closed_by_player" {
+					t.Fatal("closure", err)
+				}
+				again, err := s.Update(ticket.ID, a, false, request)
+				if err != nil || again.Revision != got.Revision {
+					t.Fatal("retry", err)
+				}
+				s, err = Open(path, s.key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err = s.Get(ticket.ID, a, false)
+				if err != nil || got.Status != "closed" {
+					t.Fatal("restart", err)
+				}
+				for _, u := range []Update{{Text: "reply"}, {Status: "open"}, {Status: "closed"}} {
+					u.Revision = got.Revision
+					u.Operation = fmt.Sprintf("%032x", 4)
+					if _, err = s.Update(ticket.ID, a, false, u); !errors.Is(err, ErrDenied) {
+						t.Fatal("completed mutation", err)
+					}
+				}
+			})
+		}
+	}
+}
+func TestPlayerClosureConflictAndResolvedGuard(t *testing.T) {
+	s, a, c := fixture(t)
+	ticket, _, _ := s.Create(a, c, "")
+	request := Update{Status: "closed", Revision: 1, Operation: fmt.Sprintf("%032x", 3)}
+	updated, err := s.Update(ticket.ID, Actor{Operator: true}, true, Update{Text: "staff reply", Status: "resolved", Revision: 1, Operation: fmt.Sprintf("%032x", 2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Update(ticket.ID, a, false, request); !errors.Is(err, ErrConflict) {
+		t.Fatal("stale closure", err)
+	}
+	request.Revision = updated.Revision
+	if _, err = s.Update(ticket.ID, a, false, request); !errors.Is(err, ErrDenied) {
+		t.Fatal("resolved closure", err)
+	}
+}

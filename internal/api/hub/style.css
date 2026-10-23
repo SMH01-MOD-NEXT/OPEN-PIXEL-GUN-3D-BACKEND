@@ -10,3 +10,5 @@ select,textarea{font:inherit;background:var(--bg);color:var(--ink);border:1px so
 @media(max-width:620px){.ticket-row{flex-wrap:wrap;padding:20px;gap:16px}.ticket-row>div{flex-basis:100%}.support-toolbar{gap:8px}.support-answers{grid-template-columns:1fr;gap:8px}.support-answers dd{margin-bottom:16px}.support-form fieldset{padding:16px}.support-detail,.support-evidence{padding:20px}.top nav{flex-wrap:wrap}.top .nav{flex:1 0 40%}}
 
 .ticket-row h3,.support-detail h2,.support-receipt h2{overflow-wrap:anywhere}.ticket-status{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+
+button.danger{background:#b42318;color:#fff;border-color:#b42318}button.danger:hover{background:#912018;border-color:#912018}

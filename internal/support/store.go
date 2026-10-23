@@ -455,10 +455,11 @@ func (s *Store) Update(id string, a Actor, admin bool, u Update) (Ticket, error)
 	if u.Revision != t.Revision {
 		return Ticket{}, ErrConflict
 	}
-	if len(t.Audit) >= 1000 || len(t.Messages) >= 200 {
+	if len(t.Audit) >= 1000 || len(t.Messages) >= 200 && strings.TrimSpace(u.Text) != "" {
 		return Ticket{}, ErrLimit
 	}
-	if !admin && (u.Status != "" || t.Status == "closed" || t.Status == "resolved") {
+	playerClose := !admin && u.Status == "closed" && strings.TrimSpace(u.Text) == ""
+	if !admin && (t.Status != "open" && t.Status != "needs_info" || u.Status != "" && !playerClose) {
 		return Ticket{}, ErrDenied
 	}
 	if u.Status != "" && u.Status != "open" && u.Status != "needs_info" && u.Status != "resolved" && u.Status != "closed" {
@@ -483,7 +484,11 @@ func (s *Store) Update(id string, a Actor, admin bool, u Update) (Ticket, error)
 	}
 	t.Revision++
 	t.UpdatedAt = now
-	t.Audit = append(t.Audit, Event{actorName(a), "update:" + t.Status, now})
+	auditAction := "update:" + t.Status
+	if playerClose {
+		auditAction = "closed_by_player"
+	}
+	t.Audit = append(t.Audit, Event{actorName(a), auditAction, now})
 	if t.Operations == nil {
 		t.Operations = map[string]string{}
 	}
