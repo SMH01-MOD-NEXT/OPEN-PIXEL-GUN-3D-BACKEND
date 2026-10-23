@@ -16,7 +16,7 @@ func SupportsProgressCommand(id int64) bool {
 		return true
 	}
 	switch id {
-	case 10, 25, 33, 64, 65, 66, 81, 84, 85, 87, 120, 132, 139, 191, 197:
+	case 187, 188, 10, 25, 33, 64, 65, 66, 81, 84, 85, 87, 120, 132, 139, 191, 197:
 		return true
 	}
 	return false

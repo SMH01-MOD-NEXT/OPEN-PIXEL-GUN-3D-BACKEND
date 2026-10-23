@@ -250,10 +250,19 @@
       return '<article class="panel"><h3>' + esc(text(n.header)) + '</h3><p>' +
         esc(text(n.short_description)) + '</p><pre>' + esc(text(n.description)) +
         '</pre><small>#' + esc(n.id) + ' · ' + esc(t("mailbox" + n.type)) + ' · ' +
-        esc(new Date(n.date * 1000).toLocaleString(language)) + '</small></article>';
+        esc(new Date(n.date * 1000).toISOString()) + ' · ' + esc(t(n.archived ? "mailboxArchived" : (n.publish_at && Date.parse(n.publish_at) > Date.now() ? "mailboxScheduled" : "mailboxLive"))) +
+        '</small><p>' + esc(t("mailboxGiftSummary", {coins:(n.rewards || {}).coins || 0, gems:(n.rewards || {}).gems || 0, weapon:(n.rewards || {}).weapon || 0})) + '</p>' +
+        (n.archived ? '' : '<button type="button" data-mailbox-archive="' + esc(n.id) + '">' + esc(t("mailboxArchive")) + '</button>') + '</article>';
     }).join("");
     el("mailboxResult").textContent = t("mailboxCount", {count:(data.news || []).length, limit:data.limit});
   }
+  el("mailboxNews").onclick = async event => {
+    const button = event.target.closest("[data-mailbox-archive]");
+    if (!button || button.disabled || !window.confirm(t("mailboxArchiveConfirm"))) return;
+    button.disabled = true;
+    try { await api("DELETE", "/api/v1/admin/mailbox/news/" + encodeURIComponent(button.dataset.mailboxArchive)); await loadMailboxNews(); }
+    catch (e) { report(e); button.disabled = false; }
+  };
   let mailboxPublishing = false;
   el("mailboxForm").onsubmit = async event => {
     event.preventDefault();
@@ -263,6 +272,12 @@
     if ([draft.header,draft.short_description,draft.description].some(v => !v.Russian && !v.English)) {
       status(t("mailboxRequired"), true); return;
     }
+    const rewardValue = id => Number(el(id).value || 0);
+    draft.rewards = {coins:rewardValue("mailboxCoins"), gems:rewardValue("mailboxGems"), weapon:rewardValue("mailboxWeapon")};
+    if (Object.values(draft.rewards).some(v => !Number.isSafeInteger(v) || v < 0)) { status(t("mailboxInvalid"), true); return; }
+    if (Object.values(draft.rewards).some(v => v > 0)) draft.type = "DeveloperMessage";
+    const publishAt = el("mailboxPublishAt").value;
+    if (publishAt) { const date = new Date(publishAt + "Z"); if (isNaN(date.getTime())) { status(t("mailboxInvalid"), true); return; } draft.publish_at = date.toISOString(); }
     mailboxPublishing = true;
     el("mailboxPublish").disabled = true;
     try {

@@ -1,0 +1,20 @@
+{
+  "type": "DeveloperMessage",
+  "header": {
+    "Russian": "Проверка почты: подарок для бойца",
+    "English": "Mailbox check: a gift for you"
+  },
+  "short_description": {
+    "Russian": "Тестовое письмо: 1000 монет, 500 алмазов и Exterminator.",
+    "English": "Test letter: 1,000 coins, 500 gems and the Exterminator."
+  },
+  "description": {
+    "Russian": "Боец, проверяем доставку подарков!\n\nЗабери 1000 монет, 500 алмазов и Exterminator. Проверь получение наград, баланс валюты и появление оружия в арсенале, затем перезапусти игру и убедись, что всё сохранилось. Подарок можно получить один раз на аккаунт. Если оружие у тебя уже есть, его улучшения сохранятся.\n\nЭто временное тестовое письмо — позже мы уберём его из почты.",
+    "English": "Soldier, let’s test gift delivery!\n\nClaim 1,000 coins, 500 gems and the Exterminator. Check your currency balances and arsenal, then restart the game to make sure everything was saved. This gift can be claimed once per account. If you already own the weapon, your upgrades will be preserved.\n\nThis is a temporary test letter and will be removed later."
+  },
+  "rewards": {
+    "coins": 1000,
+    "gems": 500,
+    "weapon": 203001
+  }
+}

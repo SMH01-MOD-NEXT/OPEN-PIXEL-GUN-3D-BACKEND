@@ -1,0 +1,20 @@
+{
+  "type": "DeveloperMessage",
+  "header": {
+    "Russian": "Тест открыт — добро пожаловать!",
+    "English": "The test is live — welcome!"
+  },
+  "short_description": {
+    "Russian": "Пора на полигон! Подарок к открытию: 2626 монет и 1010 алмазов.",
+    "English": "Time to play! Opening gift: 2,626 coins and 1,010 gems."
+  },
+  "description": {
+    "Russian": "Наш недельный тест начинается! Спасибо, что помогаешь сделать игру лучше.\n\nЧто проверить:\n• Вход в аккаунт и сохранение прогресса после перезапуска.\n• Покупки за игровую валюту, оружие и снаряжение.\n• Задания, уровни и получение наград Pixel Pass.\n• Бои с игроками и ботами, режим сопровождения, открытые и закрытые комнаты.\n• Почту и получение подарков.\n\nЕсли встретишь ошибку, запиши, что делал перед ней, и приложи скриншот.\n\nЗабирай 2626 монет и 1010 алмазов. Удачи на тесте!",
+    "English": "Our week-long test starts now! Thank you for helping make the game better.\n\nPlease try:\n• Signing in and saving progress across restarts.\n• Purchases with in-game currency, weapons and equipment.\n• Pixel Pass quests, levels and reward collection.\n• Battles with players and bots, Escort, public and private rooms.\n• Mail and gift collection.\n\nIf something goes wrong, note the steps that caused it and include a screenshot.\n\nClaim 2,626 coins and 1,010 gems. Have fun testing!"
+  },
+  "rewards": {
+    "coins": 2626,
+    "gems": 1010
+  },
+  "publish_at": "2026-10-26T12:00:00Z"
+}

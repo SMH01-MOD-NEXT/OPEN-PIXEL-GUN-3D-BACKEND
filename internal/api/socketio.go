@@ -154,13 +154,17 @@ type sioSession struct {
 	created time.Time
 	out     chan sioFrame
 
-	mu           sync.Mutex
-	lastSeen     time.Time
-	lastPong     time.Time
-	transport    string
-	upgraded     bool
-	packets      uint64
-	clientPinged bool
+	eventMu          sync.Mutex // keep encrypted event attachment groups contiguous
+	mailboxCodec     *sio.Codec
+	mailboxNamespace string
+	mailboxSignature string
+	mu               sync.Mutex
+	lastSeen         time.Time
+	lastPong         time.Time
+	transport        string
+	upgraded         bool
+	packets          uint64
+	clientPinged     bool
 
 	// The identity the client presented when it authorised this session.
 	// Only auth_v2 carries it; every later event names nothing but its req_id
@@ -782,6 +786,7 @@ func (s *Server) socketPingLoop(session *sioSession, conn *wsConn, done <-chan s
 		case <-done:
 			return
 		case <-ticker.C:
+			s.refreshMailbox(session)
 			if session.clientOwnsHeartbeat() {
 				return
 			}
@@ -820,6 +825,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 		// "2probe" during an upgrade must be answered with "3probe"; a bare "2"
 		// is the v3 keepalive. Echoing the body covers both.
 		session.noteClientPing()
+		s.refreshMailbox(session)
 		conn.WriteText(string(eioPong) + packet[1:])
 		return
 	case eioPong:
@@ -863,6 +869,7 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 	switch packet[0] {
 	case eioPing:
 		session.noteClientPing()
+		s.refreshMailbox(session)
 		session.send(sioFrame{text: string(eioPong) + body})
 	case eioPong:
 		session.notePong()

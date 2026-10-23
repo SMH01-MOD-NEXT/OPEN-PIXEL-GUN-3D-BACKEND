@@ -49,6 +49,7 @@ type Profile struct {
 	Gems       int64  `json:"gems"`
 
 	// PixelPass is the server-owned season ledger, not a client snapshot field.
+	MailboxClaims    map[string]bool         `json:"mailbox_claims,omitempty"`
 	PixelPass        *PixelPassLedger        `json:"pixel_pass_ledger,omitempty"`
 	BattleStatistics *BattleStatisticsLedger `json:"battle_statistics_ledger,omitempty"`
 
@@ -107,6 +108,12 @@ type Profile struct {
 func (p *Profile) clone() Profile {
 	out := *p
 	out.PixelPass = p.PixelPass.clone()
+	if p.MailboxClaims != nil {
+		out.MailboxClaims = map[string]bool{}
+		for k, v := range p.MailboxClaims {
+			out.MailboxClaims[k] = v
+		}
+	}
 	out.BattleStatistics = p.BattleStatistics.clone()
 	if p.Prefs != nil {
 		out.Prefs = make(map[string]string, len(p.Prefs))
@@ -1192,6 +1199,15 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	targetCreated := target.CreatedAt
 
 	moved := source.clone()
+	// Progress transfer must not rearm either account's previously claimed mail.
+	if moved.MailboxClaims == nil {
+		moved.MailboxClaims = map[string]bool{}
+	}
+	for k, v := range target.MailboxClaims {
+		if v {
+			moved.MailboxClaims[k] = true
+		}
+	}
 	moved.PlayerID = toID
 	moved.CreatedAt = targetCreated
 	moved.UpdatedAt = now
@@ -1202,6 +1218,7 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 		moved.Nick = targetNick
 	}
 	*target = moved
+	projectMailbox(target)
 	advanceProfileProgressRevision(target)
 
 	source.Level = 0
@@ -1213,6 +1230,7 @@ func (s *Store) TransferProgress(fromID, toID string) (Profile, error) {
 	source.ProgressDocument = nil
 	source.ProgressSlots = nil
 	source.BattleStatistics = nil
+	projectMailbox(source)
 	source.ClientState = nil
 	advanceProfileProgressRevision(source)
 	source.UpdatedAt = now

@@ -44,6 +44,7 @@ func allowProfileClientWrite(p *Profile, contexts []ProgressWriteContext) (bool,
 // reconcileProfileCounters removes the old flat-document override of newer
 // gameplay projections. All channels now expose the same money, level and XP.
 func reconcileProfileCounters(p *Profile) {
+	projectMailbox(p)
 	projectPixelPass(p)
 	projectBattleStatistics(p)
 	if p.Progress == nil {
@@ -154,6 +155,11 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 	if err != nil {
 		return 0, err
 	}
+	mailSkip, err := reduceMailbox(&candidate, commands, s.state.MailboxNews, now, skip)
+	if err != nil {
+		return 0, err
+	}
+	skip = mailSkip
 	skip, err = reduceCurrencyExchange(&candidate, commands, now, skip)
 	if err != nil {
 		return 0, err

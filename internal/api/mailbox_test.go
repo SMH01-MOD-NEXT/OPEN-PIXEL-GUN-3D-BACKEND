@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
 )
@@ -166,5 +167,93 @@ func TestMailboxEncryptedSubscriptionsAndFetchFlow(t *testing.T) {
 	s.pushMailboxSubscription(session, "/sio", "websocket", codec, sioHead{"type": "friends_list"})
 	if len(session.out) != 0 {
 		t.Fatal("unauthorized or unrelated subscription pushed news")
+	}
+}
+
+func TestMailboxScheduleGiftWireAndArchiveKeepalive(t *testing.T) {
+	s, _ := newTestServer(t)
+	seedSocketAccount(t, s, "918930694", "schedule-mail")
+	session := authorisedSession("schedule-mail", "918930694")
+	session.out = make(chan sioFrame, 64)
+	codec := codecForPinnedSid(t)
+	d := mailboxTestDraft()
+	d.Type = "DeveloperMessage"
+	d.Rewards = store.MailboxRewards{Coins: 2626, Gems: 1010}
+	at := time.Now().Add(time.Hour)
+	d.PublishAt = &at
+	future, err := s.st.CreateMailboxNews(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := s.answerMailboxMessages(session, sioHead{"ids": []any{float64(future.ID)}}, 1); len(b["news"].(map[string]any)) != 0 {
+		t.Fatal("scheduled content leaked", b)
+	}
+	s.pushMailboxSubscription(session, "/sio", "websocket", codec, sioHead{"type": mailboxUpdated})
+	for len(session.out) > 0 {
+		<-session.out
+	}
+	d.PublishAt = nil
+	n, err := s.st.CreateMailboxNews(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.refreshMailbox(session)
+	if len(session.out) != 3 {
+		t.Fatal("new letter not pushed on keepalive")
+	}
+	for len(session.out) > 0 {
+		<-session.out
+	}
+	s.refreshMailbox(session)
+	if len(session.out) != 0 {
+		t.Fatal("unchanged map re-sent")
+	}
+	b := s.answerMailboxMessages(session, sioHead{"ids": []any{float64(n.ID)}}, 2)
+	wire := b["news"].(map[string]any)["2"].(map[string]any)
+	items := wire["items"].([]string)
+	if len(items) != 2 || items[0] != "1015:2626" || items[1] != "2015:1010" {
+		t.Fatal(items)
+	}
+	endpoint := "/api/v1/admin/mailbox/news/2"
+	if r := do(t, s, "DELETE", endpoint, nil, nil); r.Code != 401 {
+		t.Fatal("archive not protected", r.Code)
+	}
+	if r := do(t, s, "DELETE", endpoint, nil, map[string]string{"Authorization": "Bearer admin-secret"}); r.Code != 200 {
+		t.Fatal(r.Code, r.Body)
+	}
+	s.refreshMailbox(session)
+	if len(session.out) != 3 {
+		t.Fatal("archive not pushed")
+	}
+	if b := s.answerMailboxMessages(session, sioHead{"ids": []any{float64(n.ID)}}, 3); len(b["news"].(map[string]any)) != 0 {
+		t.Fatal("archived letter fetched")
+	}
+}
+func TestMailboxRewardStockUpdateProgressDispatch(t *testing.T) {
+	s, _ := newTestServer(t)
+	seedSocketAccount(t, s, "918930694", "mail-claim")
+	session := authorisedSession("mail-claim", "918930694")
+	d := mailboxTestDraft()
+	d.Type = "DeveloperMessage"
+	d.Rewards = store.MailboxRewards{Coins: 1000, Gems: 500, Weapon: 203001}
+	n, e := s.st.CreateMailboxNews(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	before, _ := s.st.Profile("918930694")
+	head := sioHead{"i": "mail-batch", "p": map[string]any{"c": []any{
+		map[string]any{"id": float64(10), "ci": "coin", "p": map[string]any{"c": "Coins", "v": float64(1000), "ca": float64(62)}},
+		map[string]any{"id": float64(10), "ci": "gem", "p": map[string]any{"c": "GemsCurrency", "v": float64(500), "ca": float64(62)}},
+		map[string]any{"id": float64(132), "ci": "gun", "p": map[string]any{"i": float64(203001), "u": map[string]any{"l": float64(1), "r": float64(3)}}},
+		map[string]any{"id": float64(187), "ci": "claim", "p": map[string]any{"records": []any{float64(n.ID)}}},
+	}}}
+	for i := 0; i < 2; i++ {
+		if b := s.answerUpdateProgress(session, head, 91); b["err_code"] != sioErrNone {
+			t.Fatal(b)
+		}
+	}
+	after, _ := s.st.Profile("918930694")
+	if after.Coins != before.Coins+1000 || after.Gems != before.Gems+500 || !after.MailboxClaims["1"] {
+		t.Fatal("claim did not reach durable reducer", after.Coins, after.Gems)
 	}
 }

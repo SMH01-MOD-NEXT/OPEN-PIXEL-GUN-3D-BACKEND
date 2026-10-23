@@ -5524,3 +5524,12 @@ No frontend edits, no account/pass resets, no invented match statistics.
 - [x] Rebuild and start local backend on :8080; health/admin/401 smoke tests, exact state persistence across restart; all existing account/profile/session data unchanged.
 - [x] Leave all frontend files and official AWS deployment untouched; isolate source/docs/plan commit from prior uncommitted plan work.
 - [ ] User acceptance on the real 23.1.3 mailbox screen after reconnect; no ADB devices connected. New publications intentionally refresh on the next mailbox subscription, not an unsolicited live broadcast.
+
+## Scheduled mailbox rewards / test opening / Halloween — 2026-10-23
+- [x] Trace stock 23.1.3 multi-item claim/receipt protocol using read-only analysis; select catalog weapons and verify existing feature scope.
+- [x] Add atomic server-validated once-per-account reward receipts, stock grant integration and schedule visibility.
+- [x] Extend localized admin UI with scheduling, rewards and safe removal; create the three requested letters only on local backend.
+- [x] Cover replay/new CI, wrong grants, concurrency, restart, schedule boundaries and account operations; run tests/race/vet/build and console tests.
+- [x] Safely restart local backend, verify letters/state, commit isolated changes. No frontend writes or AWS deployment.
+
+Verification: full Go tests and race suite, go vet, production build and all console regression scripts passed. Local :8080 is running the new build; news #2/#3/#4 imported, former text-only #1 archived. Campaign import changed only mailbox_news, not accounts/profiles/balances. Physical in-game acceptance remains manual (no adb devices).

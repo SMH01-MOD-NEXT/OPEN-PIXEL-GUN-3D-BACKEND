@@ -307,6 +307,8 @@ func (s *Server) pushConfigDocuments(session *sioSession, namespace, transport s
 		return
 	}
 
+	session.eventMu.Lock()
+	defer session.eventMu.Unlock()
 	playerLevel := s.sessionPlayerLevel(session)
 	batches := s.configPushBatchesForLevel(list, playerLevel)
 	if len(batches) == 0 {

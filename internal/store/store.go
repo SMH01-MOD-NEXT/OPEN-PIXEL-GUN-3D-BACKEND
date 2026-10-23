@@ -157,6 +157,7 @@ func OpenWithOptions(dir string, opts Options) (*Store, error) {
 		if migratePassTutorial(p) {
 			repairedTutorial = true
 		}
+		projectMailbox(p)
 		projectPixelPass(p)
 	}
 	if repairedTutorial {

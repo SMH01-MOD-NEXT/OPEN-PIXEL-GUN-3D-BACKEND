@@ -3,6 +3,8 @@ package store
 
 import (
 	"errors"
+	"fmt"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/catalog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,16 +22,19 @@ type MailboxText struct {
 	English string `json:"English"`
 }
 type MailboxNewsDraft struct {
-	Header           MailboxText `json:"header"`
-	ShortDescription MailboxText `json:"short_description"`
-	Description      MailboxText `json:"description"`
-	Type             string      `json:"type"`
+	Header           MailboxText    `json:"header"`
+	ShortDescription MailboxText    `json:"short_description"`
+	Description      MailboxText    `json:"description"`
+	Type             string         `json:"type"`
+	PublishAt        *time.Time     `json:"publish_at,omitempty"`
+	Rewards          MailboxRewards `json:"rewards,omitempty"`
 }
 type MailboxNews struct {
 	ID int `json:"id"`
 	MailboxNewsDraft
-	Date    int64 `json:"date"`
-	Changed int   `json:"ctime_change"`
+	Date     int64 `json:"date"`
+	Changed  int   `json:"ctime_change"`
+	Archived bool  `json:"archived,omitempty"`
 }
 
 func normalizeMailboxText(t MailboxText, limit int) (MailboxText, bool) {
@@ -49,8 +54,31 @@ func normalizeMailboxText(t MailboxText, limit int) (MailboxText, bool) {
 	return t, t.English != ""
 }
 
-// CreateMailboxNews atomically publishes one global, text-only news item.
-// Dates and IDs are server-owned; no account state, rewards or balances change.
+type MailboxRewards struct {
+	Coins  int64 `json:"coins,omitempty"`
+	Gems   int64 `json:"gems,omitempty"`
+	Weapon int   `json:"weapon,omitempty"`
+}
+
+func (r MailboxRewards) Tokens() []string {
+	out := []string{}
+	if r.Coins > 0 {
+		out = append(out, fmt.Sprintf("1015:%d", r.Coins))
+	}
+	if r.Gems > 0 {
+		out = append(out, fmt.Sprintf("2015:%d", r.Gems))
+	}
+	if r.Weapon > 0 {
+		out = append(out, fmt.Sprintf("%d:1", r.Weapon))
+	}
+	return out
+}
+func (n MailboxNews) VisibleAt(now time.Time) bool {
+	return !n.Archived && (n.PublishAt == nil || !now.Before(*n.PublishAt))
+}
+
+// CreateMailboxNews stores a global announcement. Gifts are granted only by
+// an authenticated stock command 187, never on creation or on message fetch.
 func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
 	var ok bool
 	if d.Header, ok = normalizeMailboxText(d.Header, 512); !ok {
@@ -67,6 +95,25 @@ func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
 	default:
 		return MailboxNews{}, ErrInvalidMailboxNews
 	}
+	r := d.Rewards
+	if r.Coins < 0 || r.Coins > 10000000 || r.Gems < 0 || r.Gems > 10000000 || r.Weapon < 0 {
+		return MailboxNews{}, ErrInvalidMailboxNews
+	}
+	if r.Weapon != 0 {
+		if _, ok := catalog.Find(10, r.Weapon); !ok {
+			return MailboxNews{}, ErrInvalidMailboxNews
+		}
+	}
+	if len(r.Tokens()) > 0 && d.Type != "DeveloperMessage" {
+		return MailboxNews{}, ErrInvalidMailboxNews
+	}
+	if d.PublishAt != nil {
+		t := d.PublishAt.UTC().Truncate(time.Second)
+		if t.Unix() < 1 || t.Unix() > 2147483647 {
+			return MailboxNews{}, ErrInvalidMailboxNews
+		}
+		d.PublishAt = &t
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.state.MailboxNews) >= MailboxNewsLimit {
@@ -80,6 +127,9 @@ func (s *Store) CreateMailboxNews(d MailboxNewsDraft) (MailboxNews, error) {
 	}
 	now := time.Now().Unix()
 	n := MailboxNews{ID: id, MailboxNewsDraft: d, Date: now, Changed: int(now)}
+	if d.PublishAt != nil {
+		n.Date = d.PublishAt.Unix()
+	}
 	old := s.state.MailboxNews
 	s.state.MailboxNews = append(s.state.MailboxNews, n)
 	if err := s.persistLocked(); err != nil {
@@ -95,5 +145,35 @@ func (s *Store) MailboxNews() []MailboxNews {
 	defer s.mu.RUnlock()
 	out := make([]MailboxNews, len(s.state.MailboxNews))
 	copy(out, s.state.MailboxNews)
+	for i := range out {
+		if out[i].PublishAt != nil {
+			t := *out[i].PublishAt
+			out[i].PublishAt = &t
+		}
+	}
 	return out
+}
+
+// Archive never reuses IDs or deletes receipts. Unclaimed gifts become unavailable.
+func (s *Store) ArchiveMailboxNews(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.MailboxNews {
+		n := &s.state.MailboxNews[i]
+		if n.ID != id {
+			continue
+		}
+		if n.Archived {
+			return nil
+		}
+		old := *n
+		n.Archived = true
+		n.Changed = int(time.Now().Unix())
+		if err := s.persistLocked(); err != nil {
+			*n = old
+			return err
+		}
+		return nil
+	}
+	return ErrNotFound
 }

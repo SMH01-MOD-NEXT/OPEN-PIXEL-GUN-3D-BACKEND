@@ -1001,6 +1001,8 @@ func (s *Server) sessionProfile(session *sioSession) (store.Profile, bool) {
 // dropped frame is reported as the failure it is rather than retried into a
 // worse state.
 func (s *Server) replyEncrypted(session *sioSession, namespace, transport string, codec *sio.Codec, event string, reqID int, body map[string]any) bool {
+	session.eventMu.Lock()
+	defer session.eventMu.Unlock()
 	frames, err := encodeEncryptedEvent(codec, namespace, event, body)
 	if err != nil {
 		s.log.Event("socket.reply_unencodable", map[string]any{

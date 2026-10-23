@@ -1,0 +1,21 @@
+{
+  "type": "DeveloperMessage",
+  "header": {
+    "Russian": "Сладость или тыквомёт?",
+    "English": "Trick or Pumpkin Thrower!"
+  },
+  "short_description": {
+    "Russian": "С Хэллоуином! Страшно щедрые сладости ждут тебя в письме.",
+    "English": "Happy Halloween! Frightfully generous treats await inside."
+  },
+  "description": {
+    "Russian": "Бу-у-у, боец! С Хэллоуином!\n\nСегодня тыквы светятся ярче, тени прячут сюрпризы, а сладости умеют взрываться. Мы приготовили для тебя Pumpkin Thrower — пусть на поле боя будет по-настоящему тыквенно!\n\nВ мешке со сладостями: Pumpkin Thrower, 3131 монета и 1010 алмазов. Если оружие уже есть в арсенале, его улучшения останутся при тебе.\n\nСпасибо за участие в тесте. Желаем весёлых боёв, метких попаданий и ни одного страшного бага. Сладость или победа!",
+    "English": "Boo, soldier! Happy Halloween!\n\nThe pumpkins are glowing, the shadows hide surprises, and these treats pack a punch. We’ve prepared a Pumpkin Thrower to give your battles a proper Halloween twist!\n\nYour treat bag contains the Pumpkin Thrower, 3,131 coins and 1,010 gems. If you already own the weapon, your upgrades stay with you.\n\nThank you for joining the test. Enjoy the battles, land those shots, and may the scary bugs stay away. Trick or victory!"
+  },
+  "rewards": {
+    "coins": 3131,
+    "gems": 1010,
+    "weapon": 143001
+  },
+  "publish_at": "2026-10-31T12:00:00Z"
+}

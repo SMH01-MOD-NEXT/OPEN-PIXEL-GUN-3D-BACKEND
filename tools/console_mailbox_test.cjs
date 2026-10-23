@@ -4,7 +4,7 @@ const root=path.resolve(__dirname,'..'),source=fs.readFileSync(root+'/internal/a
 const nodes=new Map();const el=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,reset(){this.resets=(this.resets||0)+1}});return nodes.get(id)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let response={news:[],limit:500},calls=[],notice='',error,release;
-const ctx=vm.createContext({el,esc,t:(k,v={})=>k+JSON.stringify(v),route:'mailbox',language:'en',Date,status:(s)=>{notice=s},report:e=>{error=e},api:async(method,url,body)=>{calls.push({method,url,body});if(method==='POST'&&release)await new Promise(resolve=>{release.resolve=resolve});return response}});
+const ctx=vm.createContext({window:{confirm:()=>true},el,esc,t:(k,v={})=>k+JSON.stringify(v),route:'mailbox',language:'en',Date,status:(s)=>{notice=s},report:e=>{error=e},api:async(method,url,body)=>{calls.push({method,url,body});if(method==='POST'&&release)await new Promise(resolve=>{release.resolve=resolve});return response}});
 vm.runInContext(source.slice(source.indexOf('  let mailboxSeq ='),source.indexOf('  async function loadStats()')),ctx);
 for(const lang of ['ru','en']){
  const locale=JSON.parse(fs.readFileSync(root+`/internal/api/admin_assets/console.${lang}.json`));
@@ -23,5 +23,10 @@ assert.match(html,/data-route="mailbox"/);assert.match(html,/id="page-mailbox"/)
  el('mailboxType').value='Update';release={};const pending=el('mailboxForm').onsubmit({preventDefault(){}});assert.equal(el('mailboxPublish').disabled,true);
  await el('mailboxForm').onsubmit({preventDefault(){}});assert.equal(calls.filter(c=>c.method==='POST').length,1);release.resolve();await pending;
  const sent=calls.find(c=>c.method==='POST');assert.equal(sent.url,'/api/v1/admin/mailbox/news');assert.equal(sent.body.header.Russian,'Тест');assert.equal(sent.body.type,'Update');assert.equal(el('mailboxPublish').disabled,false);assert.equal(el('mailboxForm').resets,1);assert.match(notice,/mailboxPublished/);assert.equal(error,undefined);
- console.log('PASS: mailbox RU/EN, XSS, list/empty/stale navigation, validation, publish payload and double-submit guard');
+ release=undefined;el('mailboxCoins').value='2626';el('mailboxGems').value='1010';el('mailboxWeapon').value='143001';el('mailboxPublishAt').value='2026-10-31T12:00:00';
+ await el('mailboxForm').onsubmit({preventDefault(){}});
+ const gift=calls.filter(c=>c.method==='POST').at(-1).body;assert.equal(gift.publish_at,'2026-10-31T12:00:00.000Z');assert.equal(gift.type,'DeveloperMessage');assert.equal(gift.rewards.coins,2626);assert.equal(gift.rewards.gems,1010);assert.equal(gift.rewards.weapon,143001);
+ const prior=calls.filter(c=>c.method==='POST').length;el('mailboxCoins').value='-1';await el('mailboxForm').onsubmit({preventDefault(){}});assert.equal(calls.filter(c=>c.method==='POST').length,prior);
+ const archiveButton={disabled:false,dataset:{mailboxArchive:'1'}};await el('mailboxNews').onclick({target:{closest:()=>archiveButton}});assert.equal(calls.filter(c=>c.method==='DELETE').at(-1).url,'/api/v1/admin/mailbox/news/1');
+ console.log('PASS: mailbox RU/EN, XSS, list/empty/stale navigation, validation, publish payload, double-submit guard, UTC schedule, gifts and archive');
 })().catch(e=>{console.error(e);process.exitCode=1});
