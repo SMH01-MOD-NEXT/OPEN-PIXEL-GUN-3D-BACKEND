@@ -153,6 +153,7 @@
               }),
       );
       e.status = r.status;
+      e.code = data.error;
       if (r.status === 401) {
         connectedUI(false);
         el("connectionDialog").showModal();
@@ -199,7 +200,7 @@
   }
   async function navigate(value) {
     if (!discard()) return;
-    if (!["overview", "players", "catalog", "support", "clientErrors", "logs", "settings"].includes(value))
+    if (!["overview", "players", "catalog", "support", "mailbox", "clientErrors", "logs", "settings"].includes(value))
       value = "overview";
     if (route === "logs" && value !== "logs") stopLogs();
     route = value;
@@ -221,12 +222,14 @@
         support: "supportHint",
         logs: "logsHint",
         clientErrors: "clientErrorsHint",
+        mailbox: "mailboxHint",
         settings: "settingsHint",
       }[route],
     );
     if (!connected) return;
     if (route === "overview") await loadStats();
     if (route === "clientErrors") await loadDiagnostics();
+    if (route === "mailbox") await loadMailboxNews();
     if (route === "players" && !selected) await loadPlayers();
     if (route === "catalog") {
       updateTarget();
@@ -236,6 +239,43 @@
   all("[data-route]").forEach(
     (n) => (n.onclick = () => navigate(n.dataset.route).catch(report)),
   );
+  let mailboxSeq = 0;
+  async function loadMailboxNews() {
+    const seq = ++mailboxSeq;
+    const data = await api("GET", "/api/v1/admin/mailbox/news");
+    if (seq !== mailboxSeq || route !== "mailbox") return;
+    el("mailboxNews").innerHTML = (data.news || []).slice().reverse().map(n => {
+      const lang = language === "ru" ? "Russian" : "English";
+      const text = value => value[lang] || value.English;
+      return '<article class="panel"><h3>' + esc(text(n.header)) + '</h3><p>' +
+        esc(text(n.short_description)) + '</p><pre>' + esc(text(n.description)) +
+        '</pre><small>#' + esc(n.id) + ' · ' + esc(t("mailbox" + n.type)) + ' · ' +
+        esc(new Date(n.date * 1000).toLocaleString(language)) + '</small></article>';
+    }).join("");
+    el("mailboxResult").textContent = t("mailboxCount", {count:(data.news || []).length, limit:data.limit});
+  }
+  let mailboxPublishing = false;
+  el("mailboxForm").onsubmit = async event => {
+    event.preventDefault();
+    if (mailboxPublishing) return;
+    const text = prefix => ({Russian:el(prefix + "Ru").value.trim(), English:el(prefix + "En").value.trim()});
+    const draft = {header:text("mailboxHeader"), short_description:text("mailboxSummary"), description:text("mailboxBody"), type:el("mailboxType").value};
+    if ([draft.header,draft.short_description,draft.description].some(v => !v.Russian && !v.English)) {
+      status(t("mailboxRequired"), true); return;
+    }
+    mailboxPublishing = true;
+    el("mailboxPublish").disabled = true;
+    try {
+      await api("POST", "/api/v1/admin/mailbox/news", draft);
+      el("mailboxForm").reset();
+      status(t("mailboxPublished"));
+      await loadMailboxNews();
+    } catch (e) {
+      const key = {invalid_news:"mailboxInvalid", mailbox_full:"mailboxFull", mailbox_unavailable:"mailboxUnavailable"}[e.code];
+      if (key) status(t(key), true); else report(e);
+    }
+    finally {mailboxPublishing = false;el("mailboxPublish").disabled = false;}
+  };
   async function loadStats() {
     const d = await api("GET", "/api/v1/admin/stats"),
       s = d.stats || {};

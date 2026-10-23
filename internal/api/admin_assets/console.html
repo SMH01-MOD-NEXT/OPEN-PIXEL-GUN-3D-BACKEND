@@ -26,6 +26,7 @@
           ><button data-route="players" data-i18n="players"></button
           ><button data-route="catalog" data-i18n="catalog"></button
           ><button data-route="support" data-i18n="support"></button
+          ><button data-route="mailbox" data-i18n="mailbox"></button
           ><button data-route="clientErrors" data-i18n="clientErrors"></button
           ><button data-route="logs" data-i18n="logs"></button
           ><button data-route="settings" data-i18n="settings"></button>
@@ -55,6 +56,29 @@
           hidden
         ></p>
         <main>
+          <section id="page-mailbox" class="page" hidden>
+            <p data-i18n="mailboxHint"></p>
+            <form id="mailboxForm" class="panel">
+              <div class="form-grid">
+                <label><span data-i18n="mailboxType"></span><select id="mailboxType">
+                  <option value="Update" data-i18n="mailboxUpdate"></option>
+                  <option value="DeveloperMessage" data-i18n="mailboxDeveloper"></option>
+                  <option value="Entertainment" data-i18n="mailboxEntertainment"></option>
+                  <option value="Upcoming" data-i18n="mailboxUpcoming"></option>
+                  <option value="Contest" data-i18n="mailboxContest"></option>
+                </select></label>
+                <label><span data-i18n="mailboxHeaderRu"></span><input id="mailboxHeaderRu" maxlength="512" /></label>
+                <label><span data-i18n="mailboxHeaderEn"></span><input id="mailboxHeaderEn" maxlength="512" /></label>
+                <label><span data-i18n="mailboxSummaryRu"></span><textarea id="mailboxSummaryRu" maxlength="2048"></textarea></label>
+                <label><span data-i18n="mailboxSummaryEn"></span><textarea id="mailboxSummaryEn" maxlength="2048"></textarea></label>
+                <label><span data-i18n="mailboxBodyRu"></span><textarea id="mailboxBodyRu" maxlength="16384" rows="6"></textarea></label>
+                <label><span data-i18n="mailboxBodyEn"></span><textarea id="mailboxBodyEn" maxlength="16384" rows="6"></textarea></label>
+              </div>
+              <button id="mailboxPublish" type="submit" class="primary" data-i18n="mailboxPublish"></button>
+            </form>
+            <p id="mailboxResult" role="status"></p>
+            <div id="mailboxNews"></div>
+          </section>
           <section id="page-overview" class="page" hidden>
             <div class="section-heading">
               <h2 data-i18n="serverSummary"></h2>

@@ -5514,3 +5514,13 @@ No frontend edits, no account/pass resets, no invented match statistics.
 - [x] Deploy backend v2 and signed module build 49 to AWS; verify health/admin stats.
 - [ ] Finish real-device delivery verification of module 49 (Nothing disconnected from ADB).
 - [x] Commit verified changes and document release/deployment limitations.
+
+## Backend mailbox / news — 2026-10-23
+- [x] Recover stock 23.1.3 mailbox wire format from read-only frontend analysis.
+- [x] Implement persistent global text news, authenticated stock handlers and stock-local read-state compatibility; no rewards or fabricated personal messages.
+- [x] Add localized RU/EN admin news creation/listing and publish test news ID 1 locally.
+- [x] Tests: auth/bans, exact encrypted ACK/topic/fetch flow, validation/limits, atomic rollback/restart, concurrency/account isolation, console XSS/RU/EN/double-submit.
+- [x] Full go tests/race/vet/build, all console tests and diff checks passed.
+- [x] Rebuild and start local backend on :8080; health/admin/401 smoke tests, exact state persistence across restart; all existing account/profile/session data unchanged.
+- [x] Leave all frontend files and official AWS deployment untouched; isolate source/docs/plan commit from prior uncommitted plan work.
+- [ ] User acceptance on the real 23.1.3 mailbox screen after reconnect; no ADB devices connected. New publications intentionally refresh on the next mailbox subscription, not an unsolicited live broadcast.

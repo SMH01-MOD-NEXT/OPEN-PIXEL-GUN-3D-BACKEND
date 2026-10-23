@@ -269,6 +269,8 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerGetTime
 	case "check_binded_id":
 		return (*Server).answerCheckBindedID
+	case "mailbox_get_messages":
+		return (*Server).answerMailboxMessages
 	case "get_map_popularity":
 		return (*Server).answerMapPopularity
 	case "get_leader_clan":
@@ -547,6 +549,11 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 	}
 
 	if topic := head.text("type"); topic != "" {
+		if isMailboxTopic(topic) {
+			if _, ok := s.socketPlayerID(session); !ok {
+				return socketStateFailure(reqID, "not_authorized")
+			}
+		}
 		body["type"] = topic
 		if topic == "get_player_info_subscription" {
 			body["status"] = "ok"
