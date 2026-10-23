@@ -84,7 +84,7 @@ Unknown IDs are omitted, not fabricated. Message IDs are bounded positive Int32;
 both stock JSON integers and decimal-string IDs are accepted, at most 500 per call.
 
 Text-only news omits reward fields. Gift letters add `items` as **strings**, e.g.
-`["1015:1000","2015:500","203001:1"]`, plus **`id_reward: <message ID>`**.
+`["Coins::1000","Gems::500","203001:1"]`, plus **`id_reward: <message ID>`**.
 The reward ID is stable and positive; it deliberately equals the message ID so
 command 187 and slot 42 use the same server ledger key. No custom claim event or HTTP endpoint is
 invented. Read flags remain stock-client-local. The admin list HTML-escapes text.
@@ -97,6 +97,21 @@ invented. Read flags remain stock-client-local. The admin list HTML-escapes text
   from `id_reward` at `0x33B7284..0x33B7340`. Sending `items` alone hides rewards.
   The DeveloperMessage helper `0x33BAB9C` also validates that reward ID. `r_message`
   is a separate big-reward-banner mode and is not needed for normal multi gifts.
+- **Currency token contract (wire version 2):** `1015:1000` and `2015:500`
+  resolve to catalog `Currency=1200`, not the `Coins=1010` / `Gems=1000` enum
+  cases accepted by the mailbox currency grid (`0x34104EC..0x3410514`). Even
+  `Coins:1000` / `Gems:500` take the parser's two-part currency special case.
+  Use **`Coins::1000` / `Gems::500`**: the enum branch at
+  `0x29C5658..0x29C5760` reads type, empty ID and count; constructor `0x29BD944`
+  normalizes the empty ID to Coins / GemsCurrency. Weapon catalog tokens remain
+  `203001:1` / `143001:1`.
+- **Claim-button gate:** `0x340FA50..0x340FA90` activates GetAllRewardButton only
+  for DeveloperMessage with items, a nonnegative reward ID and no local slot-42
+  receipt. Weapon cards themselves are previews, not individual claim buttons.
+  No claim receipts were present in local server profiles during this repair.
+  The corrected payload and server claim transaction are covered by regressions;
+  physical button visibility/click acceptance still requires in-game verification.
+  Do not reset player progress, rotate gift IDs or erase claims to force a button.
 - Existing gift records with an older `reward_wire_version` are migrated once on
   store open: only the wire version and monotonically increasing `ctime_change`
   change, forcing stock to re-fetch its cached body. IDs, schedules, gifts, account

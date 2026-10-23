@@ -61,13 +61,17 @@ type MailboxRewards struct {
 	Weapon int   `json:"weapon,omitempty"`
 }
 
+// Stock 23.1.3 parses numeric currency catalog IDs (1015/2015), and even
+// two-part named tokens, as OfferItemType.Currency (1200). The mailbox currency
+// grid accepts only Coins (1010) / Gems (1000). Three-part enum tokens select
+// those types; the empty ID is normalized by OfferItem's constructor.
 func (r MailboxRewards) Tokens() []string {
 	out := []string{}
 	if r.Coins > 0 {
-		out = append(out, fmt.Sprintf("1015:%d", r.Coins))
+		out = append(out, fmt.Sprintf("Coins::%d", r.Coins))
 	}
 	if r.Gems > 0 {
-		out = append(out, fmt.Sprintf("2015:%d", r.Gems))
+		out = append(out, fmt.Sprintf("Gems::%d", r.Gems))
 	}
 	if r.Weapon > 0 {
 		out = append(out, fmt.Sprintf("%d:1", r.Weapon))
@@ -182,9 +186,9 @@ func (s *Store) ArchiveMailboxNews(id int) error {
 	return ErrNotFound
 }
 
-// Version 1 adds the required stock id_reward field. Bump cached gift bodies
+// Version 2 retains id_reward and fixes stock Coins/Gems enum tokens. Bump cached gift bodies
 // exactly once, retaining message/reward IDs, publication times and all claims.
-const mailboxRewardWireVersion = 1
+const mailboxRewardWireVersion = 2
 
 func migrateMailboxRewardWire(news []MailboxNews, now time.Time) bool {
 	changed := false

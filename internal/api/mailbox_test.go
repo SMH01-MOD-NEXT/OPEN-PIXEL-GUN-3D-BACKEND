@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -211,7 +212,7 @@ func TestMailboxScheduleGiftWireAndArchiveKeepalive(t *testing.T) {
 	b := s.answerMailboxMessages(session, sioHead{"ids": []any{float64(n.ID)}}, 2)
 	wire := b["news"].(map[string]any)["2"].(map[string]any)
 	items := wire["items"].([]string)
-	if len(items) != 2 || items[0] != "1015:2626" || items[1] != "2015:1010" {
+	if len(items) != 2 || items[0] != "Coins::2626" || items[1] != "Gems::1010" {
 		t.Fatal(items)
 	}
 	endpoint := "/api/v1/admin/mailbox/news/2"
@@ -261,10 +262,15 @@ func TestMailboxRewardStockUpdateProgressDispatch(t *testing.T) {
 // Regression: the stock UI's 0x33BA980 gate is items.Count > 0 AND
 // idReward >= 0. Merely asserting that items exists missed the hidden gifts.
 func TestMailboxGiftWireCarriesStockRewardIdentity(t *testing.T) {
-	for _, r := range []store.MailboxRewards{
-		{Coins: 1000, Gems: 500, Weapon: 203001}, {Coins: 2626, Gems: 1010},
-		{Coins: 3131, Gems: 1010, Weapon: 143001},
+	for _, tc := range []struct {
+		rewards store.MailboxRewards
+		items   []any
+	}{
+		{store.MailboxRewards{Coins: 1000, Gems: 500, Weapon: 203001}, []any{"Coins::1000", "Gems::500", "203001:1"}},
+		{store.MailboxRewards{Coins: 2626, Gems: 1010}, []any{"Coins::2626", "Gems::1010"}},
+		{store.MailboxRewards{Coins: 3131, Gems: 1010, Weapon: 143001}, []any{"Coins::3131", "Gems::1010", "143001:1"}},
 	} {
+		r := tc.rewards
 		n := store.MailboxNews{ID: 27, MailboxNewsDraft: store.MailboxNewsDraft{Type: "DeveloperMessage", Rewards: r}}
 		encoded, err := json.Marshal(mailboxWireNews(n))
 		if err != nil {
@@ -279,7 +285,9 @@ func TestMailboxGiftWireCarriesStockRewardIdentity(t *testing.T) {
 			t.Fatal("stock hides gifts without stable id_reward", wire)
 		}
 		items, ok := wire["items"].([]any)
-		if !ok || len(items) != len(r.Tokens()) {
+		// Do not derive expectations from Tokens(): that let invalid numeric
+		// currency IDs pass while the stock currency grid stayed empty.
+		if !ok || !reflect.DeepEqual(items, tc.items) || wire["type"] != "DeveloperMessage" {
 			t.Fatal("invalid stock gift list", wire)
 		}
 		if wire["r_message"] != nil || wire["reward_type"] != nil || wire["reward_cnt"] != nil {

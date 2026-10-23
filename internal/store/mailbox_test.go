@@ -126,3 +126,27 @@ func TestMailboxConcurrentBoundedCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Exact strings are grounded in the read-only 23.1.3 OfferItem parser:
+// 0x29C53D4 numeric IDs -> catalog type; 0x29C5658 enum path -> type/id/count;
+// 0x34104EC currency grid accepts only Gems=1000 and Coins=1010, not Currency=1200.
+func TestMailboxStock2313CurrencyTokens(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		rewards MailboxRewards
+		want    []string
+	}{
+		{"empty", MailboxRewards{}, []string{}},
+		{"coins", MailboxRewards{Coins: 1000}, []string{"Coins::1000"}},
+		{"gems", MailboxRewards{Gems: 500}, []string{"Gems::500"}},
+		{"weapon", MailboxRewards{Weapon: 203001}, []string{"203001:1"}},
+		{"mixed", MailboxRewards{Coins: 3131, Gems: 1010, Weapon: 143001}, []string{"Coins::3131", "Gems::1010", "143001:1"}},
+		{"maximum", MailboxRewards{Coins: 10000000, Gems: 10000000}, []string{"Coins::10000000", "Gems::10000000"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.rewards.Tokens(); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("stock tokens: got %q want %q", got, tc.want)
+			}
+		})
+	}
+}

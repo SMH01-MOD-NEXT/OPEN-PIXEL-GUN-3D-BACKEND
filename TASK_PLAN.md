@@ -5541,3 +5541,11 @@ Verification: full Go tests and race suite, go vet, production build and all con
 - [ ] Frontend remains read-only; actual in-game reward display requires user verification.
 
 Root cause: stock 0x33BA980 requires items.Count>0 AND idReward>=0; absent id_reward left -1. Backend now emits stable id_reward=news.ID. One-time gift-wire migration bumps ctime_change only, preserving profiles, claims, IDs, rewards and schedules. Full tests/race/vet/build and console tests passed; local :8080 running repaired build. Restart verified only mailbox wire/cache fields changed. No connected Android device; awaiting user acceptance.
+
+## Mailbox stock claim button and currencies repair — 2026-10-23
+- [x] Trace actual stock reward layout/button selection and currency token resolution; inspect sanitized runtime errors.
+- [x] Fix the measured backend contract only, preserving existing rewards/claims/schedules and invalidating cached bodies.
+- [x] Add focused regressions, run tests/race/vet/build, restart locally and commit the isolated repair.
+- [ ] Actual stock in-game claim remains pending user acceptance; frontend read-only.
+
+Measured defect: numeric currency catalog tokens produced Currency=1200; mailbox UI requires Coins=1010/Gems=1000. Send Coins::N/Gems::N and migrate gift-wire v0/v1 to v2 once. Exact independent wire expectations now cover all three campaign letters. Full Go tests/race/vet/build and all console scripts passed. Restart verified only gift wire version/ctime changed for #2/#3/#4; all profiles, balances, receipts, schedules and other state unchanged. Local health/admin HTTP 200. Claim-button conditions traced; server has no claim receipts, but physical client button/claim remains unverified, not declared fixed. No frontend/AWS changes.

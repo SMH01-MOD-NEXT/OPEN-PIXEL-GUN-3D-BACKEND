@@ -226,10 +226,10 @@ func TestMailboxGiftWireMigrationInvalidatesCacheOnceWithoutRegrant(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Simulate the existing version with items but no id_reward. Also exercise
+	// Cover both old items-only v0 and id_reward-with-wrong-currency v1. Also exercise
 	// monotonic invalidation when ctime_change is already ahead of the clock.
 	s.state.MailboxNews[0].RewardWireVersion = 0
-	s.state.MailboxNews[1].RewardWireVersion = 0
+	s.state.MailboxNews[1].RewardWireVersion = 1
 	s.state.MailboxNews[1].Changed = int(time.Now().Add(time.Hour).Unix())
 	futureChanged := s.state.MailboxNews[1].Changed
 	if err = s.persistLocked(); err != nil {
