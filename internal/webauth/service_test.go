@@ -191,3 +191,18 @@ func TestAbsoluteSessionExpiryAndCancel(t *testing.T) {
 		t.Fatal("absolute expiry")
 	}
 }
+
+func TestIssueAtPreservesFreshAuthenticationWindow(t *testing.T) {
+	s, _ := New()
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	original := now.Add(-6 * time.Minute)
+	login, e := s.IssueAt(Identity{PlayerID: "123", Fingerprint: "owner"}, original)
+	if e != nil {
+		t.Fatal(e)
+	}
+	current, e := s.Current(login.Token, func(Identity) bool { return true })
+	if e != nil || !current.AuthenticatedAt.Equal(original) || !current.ExpiresAt.Equal(original.Add(SessionTTL)) {
+		t.Fatal("rotation extended authentication window", e)
+	}
+}

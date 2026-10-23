@@ -35,15 +35,15 @@ func ExchangeCatalogVersion() string {
 	return hex.EncodeToString(h[:])
 }
 func (s *Store) WebExchange(playerID string, request WebExchangeRequest) (Profile, bool, error) {
-	return s.webExchange(playerID, request, nil, "")
+	return s.webExchange(playerID, request, nil, "", time.Now().UTC())
 }
 
 // WebExchangeOwned rechecks the verified account incarnation and bans under the
 // same store lock as the wallet write, closing an account-rebinding race.
 func (s *Store) WebExchangeOwned(owner Account, ip string, request WebExchangeRequest) (Profile, bool, error) {
-	return s.webExchange(owner.PlayerID, request, &owner, ip)
+	return s.webExchange(owner.PlayerID, request, &owner, ip, time.Now().UTC())
 }
-func (s *Store) webExchange(playerID string, request WebExchangeRequest, owner *Account, ip string) (Profile, bool, error) {
+func (s *Store) webExchange(playerID string, request WebExchangeRequest, owner *Account, ip string, now time.Time) (Profile, bool, error) {
 	bytes, err := hex.DecodeString(request.Operation)
 	offer, ok := exchange.Find(request.OfferID)
 	if err != nil || len(bytes) != 16 || request.Operation != strings.ToLower(request.Operation) || !ok || request.CatalogVersion != ExchangeCatalogVersion() {
@@ -58,7 +58,7 @@ func (s *Store) webExchange(playerID string, request WebExchangeRequest, owner *
 			return Profile{}, false, ErrWebExchange
 		}
 		for _, ban := range s.state.Bans {
-			if ban.Active(time.Now()) && ((ban.Kind == BanPlayer && s.resolvePlayerIDLocked(ban.Subject) == id) || (ban.Kind == BanDevice && (ban.Subject == current.DeviceID || ban.Subject == current.SocketDevice)) || (ban.Kind == BanIP && ip != "" && ban.Subject == ip)) {
+			if ban.Active(now) && ((ban.Kind == BanPlayer && s.resolvePlayerIDLocked(ban.Subject) == id) || (ban.Kind == BanDevice && (ban.Subject == current.DeviceID || ban.Subject == current.SocketDevice)) || (ban.Kind == BanIP && ip != "" && ban.Subject == ip)) {
 				return Profile{}, false, ErrWebExchange
 			}
 		}
@@ -73,7 +73,6 @@ func (s *Store) webExchange(playerID string, request WebExchangeRequest, owner *
 		}
 		return p.clone(), false, nil
 	}
-	now := time.Now().UTC()
 	if !pixelpass.Active(now) {
 		return Profile{}, false, ErrWebExchange
 	}

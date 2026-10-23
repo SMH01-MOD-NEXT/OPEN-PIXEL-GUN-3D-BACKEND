@@ -23,7 +23,7 @@ func TestWebExchangeRatesAtomicRetryRestartAndReceiptFence(t *testing.T) {
 	for n, o := range exchange.Offers() {
 		before, _ := s.Profile(socketUniqID)
 		request := webReq(before, o.ID, n+1)
-		p, applied, e := s.WebExchange(socketUniqID, request)
+		p, applied, e := s.webExchange(socketUniqID, request, nil, "", passNow)
 		if e != nil || !applied {
 			t.Fatal(e)
 		}
@@ -49,13 +49,13 @@ func TestWebExchangeRatesAtomicRetryRestartAndReceiptFence(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		replay, applied, e := s.WebExchange(socketUniqID, request)
+		replay, applied, e := s.webExchange(socketUniqID, request, nil, "", passNow)
 		if e != nil || applied || !equalWebJSON(p, replay) {
 			t.Fatal("durable idempotency", e)
 		}
 		stale := request
 		stale.Operation = fmt.Sprintf("%032x", n+100)
-		if _, _, e := s.WebExchange(socketUniqID, stale); e != ErrInventoryConflict {
+		if _, _, e := s.webExchange(socketUniqID, stale, nil, "", passNow); e != ErrInventoryConflict {
 			t.Fatal("stale", e)
 		}
 	}
@@ -70,7 +70,7 @@ func TestWebExchangeParallelAndFailedPersistence(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, applied, e := s.WebExchange(socketUniqID, req)
+			_, applied, e := s.webExchange(socketUniqID, req, nil, "", passNow)
 			if e != nil {
 				t.Error(e)
 			}
@@ -88,7 +88,7 @@ func TestWebExchangeParallelAndFailedPersistence(t *testing.T) {
 	s.state.Profiles[socketUniqID].ProgressSlots["3"].(map[string]any)["Coins"] = int64(0)
 	before, _ = s.Profile(socketUniqID)
 	req = webReq(before, 231304, 2)
-	if _, _, e := s.WebExchange(socketUniqID, req); e != ErrWebFunds {
+	if _, _, e := s.webExchange(socketUniqID, req, nil, "", passNow); e != ErrWebFunds {
 		t.Fatal(e)
 	}
 	after, _ := s.Profile(socketUniqID)
@@ -100,7 +100,7 @@ func TestWebExchangeParallelAndFailedPersistence(t *testing.T) {
 	req = webReq(before, 231304, 2)
 	// Force the same persistence failure mechanism as the existing store tests.
 	s.path = filepath.Join(t.TempDir(), "missing", "state.json")
-	if _, _, e := s.WebExchange(socketUniqID, req); e != ErrInventoryPersistence {
+	if _, _, e := s.webExchange(socketUniqID, req, nil, "", passNow); e != ErrInventoryPersistence {
 		t.Fatal("expected persistence failure", e)
 	}
 	after, _ = s.Profile(socketUniqID)
@@ -122,13 +122,13 @@ func TestWebExchangeOwnedRejectsReboundOrBannedAccount(t *testing.T) {
 	request := webReq(before, 231304, 1)
 	wrong := owner
 	wrong.DeviceID += "changed"
-	if _, _, e := s.WebExchangeOwned(wrong, "192.0.2.1", request); e == nil {
+	if _, _, e := s.webExchange(wrong.PlayerID, request, &wrong, "192.0.2.1", passNow); e == nil {
 		t.Fatal("owner race")
 	}
 	if e := s.AddBan(Ban{Kind: BanPlayer, Subject: socketUniqID, Reason: "test"}); e != nil {
 		t.Fatal(e)
 	}
-	if _, _, e := s.WebExchangeOwned(owner, "192.0.2.1", request); e == nil {
+	if _, _, e := s.webExchange(owner.PlayerID, request, &owner, "192.0.2.1", passNow); e == nil {
 		t.Fatal("banned wallet write")
 	}
 	after, _ := s.Profile(socketUniqID)
