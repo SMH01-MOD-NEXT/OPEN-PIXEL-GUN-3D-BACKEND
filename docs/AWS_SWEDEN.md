@@ -72,3 +72,11 @@ this built-in entry. Old launchers can already connect manually. Downloadable
 The address already has an Elastic IP (`eipalloc-014bea790bc0e10e6`); the existing
 allocation is reused unchanged. No new Elastic IP is provisioned. Keep that
 allocation associated with the instance so the compiled endpoint stays valid.
+
+## Current gameplay release — build33
+
+User-approved signed native publication on2026-10-23: build33, version `23.1.3-bounded-bot-aim`, SHA256 `170c1211bbb5107c7f02fb641caa3a2bbe68c81e0d96859499a0b134d4c20664`,461680bytes. Includes verified online Escort bots/objective movement and smoother, more accurate stock bot tracking across modes, with stronger Team Strike/Escort tuning. Frontend implementation commits: `a358600` and `6964a74`.
+
+Published artifact first and active.json last, atomically. Public manifest signature, artifact size/hash, ping200 and loader-info200 verified; `/admin` and `/api/v1/admin/state` remain404. Backend/gateway PIDs22117/21993 unchanged and both active. No backend restart, executable/configuration replacement or account-data copy.
+
+Retained previous build20 artifact, with manifest/key backup and pre-signed monotonic rollback34 under root-only `/var/backups/opg3d/aws-release33-20261023-080204`. Rollback not published. Do not downgrade active build numbers or restore old player state as a code rollback. Clients download33 at their next full launcher start; no running-game hot swap or APK reinstall.
