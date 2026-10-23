@@ -5595,4 +5595,5 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 
 ## HUB hero caption removal — 2026-10-23
 - [x] Remove both hero-image captions without replacing the image or changing the Android frontend.
-- [/] Test, rebuild, deploy locally and on AWS; verify the public HTML no longer contains the captions.
+- [x] Test, rebuild, deploy locally and on AWS; verify the public HTML no longer contains the captions.
+- Verified release `46dd492`: both `/` and `/account/login` retain the image without either caption; all Go tests passed; local/AWS health and authoritative state preserved. Backup: `/var/backups/opg3d/hub-20261023T150610Z-46dd492`.
