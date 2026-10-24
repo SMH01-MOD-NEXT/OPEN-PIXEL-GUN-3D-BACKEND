@@ -5645,4 +5645,9 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Implement durable server-owned friend requests, mutual friendships and bounded private chat with authenticated actors and abuse limits.
 - [x] Integrate measured Socket.IO handlers/subscriptions and safe public statistics; keep account/device/security fields private.
 - [x] Test two-player lifecycle, authorization, retries, concurrency, persistence and failure atomicity.
-- [/] Build and restart backend after verification; preserve live data and game frontend.
+- [x] Build and restart backend after verification; preserve live data and game frontend.
+
+- Deployed runtime `23.1.3-hub-4b612c7` locally and on AWS; binary SHA-256 `d65a39f4db1329db9bf3819b57480d87b7028c3de1575355ff5feec19b228b6d`.
+- AWS backup: `/var/backups/opg3d/hub-20261024T073631Z-4b612c7`. Local tracked process had already stopped; verified no listener before starting the new build (PID 9384).
+- Read-only release checks passed: local/public health 200, HUB 200, public admin 404; two accounts/profiles, scheduled campaigns, security keys and encrypted stores preserved. Frontend manifest unchanged; gateway/Caddy not restarted; support admin 740333804 retained.
+- Full Go tests, race checks, vet and all eight Node harnesses passed. No adb device attached; native in-game acceptance remains for two real accounts. No synthetic friend/chat data was inserted into production accounts.
