@@ -5665,4 +5665,7 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 ## Friend invite visibility and symmetric refresh repair — 2026-10-24
 - [x] Compare live signalling, client short-profile/cache contracts and two-sided friendship state.
 - [x] Implement minimal backend correction and regression tests without frontend changes.
-- [/] Run verification, commit, rebuild and release locally/AWS with state preserved.
+- [x] Run verification, commit, rebuild and release locally/AWS with state preserved.
+
+- Verification: complete Go suite, race tests for store/API/clienterrors, go vet and all eight Node harnesses passed. Encrypted lifecycle tests cover native short-profile selection, clearing the bad cached avatar, both-sided acceptance/removal and reverse pending request after reconnect. Android device acceptance remains pending (adb has no connected devices).
+- Released code `6c7161d`, runtime `23.1.3-hub-6c7161d`, SHA-256 `266abbd0024cb1c34f2918c210a59bee9ee98d21a28956940597a7af6f697095`. Local PID 15475; AWS backup `/var/backups/opg3d/hub-20261024T083050Z-6c7161d`. Both initial state files byte-identical after restart; accounts, profiles and scheduled campaigns preserved. Support administrator 740333804, security keys and existing encrypted stores verified unchanged. Frontend manifest unchanged; public ping 200/admin 404, Caddy/gateway not restarted. Existing unrelated frontend edits untouched; no persisted social records manually edited.
