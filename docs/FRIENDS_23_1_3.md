@@ -152,3 +152,38 @@ No friendship records are rewritten: removal and acceptance remain explicit
 player actions. Regression tests exercise encrypted short-profile delivery
 through request/accept/remove/reverse-request and model the native selector;
 these tests do not replace acceptance on two real game clients.
+
+### Live nicknames, online presence and last seen
+
+Successful authenticated `update_player` now refreshes active short-profile
+subscriptions, so a friend's nickname is not stuck at the first lookup.
+Incremental `list_v2` subscriptions accumulate peers (maximum 100); partial
+unsubscribe removes only those peers, not the rest of the visible list.
+
+The native `player_online` subscription accepts `list:[id,...]` and receives a
+**bare ID-to-dictionary map**, without an `info`, `players`, or request envelope.
+Callback `0x250E4F8` → `0x250E57C` iterates top-level IDs; `0x250E874` converts
+nonempty dictionaries to strings. An explicit null removes an offline peer.
+Parser `0x1D9ACD8` unconditionally reads numeric `game_mode` and `protocol`.
+A live authenticated game socket without a valid report gets the stock lobby
+shape (`100006`, empty protocol/room, map `-1`, rank `0`). Valid room deltas use
+only allowlisted fields, never account/device identifiers or raw client payloads.
+Presence is restricted to current friends and rechecked on every refresh.
+
+Online means a non-retired authenticated game socket observed within 60 seconds,
+not an authenticated browser session and not proof of a live Photon actor.
+Clean transport closure immediately pushes offline to subscribers; silent network
+loss expires after the liveness interval and the viewer's next heartbeat refresh.
+Retired older sockets cannot resurrect a previous room after reconnect.
+
+`PlayerData.ldt` is a nullable Int32 Unix-seconds timestamp, not milliseconds.
+Server-observed game activity is persisted separately as `game_last_seen_at`;
+heartbeats coalesce writes to one per minute and clean closure flushes the latest
+observation. HTTP login does not advance this game timestamp. Older accounts use
+the existing last-login timestamp only until their first observed game activity.
+Missing history is not fabricated, and progress/currency are not modified.
+
+Regression tests cover encrypted nickname refresh, additive subscriptions and
+bounds, online/offline/reconnect/stale sockets, malformed defaults, privacy,
+friend removal/bans, partial unsubscribe, timestamp persistence and rollback.
+Two-device in-game rendering still requires acceptance on real clients.

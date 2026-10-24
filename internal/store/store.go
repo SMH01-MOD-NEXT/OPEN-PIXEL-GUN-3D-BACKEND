@@ -59,11 +59,12 @@ type Account struct {
 	// Both are needed to ban a device and have the ban actually hold.
 	SocketDevice string `json:"socket_device,omitempty"`
 
-	Nick       string    `json:"nick"`
-	Session    string    `json:"session"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastSeenAt time.Time `json:"last_seen_at"`
-	LastIP     string    `json:"last_ip"`
+	Nick           string    `json:"nick"`
+	Session        string    `json:"session"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastSeenAt     time.Time `json:"last_seen_at"`
+	GameLastSeenAt time.Time `json:"game_last_seen_at,omitempty"`
+	LastIP         string    `json:"last_ip"`
 }
 
 // Ban blocks a player id, a device id or an IP address.

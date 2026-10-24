@@ -5669,3 +5669,10 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 
 - Verification: complete Go suite, race tests for store/API/clienterrors, go vet and all eight Node harnesses passed. Encrypted lifecycle tests cover native short-profile selection, clearing the bad cached avatar, both-sided acceptance/removal and reverse pending request after reconnect. Android device acceptance remains pending (adb has no connected devices).
 - Released code `6c7161d`, runtime `23.1.3-hub-6c7161d`, SHA-256 `266abbd0024cb1c34f2918c210a59bee9ee98d21a28956940597a7af6f697095`. Local PID 15475; AWS backup `/var/backups/opg3d/hub-20261024T083050Z-6c7161d`. Both initial state files byte-identical after restart; accounts, profiles and scheduled campaigns preserved. Support administrator 740333804, security keys and existing encrypted stores verified unchanged. Frontend manifest unchanged; public ping 200/admin 404, Caddy/gateway not restarted. Existing unrelated frontend edits untouched; no persisted social records manually edited.
+
+## Friend nickname and presence refresh — 2026-10-24
+- [x] Inspect native name/presence subscription contracts and current refresh paths.
+- [x] Implement backend-only live nickname/online/last-seen delivery with regression coverage.
+- [/] Verify, commit, rebuild and deploy locally/AWS preserving data and frontend.
+
+- Verification: full Go suite, race tests for store/API/clienterrors, go vet and all eight Node harnesses passed. Encrypted regressions cover nickname updates, additive/partial subscriptions, peer limits, online/offline/reconnect/staleness, friend privacy and bans; store tests cover durable/coalesced timestamps and rollback. adb has no connected devices; two-client rendering acceptance remains pending.

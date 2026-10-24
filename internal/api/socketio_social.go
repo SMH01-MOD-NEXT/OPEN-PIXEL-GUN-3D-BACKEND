@@ -18,7 +18,7 @@ import (
 // accept_friend.acceptee_id 0x235D7B4, reject*.rejectee_id 0x2360AAC /
 // 0x235C60C. List consumers: 0x3884654 / 0x235E608 / 0x235F94C.
 func isSocialTopic(t string) bool {
-	return t == "squad_invites" || t == "friends_list" || t == "friend_invites" || t == "get_private_message" || t == "all_short_info_by_id_v3"
+	return t == "player_online" || t == "squad_invites" || t == "friends_list" || t == "friend_invites" || t == "get_private_message" || t == "all_short_info_by_id_v3"
 }
 func isSocialMutation(t string) bool {
 	switch t {
@@ -210,14 +210,14 @@ func (s *Server) validateSocialSubscription(session *sioSession, head sioHead, r
 	if _, ok := s.socketPlayerID(session); !ok {
 		return socketStateFailure(req, "not_authorized")
 	}
-	if head.text("type") == "get_private_message" {
+	if head.text("type") == "get_private_message" || head.text("type") == "player_online" {
 		peers, ok := socialPeers(head)
 		_, valid := socialNumber(head["last_timeStamp"])
 		if !ok || !valid {
 			return socialFailure(req, store.ErrSocialInvalid)
 		}
 		session.social.Lock()
-		existing := session.social.topics["get_private_message"]
+		existing := session.social.topics[head.text("type")]
 		if existing != nil {
 			for _, id := range existing.peers {
 				if !hasSocialID(peers, id) {
@@ -231,8 +231,21 @@ func (s *Server) validateSocialSubscription(session *sioSession, head sioHead, r
 		}
 	}
 	if head.text("type") == "all_short_info_by_id_v3" {
-		if _, ok := socialProfileIDs(head); !ok {
+		peers, ok := socialProfileIDs(head)
+		if !ok {
 			return socialFailure(req, store.ErrSocialInvalid)
+		}
+		session.social.Lock()
+		if existing := session.social.topics[head.text("type")]; existing != nil {
+			for _, id := range existing.peers {
+				if !hasSocialID(peers, id) {
+					peers = append(peers, id)
+				}
+			}
+		}
+		session.social.Unlock()
+		if len(peers) > store.SocialFriendLimit {
+			return socialFailure(req, store.ErrSocialFull)
 		}
 	}
 	return nil
@@ -258,7 +271,7 @@ func (s *Server) pushSocialSubscription(session *sioSession, namespace, transpor
 		session.social.topics = map[string]*socialSubscription{}
 	}
 	sub := &socialSubscription{owner: actor, namespace: namespace, codec: codec}
-	if topic == "get_private_message" {
+	if topic == "get_private_message" || topic == "player_online" {
 		sub.peers, _ = socialPeers(head)
 		if existing := session.social.topics[topic]; existing != nil && existing.owner == actor {
 			for _, id := range existing.peers {
@@ -274,6 +287,16 @@ func (s *Server) pushSocialSubscription(session *sioSession, namespace, transpor
 	}
 	if topic == "all_short_info_by_id_v3" {
 		sub.peers, _ = socialProfileIDs(head)
+		if existing := session.social.topics[topic]; existing != nil && existing.owner == actor {
+			for _, id := range existing.peers {
+				if !hasSocialID(sub.peers, id) {
+					sub.peers = append(sub.peers, id)
+				}
+			}
+		}
+		if len(sub.peers) > store.SocialFriendLimit {
+			return
+		}
 	}
 	session.social.topics[topic] = sub
 	s.pushSocialLocked(session, topic, sub, transport)
@@ -315,6 +338,8 @@ func (s *Server) pushSocialLocked(session *sioSession, topic string, sub *social
 		if sub.initialized && len(body["messages"].([]any)) == 0 {
 			return
 		}
+	case "player_online":
+		body = s.friendsOnlineBody(actor, sub.peers)
 	case "squad_invites":
 		body = s.squadInvitesBody(actor, time.Now())
 	case "all_short_info_by_id_v3":
@@ -378,13 +403,27 @@ func (s *Server) unsubscribeSocial(session *sioSession, head sioHead) {
 	if sub == nil {
 		return
 	}
-	if topic == "get_private_message" {
+	if topic == "get_private_message" || topic == "player_online" {
 		if ids, ok := socialPeers(head); ok {
 			if len(ids) == 0 {
 				if values, yes := head["list"].([]any); yes && len(values) > 0 {
 					return
 				}
 			}
+			peers := []string{}
+			for _, id := range sub.peers {
+				if !hasSocialID(ids, id) {
+					peers = append(peers, id)
+				}
+			}
+			sub.peers = peers
+			if len(peers) > 0 {
+				return
+			}
+		}
+	}
+	if topic == "all_short_info_by_id_v3" {
+		if ids, ok := socialProfileIDs(head); ok && len(ids) > 0 {
 			peers := []string{}
 			for _, id := range sub.peers {
 				if !hasSocialID(ids, id) {

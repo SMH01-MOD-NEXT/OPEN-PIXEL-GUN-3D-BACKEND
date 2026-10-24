@@ -254,7 +254,10 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		return
 	}
 	replied := s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body)
-	if isSocialMutation(event) && body["err_code"] == nil {
+	if (isSocialMutation(event) || event == "update_player" || event == sioOnlineEvent || event == sioAuthEvent) && body["err_code"] == nil && body["error"] != sioErrNotAuthorized {
+		if event == sioOnlineEvent || event == sioAuthEvent {
+			s.recordSocketGameSeen(session, false)
+		}
 		s.refreshSocialAll()
 	}
 	if !replied {

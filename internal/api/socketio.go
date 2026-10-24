@@ -705,6 +705,7 @@ func (s *Server) socketWebSocket(w http.ResponseWriter, r *http.Request, sid, ei
 	defer conn.Close()
 	session.attachReloginTransport(conn)
 	defer session.detachReloginTransport(conn)
+	defer s.endSocketGamePresence(session)
 
 	s.log.Event("socket.ws_open", map[string]any{
 		"sid":        session.sid,
@@ -847,6 +848,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 		// "2probe" during an upgrade must be answered with "3probe"; a bare "2"
 		// is the v3 keepalive. Echoing the body covers both.
 		session.noteClientPing()
+		s.recordSocketGameSeen(session, false)
 		s.refreshMailbox(session)
 		s.refreshSocial(session)
 		conn.WriteText(string(eioPong) + packet[1:])
@@ -854,6 +856,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 	case eioPong:
 		// The v4 keepalive: the answer to this server's own ping.
 		session.notePong()
+		s.recordSocketGameSeen(session, false)
 		return
 	case eioUpgrade:
 		session.markUpgraded()
@@ -892,17 +895,20 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 	switch packet[0] {
 	case eioPing:
 		session.noteClientPing()
+		s.recordSocketGameSeen(session, false)
 		s.refreshMailbox(session)
 		s.refreshSocial(session)
 		session.send(sioFrame{text: string(eioPong) + body})
 	case eioPong:
 		session.notePong()
+		s.recordSocketGameSeen(session, false)
 	case eioClose:
 		s.log.Event("socket.closed", map[string]any{
 			"sid":       session.sid,
 			"transport": transport,
 			"alive_s":   int64(time.Since(session.created).Seconds()),
 		})
+		s.endSocketGamePresence(session)
 		s.sio.drop(session.sid)
 	case eioUpgrade:
 		session.markUpgraded()

@@ -23,7 +23,7 @@ type stockMapPresence struct {
 	retired bool
 }
 
-var stockMapPresenceFields = [...]string{"game_mode", "version", "room_name", "map", "protocol", "mmrank", "tier_mm"}
+var stockMapPresenceFields = [...]string{"game_mode", "version", "room_name", "map", "protocol", "mmrank", "tier_mm", "rank"}
 
 func (session *sioSession) mergeStockMapPresence(head sioHead) {
 	session.mu.Lock()

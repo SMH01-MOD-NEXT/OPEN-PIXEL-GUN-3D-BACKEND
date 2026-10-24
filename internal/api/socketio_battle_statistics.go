@@ -29,6 +29,17 @@ func (s *Server) nativePlayerInfo(playerID string) (map[string]any, bool) {
 	}
 	info := p.NativePlayerStatistics(time.Now().UTC())
 	info["n"], info["lv"] = p.Nick, p.Level
+	// The stock LastOnlineTime field is nullable Int32 Unix seconds, not ms.
+	// HTTP/web authentication does not advance game-specific activity.
+	if account, err := s.st.Account(id); err == nil {
+		last := account.GameLastSeenAt
+		if last.IsZero() {
+			last = account.LastSeenAt
+		} // legacy records only
+		if stamp := last.Unix(); !last.IsZero() && stamp > 0 && stamp <= 2147483647 {
+			info["ldt"] = stamp
+		}
+	}
 	// PlayerData.s is base64 image data; a is the built-in avatar resource.
 	// Passing avatar_phoenix_warrior as s throws in 0x4024CD4 before nickname
 	// and statistics render. v is independently required by the league view.
