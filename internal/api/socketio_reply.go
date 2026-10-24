@@ -253,7 +253,11 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		// field of the wrong type throws inside its own handler.
 		return
 	}
-	if !s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body) {
+	replied := s.replyEncrypted(session, a.namespace, a.transport, codec, event, reqID, body)
+	if isSocialMutation(event) && body["err_code"] == nil {
+		s.refreshSocialAll()
+	}
+	if !replied {
 		return
 	}
 	if event == sioSubscribeEvent && !banned {
@@ -263,6 +267,9 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		s.pushConfigDocuments(session, a.namespace, a.transport, codec, head)
 		s.pushSubscribedPlayerInfo(session, a.namespace, a.transport, codec, head, reqID)
 		s.pushMailboxSubscription(session, a.namespace, a.transport, codec, head)
+		if body["err_code"] == nil {
+			s.pushSocialSubscription(session, a.namespace, a.transport, codec, head)
+		}
 	}
 	if event == sioAuthEvent {
 		// Authorisation is the one reply the loading bar waits on, so it keeps

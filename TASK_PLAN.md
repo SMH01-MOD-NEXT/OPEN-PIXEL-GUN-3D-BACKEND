@@ -5639,3 +5639,10 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - Verification passed: full Go tests, race (store/API/diagnostics), vet and all eight Node harnesses; no adb device attached, so no physical-client test claimed.
 - Production read-only checks: HTTPS ping 200, public operator API still 404, protected diagnostic journal available, role 740333804 retained. Data bytes/campaigns/security key/encrypted stores/frontend manifest unchanged; Caddy/gateway not restarted.
 - AWS protected backup: `/var/backups/opg3d/hub-20261023T175050Z-29de1c6`. No synthetic suspicious grants submitted to live accounts; new behavior exercised with isolated store/API fixtures.
+
+## Friends, private chat and public profiles — 2026-10-23
+- [x] Recover stock 23.1.3 friend/search/request/chat request and push contracts from read-only APK evidence.
+- [x] Implement durable server-owned friend requests, mutual friendships and bounded private chat with authenticated actors and abuse limits.
+- [x] Integrate measured Socket.IO handlers/subscriptions and safe public statistics; keep account/device/security fields private.
+- [x] Test two-player lifecycle, authorization, retries, concurrency, persistence and failure atomicity.
+- [/] Build and restart backend after verification; preserve live data and game frontend.

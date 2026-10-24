@@ -1190,6 +1190,11 @@ func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 		return Account{}, ErrIDTaken
 	}
 
+	oldState, snapshotErr := json.Marshal(s.state)
+	if snapshotErr != nil {
+		return Account{}, snapshotErr
+	}
+	s.renameSocialLocked(oldID, newID)
 	delete(s.state.Accounts, oldID)
 	account.PlayerID = newID
 	s.state.Accounts[newID] = account
@@ -1217,6 +1222,9 @@ func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 	}
 
 	if err := s.persistLocked(); err != nil {
+		var restored state
+		_ = json.Unmarshal(oldState, &restored)
+		s.state = restored
 		return Account{}, err
 	}
 	return *account, nil
@@ -1311,6 +1319,12 @@ func (s *Store) DeleteAccount(playerID string) error {
 	if _, ok := s.state.Accounts[playerID]; !ok {
 		return ErrNotFound
 	}
+	oldState, snapshotErr := json.Marshal(s.state)
+	if snapshotErr != nil {
+		return snapshotErr
+	}
+	s.normalizeSocialLocked(time.Now())
+	s.renameSocialLocked(playerID, "")
 	aliases := make([]string, 0)
 	for alias := range s.state.Aliases {
 		if s.resolvePlayerIDLocked(alias) == playerID {
@@ -1322,7 +1336,14 @@ func (s *Store) DeleteAccount(playerID string) error {
 	}
 	delete(s.state.Accounts, playerID)
 	delete(s.state.Profiles, playerID)
-	return s.persistLocked()
+	s.normalizeSocialLocked(time.Now())
+	if err := s.persistLocked(); err != nil {
+		var restored state
+		_ = json.Unmarshal(oldState, &restored)
+		s.state = restored
+		return err
+	}
+	return nil
 }
 
 // Stats is the server-wide summary an operator sees at a glance.

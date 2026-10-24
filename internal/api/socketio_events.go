@@ -249,6 +249,24 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
 		return (*Server).answerCreateSlots
+	case "friend_request":
+		return socialActionAnswer("request", "whom")
+	case "accept_friend":
+		return socialActionAnswer("accept", "acceptee_id")
+	case "reject_invite_friendship":
+		return socialActionAnswer("reject", "rejectee_id")
+	case "reject_friendship":
+		return socialActionAnswer("remove", "rejectee_id")
+	case "delete_friend_invites":
+		return socialActionAnswer("clear", "")
+	case "send_private_message":
+		return (*Server).answerSendPrivateMessage
+	case "get_private_message":
+		return (*Server).answerGetPrivateMessages
+	case "get_users_info_by_param_v3":
+		return (*Server).answerSearchPlayers
+	case "get_all_short_info_by_id_v3":
+		return (*Server).answerShortPlayerInfo
 	case "get_info_by_id_v3":
 		return (*Server).answerNativePlayerInfo
 	case "update_player_modes_stat":
@@ -582,6 +600,11 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 	}
 
 	if topic := head.text("type"); topic != "" {
+		if isSocialTopic(topic) {
+			if failed := s.validateSocialSubscription(session, head, reqID); failed != nil {
+				return failed
+			}
+		}
 		if isMailboxTopic(topic) {
 			if _, ok := s.socketPlayerID(session); !ok {
 				return socketStateFailure(reqID, "not_authorized")
@@ -1031,8 +1054,7 @@ func (s *Server) sessionProfile(session *sioSession) (store.Profile, bool) {
 //
 // A partially written binary event is worse than none: the client would hold
 // the text header and wait forever for attachments that never come. So a
-// dropped frame is reported as the failure it is rather than retried into a
-// worse state.
+// frame group is reserved atomically; a full queue drops the entire event.
 func (s *Server) replyEncrypted(session *sioSession, namespace, transport string, codec *sio.Codec, event string, reqID int, body map[string]any) bool {
 	session.eventMu.Lock()
 	defer session.eventMu.Unlock()
@@ -1047,17 +1069,10 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 		return false
 	}
 
-	for i, frame := range frames {
-		if session.send(frame) {
-			continue
-		}
+	if !session.sendFrames(frames) {
 		s.log.Event("socket.reply_undelivered", map[string]any{
-			"sid":    session.sid,
-			"event":  event,
-			"req_id": reqID,
-			"frame":  i,
-			"frames": len(frames),
-			"note":   "the session send queue is full; the reply is incomplete",
+			"sid": session.sid, "event": event, "req_id": reqID,
+			"frames": len(frames), "note": "send queue full; complete event dropped",
 		})
 		return false
 	}
@@ -1068,6 +1083,9 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 		sent = nil
 	}
 	traceBody := s.log.Body(sent)
+	if event == "get_private_message" || event == "send_private_message" {
+		traceBody = "<private chat redacted>"
+	}
 	if event == "mailbox_get_messages" || event == mailboxPersonalUpdated {
 		traceBody = "<personal mailbox body redacted>"
 	}

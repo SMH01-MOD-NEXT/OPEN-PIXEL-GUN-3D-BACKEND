@@ -82,6 +82,7 @@ func (b Ban) Active(now time.Time) bool {
 }
 
 type state struct {
+	Social      socialState               `json:"social,omitempty"`
 	Evidence    map[string]PlayerEvidence `json:"player_evidence,omitempty"`
 	Accounts    map[string]*Account       `json:"accounts"`
 	Profiles    map[string]*Profile       `json:"profiles,omitempty"`
@@ -110,6 +111,7 @@ type Store struct {
 	state           state
 	opts            Options
 	economyObserver func(EconomyObservation)
+	socialRates     map[string]socialRate
 }
 
 // Open loads (or creates) the state file in dir with default options.

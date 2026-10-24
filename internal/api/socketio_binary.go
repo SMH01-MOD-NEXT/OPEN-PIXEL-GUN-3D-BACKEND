@@ -486,7 +486,11 @@ func (s *Server) decodeBinaryEvent(session *sioSession, a *sioBinaryAssembly) {
 		"event":       s.log.Body(decoded[0]),
 	}
 	for i, plain := range decoded[1:] {
-		fields[fmt.Sprintf("arg%d", i+1)] = s.log.Body(plain)
+		if decodedEventName(decoded[0]) == "send_private_message" || decodedEventName(decoded[0]) == "get_private_message" {
+			fields[fmt.Sprintf("arg%d", i+1)] = "<private chat redacted>"
+		} else {
+			fields[fmt.Sprintf("arg%d", i+1)] = s.log.Body(plain)
+		}
 	}
 	s.log.Event("socket.event_decoded", fields)
 

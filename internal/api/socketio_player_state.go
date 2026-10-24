@@ -99,7 +99,10 @@ func (s *Server) answerUpdateTargetAdConsent(session *sioSession, head sioHead, 
 	})
 }
 
-func (s *Server) answerGetInfoByID(_ *sioSession, head sioHead, reqID int) map[string]any {
+func (s *Server) answerGetInfoByID(session *sioSession, head sioHead, reqID int) map[string]any {
+	if _, ok := s.socketPlayerID(session); !ok {
+		return socketStateFailure(reqID, "not_authorized")
+	}
 	requestedID := strings.TrimSpace(head.text("id"))
 	playerID, ok := s.st.ResolvePlayerID(requestedID)
 	if !ok {
@@ -135,8 +138,6 @@ func (s *Server) answerGetInfoByID(_ *sioSession, head sioHead, reqID int) map[s
 	info["level"] = profile.Level
 	info["experience"] = profile.Experience
 	info["exp"] = profile.Experience
-	info["coins"] = profile.Coins
-	info["gems"] = profile.Gems
 
 	body := sioOK(reqID)
 	body["info"] = info
@@ -183,7 +184,8 @@ func (s *Server) answerLeaderClan(_ *sioSession, head sioHead, reqID int) map[st
 	return body
 }
 
-func (s *Server) answerUnsubscribe(_ *sioSession, head sioHead, reqID int) map[string]any {
+func (s *Server) answerUnsubscribe(session *sioSession, head sioHead, reqID int) map[string]any {
+	s.unsubscribeSocial(session, head)
 	body := sioOK(reqID)
 	if value, ok := head["type"]; ok {
 		body["type"] = value

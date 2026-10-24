@@ -154,6 +154,8 @@ type sioSession struct {
 	created time.Time
 	out     chan sioFrame
 
+	social                   socialSubscriptions
+	sendMu                   sync.Mutex // reserve complete outgoing frame groups
 	eventMu                  sync.Mutex // keep encrypted event attachment groups contiguous
 	mailboxCodec             *sio.Codec
 	mailboxNamespace         string
@@ -287,12 +289,21 @@ func (s *sioSession) packetCount() uint64 {
 // send queues a frame. It never blocks: a client that stopped reading must not
 // be able to stall the server.
 func (s *sioSession) send(frame sioFrame) bool {
-	select {
-	case s.out <- frame:
-		return true
-	default:
+	return s.sendFrames([]sioFrame{frame})
+}
+
+// All producers use sendMu. Consumers only free capacity, so reservation keeps
+// an encrypted header and its attachments all-or-nothing and contiguous.
+func (s *sioSession) sendFrames(frames []sioFrame) bool {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if cap(s.out)-len(s.out) < len(frames) {
 		return false
 	}
+	for _, frame := range frames {
+		s.out <- frame
+	}
+	return true
 }
 
 // sioHub owns the live sessions.
@@ -796,6 +807,7 @@ func (s *Server) socketPingLoop(session *sioSession, conn *wsConn, done <-chan s
 			return
 		case <-ticker.C:
 			s.refreshMailbox(session)
+			s.refreshSocial(session)
 			if session.clientOwnsHeartbeat() {
 				return
 			}
@@ -835,6 +847,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 		// is the v3 keepalive. Echoing the body covers both.
 		session.noteClientPing()
 		s.refreshMailbox(session)
+		s.refreshSocial(session)
 		conn.WriteText(string(eioPong) + packet[1:])
 		return
 	case eioPong:
@@ -879,6 +892,7 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 	case eioPing:
 		session.noteClientPing()
 		s.refreshMailbox(session)
+		s.refreshSocial(session)
 		session.send(sioFrame{text: string(eioPong) + body})
 	case eioPong:
 		session.notePong()

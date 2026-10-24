@@ -164,7 +164,7 @@ func TestGetInfoByIDResolvesAliasAndRedactsCredentials(t *testing.T) {
 		t.Fatalf("reconcile alias: %v", err)
 	}
 
-	body := s.answerGetInfoByID(nil, sioHead{"id": oldID}, 91)
+	body := s.answerGetInfoByID(session, sioHead{"id": oldID}, 91)
 	info, ok := body["info"].(map[string]any)
 	if !ok {
 		t.Fatalf("info is %T: %#v", body["info"], body)
@@ -175,10 +175,10 @@ func TestGetInfoByIDResolvesAliasAndRedactsCredentials(t *testing.T) {
 	if info["nick"] != "Public Player" || info["skin"] != "skin-payload" || info["rank"] != float64(4) {
 		t.Fatalf("public player state is incomplete: %#v", info)
 	}
-	if info["level"] != 12 || info["experience"] != int64(5678) || info["coins"] != int64(90) || info["gems"] != int64(11) {
+	if info["level"] != 12 || info["experience"] != int64(5678) {
 		t.Fatalf("typed counters are wrong: %#v", info)
 	}
-	for _, private := range []string{"ad_id", "session", "device", "device_id", "socket_device"} {
+	for _, private := range []string{"ad_id", "session", "device", "device_id", "socket_device", "coins", "gems"} {
 		if _, leaked := info[private]; leaked {
 			t.Fatalf("public info leaked %s: %#v", private, info)
 		}
