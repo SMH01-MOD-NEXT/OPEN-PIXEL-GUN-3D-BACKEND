@@ -95,3 +95,43 @@ send/accept/reject requests, open the friend's statistics, exchange messages in
 both directions, reconnect the recipient and remove the friend. No Android device
 was connected through adb during implementation; automated tests are not a claim
 of an on-device UI pass.
+
+## Public profile repair and ordinary squads (2026-10-24)
+
+The full-profile subscription is `info_by_id_v3` with `list_v2`, followed by
+separate `info_by_id_v3` pushes shaped `{id,info:PlayerData}` (callback
+`0x2501514`, parser `0x2502B50`). PlayerData `s` contains custom base64 skin
+image data, while `a` contains a built-in avatar resource. Standard resource
+names previously placed in `s` could throw in `Convert.FromBase64String` at
+`0x4024CD4`, interrupting profile rendering. The backend now separates these
+fields, strips the resource `.txt` suffix, and supplies a deterministic `sh`
+cache key. Invalid/oversized custom data falls back to the default avatar.
+PlayerData `v` uses a valid reported version or `23.1.3` for legacy profiles on
+this version-specific backend. Online presence remains volatile and does not
+write progress just to record a version. Nickname, level and available battle
+statistics still come from the actual profile; missing history is not fabricated.
+
+Ordinary squad signalling is implemented using the existing native contracts:
+
+- `send_squad_invite` request (`0x456ACA4` / `0x456B2A8`) contains `receiver_id`,
+  `squad_name`, `protocol`, `invite_number` and integer `*_mode` flags.
+- `squad_invites` subscription (`0x456AC18`) receives full replacements shaped
+  `{squad_invites:[{id,name,squad,protocol,invite_number,siege_mode,clanwar_mode,test_mode}]}`.
+  The consumer at `0x4569F68` requires a list, not a dictionary keyed by ID.
+- Sender identity and displayed nickname are taken from the authenticated
+  account, never client-supplied `name` or sender IDs. Only current friends can
+  send/receive. Removed friendships stop exposing pending invitations.
+- Invites expire after two minutes, replace older invitations for the same pair,
+  and are deduplicated without extending their lifetime. Limit: 10 new invites
+  per sender/minute, 20 pending per recipient and 2,000 globally. Room/protocol
+  lengths and integer ranges are validated. Invitations are volatile and reset
+  on backend restart; reconnecting/subscribing restores only unexpired invites.
+- Immediate delivery, heartbeat refresh, expiry replacement, unsubscribe and
+  retry-after-full-queue reuse the encrypted social subscription transport.
+
+Photon still owns room creation/joining and connectivity. Relaying an invitation
+is not verification of Photon room ownership or a guarantee that the room still
+exists. Clan-war, siege and test squad modes are explicitly rejected until their
+separate permission/membership requirements are implemented. No frontend edits
+were made. Two-client device acceptance must still verify the profile UI and
+invite popup, then acceptance and joining the inviter's actual Photon room.

@@ -2,7 +2,11 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +29,15 @@ func (s *Server) nativePlayerInfo(playerID string) (map[string]any, bool) {
 	}
 	info := p.NativePlayerStatistics(time.Now().UTC())
 	info["n"], info["lv"] = p.Nick, p.Level
-	for src, dst := range map[string]string{"skin": "s", "avatar": "a", "weapons_c": "wc", "gadgets_c": "gc", "pets_c": "pc", "avatars_c": "avc", "sets": "sc", "league_id": "li", "rating": "c", "is_season_lobby": "isl"} {
+	// PlayerData.s is base64 image data; a is the built-in avatar resource.
+	// Passing avatar_phoenix_warrior as s throws in 0x4024CD4 before nickname
+	// and statistics render. v is independently required by the league view.
+	info["s"], info["a"], info["sh"] = nativeAppearance(p.ClientState)
+	info["v"] = "23.1.3" // this backend supports stock 23.1.3; old profiles have no version
+	if version, ok := p.ClientState["version"].(string); ok && nativeVersionPattern.MatchString(version) {
+		info["v"] = version
+	}
+	for src, dst := range map[string]string{"weapons_c": "wc", "gadgets_c": "gc", "pets_c": "pc", "avatars_c": "avc", "sets": "sc", "league_id": "li", "rating": "c", "is_season_lobby": "isl"} {
 		if v, ok := p.ClientState[src]; ok {
 			info[dst] = v
 		}
@@ -152,3 +164,22 @@ func (s *Server) answerUpdatePlayerModesStat(session *sioSession, head sioHead, 
 
 // Kept here to document the public boundary: no raw Profile, currency ledger,
 // command receipts, device identifiers or session secrets enter PlayerData.
+
+var nativeAvatarPattern = regexp.MustCompile(`^(?:avatar_|multi_skin_)[A-Za-z0-9_]{1,100}(?:\.txt)?$`)
+var nativeVersionPattern = regexp.MustCompile(`^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$`)
+
+func nativeAppearance(state map[string]any) (skin, avatar, hash string) {
+	avatar = "multi_skin_1"
+	if v, ok := state["avatar"].(string); ok && nativeAvatarPattern.MatchString(v) {
+		avatar = strings.TrimSuffix(v, ".txt")
+	}
+	v, _ := state["skin"].(string)
+	if nativeAvatarPattern.MatchString(v) {
+		avatar = strings.TrimSuffix(v, ".txt")
+	} else if len(v) <= 256*1024 {
+		if data, err := base64.StdEncoding.DecodeString(v); err == nil && len(data) > 0 {
+			skin = v
+		}
+	}
+	return skin, avatar, fmt.Sprintf("%x", sha256.Sum256([]byte(skin+":"+avatar)))
+}

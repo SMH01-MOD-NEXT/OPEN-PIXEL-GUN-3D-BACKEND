@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/sio"
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
@@ -17,11 +18,11 @@ import (
 // accept_friend.acceptee_id 0x235D7B4, reject*.rejectee_id 0x2360AAC /
 // 0x235C60C. List consumers: 0x3884654 / 0x235E608 / 0x235F94C.
 func isSocialTopic(t string) bool {
-	return t == "friends_list" || t == "friend_invites" || t == "get_private_message" || t == "all_short_info_by_id_v3"
+	return t == "squad_invites" || t == "friends_list" || t == "friend_invites" || t == "get_private_message" || t == "all_short_info_by_id_v3"
 }
 func isSocialMutation(t string) bool {
 	switch t {
-	case "friend_request", "accept_friend", "reject_invite_friendship", "delete_friend_invites", "reject_friendship", "send_private_message":
+	case "send_squad_invite", "friend_request", "accept_friend", "reject_invite_friendship", "delete_friend_invites", "reject_friendship", "send_private_message":
 		return true
 	}
 	return false
@@ -314,6 +315,8 @@ func (s *Server) pushSocialLocked(session *sioSession, topic string, sub *social
 		if sub.initialized && len(body["messages"].([]any)) == 0 {
 			return
 		}
+	case "squad_invites":
+		body = s.squadInvitesBody(actor, time.Now())
 	case "all_short_info_by_id_v3":
 		body = map[string]any{"info": s.socialProfileMap(sub.peers)}
 	default:

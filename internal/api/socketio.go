@@ -308,6 +308,7 @@ func (s *sioSession) sendFrames(frames []sioFrame) bool {
 
 // sioHub owns the live sessions.
 type sioHub struct {
+	squads   squadInvitesState
 	mu       sync.Mutex
 	sessions map[string]*sioSession
 

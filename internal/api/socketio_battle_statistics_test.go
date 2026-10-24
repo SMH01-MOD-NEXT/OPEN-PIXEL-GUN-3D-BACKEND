@@ -116,3 +116,44 @@ func TestNativeSubscriptionPushHasPerPlayerShape(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeAppearanceAndVersionCompatibility(t *testing.T) {
+	for _, tc := range []struct{ skin, avatar, wantSkin, wantAvatar string }{
+		{"avatar_phoenix_warrior", "", "", "avatar_phoenix_warrior"},
+		{"multi_skin_1.txt", "", "", "multi_skin_1"},
+		{"aW1hZ2U=", "avatar_phoenix_warrior", "aW1hZ2U=", "avatar_phoenix_warrior"},
+		{"not base64!", "../../private", "", "multi_skin_1"},
+		{"", "avatar_phoenix_warrior.txt", "", "avatar_phoenix_warrior"},
+		{strings.Repeat("A", 256*1024+4), "", "", "multi_skin_1"},
+	} {
+		skin, avatar, hash := nativeAppearance(map[string]any{"skin": tc.skin, "avatar": tc.avatar})
+		if skin != tc.wantSkin || avatar != tc.wantAvatar || len(hash) != 64 {
+			t.Fatal("invalid appearance conversion", avatar)
+		}
+		_, _, again := nativeAppearance(map[string]any{"skin": tc.skin, "avatar": tc.avatar})
+		if hash != again {
+			t.Fatal("unstable cache hash")
+		}
+	}
+	s, a, b, _, codec := socialAPIFixture(t)
+	if _, err := s.st.MergeProfileClientState(b.playerID, map[string]any{"skin": "avatar_phoenix_warrior", "version": "invalid", "device": "secret-device"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.answerUpdatePlayerModesStat(b, sioHead{"mods": map[string]any{"2": float64(5)}}, 1); got["err_code"] != nil {
+		t.Fatal(got)
+	}
+	socialDispatch(t, s, a, "subscribe", sioHead{"type": "info_by_id_v3", "list_v2": []any{map[string]any{"id": b.playerID}}, "req_id": 2})
+	body := socialEvent(t, socialFrames(t, a, codec), "info_by_id_v3")
+	info := body["info"].(map[string]any)
+	p, _ := s.st.Profile(b.playerID)
+	if info["n"] != p.Nick || info["lv"] != float64(p.Level) || info["v"] != "23.1.3" || info["s"] != "" || info["a"] != "avatar_phoenix_warrior" {
+		t.Fatal("broken public PlayerData", info)
+	}
+	if info["w"].(map[string]any)["2"] != float64(5) {
+		t.Fatal("real statistics lost")
+	}
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(raw), "secret-device") {
+		t.Fatal("private disclosure")
+	}
+}

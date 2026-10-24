@@ -249,6 +249,10 @@ func sioAnswerFor(event string) sioAnswer {
 		return (*Server).answerGetInapps
 	case sioCreateSlotsEvent:
 		return (*Server).answerCreateSlots
+	case "send_squad_invite":
+		return (*Server).answerSendSquadInvite
+	case "squad_invites":
+		return (*Server).answerSquadInvites
 	case "friend_request":
 		return socialActionAnswer("request", "whom")
 	case "accept_friend":

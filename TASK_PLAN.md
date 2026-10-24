@@ -5651,3 +5651,9 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - AWS backup: `/var/backups/opg3d/hub-20261024T073631Z-4b612c7`. Local tracked process had already stopped; verified no listener before starting the new build (PID 9384).
 - Read-only release checks passed: local/public health 200, HUB 200, public admin 404; two accounts/profiles, scheduled campaigns, security keys and encrypted stores preserved. Frontend manifest unchanged; gateway/Caddy not restarted; support admin 740333804 retained.
 - Full Go tests, race checks, vet and all eight Node harnesses passed. No adb device attached; native in-game acceptance remains for two real accounts. No synthetic friend/chat data was inserted into production accounts.
+
+## Native friend profile repair and squad invitation delivery — 2026-10-24
+- [x] Recover full-profile envelope/version/avatar and squad invitation contracts from stock client evidence.
+- [x] Repair profile compatibility and implement authenticated, friend-only, expiring squad invitation delivery.
+- [x] Add regression, authorization, malformed-input, concurrency and delivery tests; run complete verification.
+- [/] Commit, rebuild and deploy locally/AWS while preserving player data and frontend.
