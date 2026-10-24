@@ -120,11 +120,15 @@ func TestNativeSubscriptionPushHasPerPlayerShape(t *testing.T) {
 func TestNativeAppearanceAndVersionCompatibility(t *testing.T) {
 	for _, tc := range []struct{ skin, avatar, wantSkin, wantAvatar string }{
 		{"avatar_phoenix_warrior", "", "", "avatar_phoenix_warrior"},
-		{"multi_skin_1.txt", "", "", "multi_skin_1"},
+		{"aW1hZ2U=", "", "aW1hZ2U=", ""},
+		{"aW1hZ2U=", "multi_skin_1", "aW1hZ2U=", ""},
+		{"", "", "", ""},
+		{"multi_skin_1", "multi_skin_1", "", ""},
+		{"multi_skin_1.txt", "", "", ""},
 		{"aW1hZ2U=", "avatar_phoenix_warrior", "aW1hZ2U=", "avatar_phoenix_warrior"},
-		{"not base64!", "../../private", "", "multi_skin_1"},
+		{"not base64!", "../../private", "", ""},
 		{"", "avatar_phoenix_warrior.txt", "", "avatar_phoenix_warrior"},
-		{strings.Repeat("A", 256*1024+4), "", "", "multi_skin_1"},
+		{strings.Repeat("A", 256*1024+4), "", "", ""},
 	} {
 		skin, avatar, hash := nativeAppearance(map[string]any{"skin": tc.skin, "avatar": tc.avatar})
 		if skin != tc.wantSkin || avatar != tc.wantAvatar || len(hash) != 64 {

@@ -5661,3 +5661,8 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - Verification: `go test ./...`, race tests for store/API/clienterrors, `go vet ./...`, and all eight Node UI harnesses passed. No adb device connected; native two-player acceptance remains required.
 - Release: code `01c806f`, runtime `23.1.3-hub-01c806f`; binary SHA-256 `29b84dab53e4fdd3aa27460e3eb2d37ac3ce01ef62be25ebe02775b1b0a2ac0b`. Local PID 12832; local/AWS ping healthy. AWS backup `/var/backups/opg3d/hub-20261024T080215Z-01c806f`.
 - State unchanged at restart; both account/profile records, scheduled October campaigns, support administrator 740333804, security key and encrypted stores preserved. Frontend release manifest unchanged; public admin endpoint remains 404; Caddy/gateway not restarted. Existing unrelated frontend working-tree edits left untouched.
+
+## Friend invite visibility and symmetric refresh repair — 2026-10-24
+- [x] Compare live signalling, client short-profile/cache contracts and two-sided friendship state.
+- [x] Implement minimal backend correction and regression tests without frontend changes.
+- [/] Run verification, commit, rebuild and release locally/AWS with state preserved.

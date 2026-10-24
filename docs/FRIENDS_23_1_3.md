@@ -135,3 +135,20 @@ exists. Clan-war, siege and test squad modes are explicitly rejected until their
 separate permission/membership requirements are implemented. No frontend edits
 were made. Two-client device acceptance must still verify the profile UI and
 invite popup, then acceptance and joining the inviter's actual Photon room.
+
+
+### Social preview compatibility regression
+
+Native social previews (PrivateChatController 0x1FFDECC, selector 0x1FFE0E0)
+prefer nonempty `a` over `s`. Their texture helper (0x3F9C014) treats `avatar_*`
+as resources and other nonempty values as Base64. Therefore `multi_skin_1`
+must never be sent as `a`: it is an internal fallback resource and raises
+FormatException when decoded as Base64, interrupting invite/friend rows.
+Custom skins use `s` with explicitly empty `a`; absent/invalid skins use both
+empty, allowing the client fallback. Built-in avatars keep `a=avatar_*`.
+The native dictionary merge (0x2509C20–0x2509C58) copies present string keys,
+including empty strings, so refreshed profiles clear the earlier bad cached `a`.
+No friendship records are rewritten: removal and acceptance remain explicit
+player actions. Regression tests exercise encrypted short-profile delivery
+through request/accept/remove/reverse-request and model the native selector;
+these tests do not replace acceptance on two real game clients.

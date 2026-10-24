@@ -165,11 +165,13 @@ func (s *Server) answerUpdatePlayerModesStat(session *sioSession, head sioHead, 
 // Kept here to document the public boundary: no raw Profile, currency ledger,
 // command receipts, device identifiers or session secrets enter PlayerData.
 
-var nativeAvatarPattern = regexp.MustCompile(`^(?:avatar_|multi_skin_)[A-Za-z0-9_]{1,100}(?:\.txt)?$`)
+var nativeAvatarPattern = regexp.MustCompile(`^avatar_[A-Za-z0-9_]{1,100}(?:\.txt)?$`)
 var nativeVersionPattern = regexp.MustCompile(`^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$`)
 
 func nativeAppearance(state map[string]any) (skin, avatar, hash string) {
-	avatar = "multi_skin_1"
+	// Social previews prefer nonempty a over s, then decode non-avatar values as
+	// Base64. multi_skin_1 is an internal fallback asset, not a valid wire avatar.
+	// Send a explicitly empty so cache merges also clear old invalid values.
 	if v, ok := state["avatar"].(string); ok && nativeAvatarPattern.MatchString(v) {
 		avatar = strings.TrimSuffix(v, ".txt")
 	}
