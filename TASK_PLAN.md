@@ -6923,3 +6923,23 @@ All original data except the intentionally changed settings, backend.env and
 frontend active manifest are byte-identical to the stopped-service backup.
 Gateway/Caddy PIDs unchanged. See docs/AWS_MAINTENANCE_DEPLOYMENT_2026-10-25.md
 for executable hash, backup, verification-harness corrections and safe rollback.
+
+## 2026-10-25: HUB Android download link
+
+- [x] Inspect existing download UI and configuration: localized external-download button already exists; no rebuild or frontend patch needed.
+- [x] Configure the user-supplied OneDrive URL on AWS after backing up the stopped service's environment and state.
+- [x] Verify public download link/button in RU/EN; preserve maintenance deadline, current operator-managed allowlist, binary/frontend and player data.
+- [x] Document configuration-only rollout and commit deployment notes.
+
+Configured only OPG3D_HUB_DOWNLOAD_URL in the existing AWS environment; no
+binary/frontend rebuild required. Existing localized home-page button now opens
+the exact owner-supplied OneDrive sharing URL in a new tab (noopener noreferrer).
+Browser checks passed for both RU and EN with no login required. Backend PID
+31479; stopped-service backup /var/backups/opg3d/hub-download-20261025T155908Z.
+All authoritative data including settings is byte-identical across the rollout.
+The owner had already added one whitelist entry; it was preserved, not removed
+or edited. Maintenance still ends 2026-10-26T12:00:00Z, manual latch remains off.
+All other environment lines, executable, native manifest and gateway PIDs were
+preserved. The first verification's outdated empty-whitelist assumption caused
+an environment-only rollback; retry compared current settings to backup and
+succeeded without touching the operator's changes.

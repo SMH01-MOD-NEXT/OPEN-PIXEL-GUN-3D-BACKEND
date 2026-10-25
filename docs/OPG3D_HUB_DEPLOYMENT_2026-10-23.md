@@ -99,3 +99,36 @@ login. User account/device compromise remains a separate risk.
 - Real handler/store tests cover durable authenticated sessions and revocation across restarts. Live player authentication was not impersonated during deployment. Browsers using pre-release memory-only sessions need one fresh login.
 - `go test -race ./...`, `go vet ./...`, all seven dependency-free console harnesses, and isolated Chromium HUB/operator interaction checks passed. Mobile 390px and desktop 1440px screenshots inspected, including dark theme. Fixture accounts/codes were synthetic.
 - See `HUB_SUPPORT_AND_SESSIONS.md` for staff-role setup, guest ticket access, evidence limitations, bounds and backup/privacy requirements. No automatic ownership recovery, complete historical purchase reconstruction or client telemetry fabrication was added.
+
+## Android download enabled — 2026-10-25
+
+Configuration-only update using the existing `OPG3D_HUB_DOWNLOAD_URL` feature.
+The owner supplied this OneDrive sharing URL, which is used unchanged:
+
+https://1drv.ms/u/c/648bba575409b1ee/IQBCBch0tW5nSZ1b44Kt4jpiAR3zki31m2AyyAsvw2hel2o
+
+- Public HUB home page now offers **Скачать для Android / Download for Android**
+  without signing in. The button opens the external sharing page in a new tab
+  with `noopener noreferrer`; it does not bypass OneDrive's sharing/access rules.
+- Configured only `OPG3D_HUB_DOWNLOAD_URL` in `/etc/opg3d/backend.env`, preserving
+  all other environment lines and file owner/mode. No application source patch,
+  executable replacement or native frontend publication was necessary.
+- Stopped-service backup:
+  `/var/backups/opg3d/hub-download-20261025T155908Z` (protected environment,
+  complete data, native active manifest, checksums and deployment report).
+- Backend restarted successfully, final PID `31479`; binary remains
+  `23.1.3-maintenance-fix-78fe484`. Gateway/Caddy PIDs `21993`/`10286` unchanged.
+- Public stats returned the exact configured HTTPS URL; real-browser checks
+  confirmed enabled link, external-link note, correct target/rel and RU/EN labels.
+  No large APK download, installation or OneDrive-account login was performed.
+- All data-file hashes, including maintenance settings and the current
+  operator-managed whitelist, matched the pre-start backup. The operator had
+  added one whitelist entry before this task; no whitelist changes were made.
+  The maintenance deadline remains **2026-10-26 12:00 UTC**, manual latch off.
+- The first validation still assumed the previously empty whitelist and rolled
+  back only the environment change. Corrected validation to preserve/compare the
+  current operator settings; subsequent rollout completed without data changes.
+
+To change the download later, update only the HTTPS environment setting and
+restart the backend. Rollback restores the previous environment file and
+restarts the same maintenance-capable executable; never restore old player data.
