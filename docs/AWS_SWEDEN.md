@@ -94,6 +94,9 @@ rollback cautions: see [Mailbox campaign deployment](MAILBOX_2313.md#aws-campaig
 
 ## Backend maintenance controls — 2026-10-25
 
-Deployed `23.1.3-maintenance-89c45f7`, executable only. Maintenance remains off,
-schedule empty; player data, configuration, frontend and gateway preserved.
+Current deployment: `23.1.3-maintenance-fix-78fe484`, executable only. Stock
+23.1.3 HTTP maintenance auth is enforced. User-requested maintenance window:
+2026-10-25T15:14:05Z through 2026-10-26T12:00:00Z (end exclusive), manual latch
+off, allowlist empty at deployment. Player data, environment, frontend and
+gateways preserved. Check live admin settings for subsequent operator changes.
 See [deployment and rollback record](AWS_MAINTENANCE_DEPLOYMENT_2026-10-25.md).

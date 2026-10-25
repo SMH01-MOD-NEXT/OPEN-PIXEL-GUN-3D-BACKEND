@@ -6900,3 +6900,26 @@ LAN access failed on this device and was not worked around by disabling security
 Final local mode: manual maintenance on, no schedule and no player bypass.
 AWS backend stays stopped; no deployment or production data edits were made.
 Unrelated frontend photon_trace_2313.h and analys2332/ changes were preserved.
+
+## 2026-10-25: User-approved fixed-maintenance AWS deployment
+
+User now explicitly authorizes deploying 78fe484 and starting AWS. Maintenance
+must be active immediately and end automatically on 2026-10-26 at 12:00 UTC
+(15:00 Moscow). No player whitelist entries may be added.
+
+- [x] Build and verify isolated static Linux/amd64 artifact from 78fe484.
+- [x] Back up stopped AWS executable/data/config; install executable atomically.
+- [x] Set active UTC window ending 2026-10-26T12:00:00Z; manual=false; allowlist empty before startup.
+- [x] Start backend and verify private stock auth denial, public health and admin isolation.
+- [x] Verify player state/env/frontend unchanged; record deployment and commit documentation.
+
+Deployment verified: runtime 23.1.3-maintenance-fix-78fe484, PID 31156,
+active/running and NRestarts=0. Active window starts 2026-10-25T15:14:05Z and
+ends 2026-10-26T12:00:00Z; manual latch false and allowlist empty. Private
+legacy binary HTTP authorization returns err_code=3000 and critical=true,
+without token/socket URL. Public HTTP/HTTPS ping and loader return 200;
+public admin routes remain 404, private unauthenticated settings returns 401.
+All original data except the intentionally changed settings, backend.env and
+frontend active manifest are byte-identical to the stopped-service backup.
+Gateway/Caddy PIDs unchanged. See docs/AWS_MAINTENANCE_DEPLOYMENT_2026-10-25.md
+for executable hash, backup, verification-harness corrections and safe rollback.
