@@ -91,3 +91,9 @@ private admin: October 26 at 12:00 UTC (2626 coins / 1010 gems) and October 31 a
 Accounts/profiles/config/client release and gateway preserved; public health and
 loader200, admin404; internal unauthenticated admin401. Backup and schema-aware
 rollback cautions: see [Mailbox campaign deployment](MAILBOX_2313.md#aws-campaign-deployment--2026-10-23).
+
+## Backend maintenance controls — 2026-10-25
+
+Deployed `23.1.3-maintenance-89c45f7`, executable only. Maintenance remains off,
+schedule empty; player data, configuration, frontend and gateway preserved.
+See [deployment and rollback record](AWS_MAINTENANCE_DEPLOYMENT_2026-10-25.md).

@@ -6857,3 +6857,11 @@ Verification: `go test ./...`, `go test -race ./...`, `go vet ./...`,
 maintenance UI tests passed. ADB reports no connected devices, so no real-device
 login test was possible. Existing backend process and production data were not
 changed; no maintenance window was activated and no release dates were applied.
+
+## 2026-10-25: User-approved AWS maintenance deployment
+
+- [x] Identify official Sweden instance, service, previous binary and health.
+- [x] Build and verify isolated static Linux/amd64 release from 89c45f7.
+- [x] Stage artifact, stop only backend, back up full data/config/binary and install atomically.
+- [x] Verify private/public health, maintenance UI/settings, data preservation and unchanged gateways.
+- [x] Record deployment and rollback details; commit documentation only.
