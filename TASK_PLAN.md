@@ -5314,6 +5314,134 @@ The Choreo form's `/Dockerfile` schema value was invalid (REST schemas must be
 OpenAPI JSON/YAML), and Choreo was not selected because its managed REST and
 WebSocket endpoints cannot share this backend's required port.
 
+## Session 2026-09-03 — run 143, post-match screen shows only the victory caption
+
+Operator report: after winning an online match only the "victory" caption is
+drawn. The player table and the reward panels never appear.
+
+Run 143 evidence (backend `logs/backend-run143.log`, device `logs/front-run143.log`):
+
+- [x] Rebuild and restart the backend with capture; it listened on TCP 8080 and
+      UDP 47318 and answered `/api/v1/ping`.
+- [x] Launch `com.pixel.gun3d` with a full `adb logcat` capture, wait five
+      minutes on a separate machine, then harvest both logs.
+- [x] One `TeamFight` match on `NuclearCity` was played inside the window:
+      analytics `eid=1038` at 15:34:30Z (match start) and `eid=1056` at
+      15:37:30Z (match end), both acknowledged with `err_code=0`.
+
+Root cause: the post-match repair module is no longer part of the client. The
+commit `dd8d503 refactor(23.1.3)!: strip the in-process backend from libopg3d`
+deleted `post_match_2313.h` (847 lines), `post_match_trace_2313.h` (463 lines),
+`post_match_ui.h` (144 lines) and `net_stall_guard_2313.h` (177 lines) together
+with the in-library backend emulation. The deletion was collateral: those files
+carried the repair described in the frontend `docs/PORT_23_1_3_POST_MATCH.md`,
+not backend emulation. Confirmation from this run:
+
+- `opg3d/src/main/cpp/` contains no `post_match*` or `net_stall*` file, and
+  `main.cpp` neither includes nor installs any of them.
+- The shipped `lib/arm64-v8a/libopg3d.so` contains zero `post-match` strings,
+  while `23.1.3-client`, `-photon`, `-redirect`, `-runtime` and `-ws` are present.
+- The 34,262-line device log contains zero `post-match` lines. Boot reported
+  "all enabled 23.1.3 components installed", so nothing failed to install —
+  the component simply does not exist any more.
+
+Without that module the defect documented as revision 3 of
+`docs/PORT_23_1_3_POST_MATCH.md` is back unmodified: the results coroutine
+`NetworkStartTableNGUIController.一丗丈丞丑丐丗三丆` (`0x484F130`, iterator
+`世丟丈丄丙丒专丘丂.MoveNext` `0x4E61894`) parks at state 1 inside
+`while (flag@0x5B0) yield return null;`. The panel switch
+`三丕丟丅丐丕丆丘万(true,false)` (`0x484DD44`) deactivates the host GameObject, so
+Unity stops stepping the iterator; `OnTablesShow` (`0x484FDFC`) clears the flag
+2.4 s later but nothing ever resumes the routine. Animation events still fire
+because Unity delivers them regardless of object state, which is why the
+caption, the win sound and `finishedInterface` (field 0x68) still appear.
+
+The backend is not implicated. It answered every event with `err_code=0`, and
+there were no static-content fallbacks, no `http.unhandled` and no
+`socket.attachment_undecodable`. After match end at 15:37:30Z the client sent
+only `get_inapps` heartbeats and two `update_progress` calls — no scoreboard or
+reward request was ever issued, matching revision 2's finding that the results
+payload is assembled client-side before the coroutine's first step.
+
+- [ ] Restore `post_match_2313.h` from `dd8d503^` onto the current tree, keeping
+      only the coroutine-pinning repair and the revision 4 presentation
+      watchdog; drop anything that granted progression or economy locally, since
+      the server owns that now.
+- [ ] Re-include and install the module from `main.cpp`, rebuild arm64-v8a, and
+      confirm the installed device library md5 matches the host artifact before
+      the next run.
+- [ ] Reproduce one victory and verify the player table, the reward panels and
+      the OK button, with zero fallbacks in the backend session.
+
+Secondary observation, not the cause of this defect: the client reports an empty
+hash for `MatchRewards` and the backend holds no copy of that document
+(`served=0`). Reward *contents* may therefore be thin even once the coroutine is
+repaired, so author `MatchRewards` server-side before judging the fix.
+
+## Backend launch 23.1.3 — 2026-10-19
+
+- [x] Inspect launch instructions and existing listeners.
+- [x] Test and build the current working tree without altering existing code changes.
+- [x] Launch using existing .env and verify HTTP and discovery.
+
+Running in background as PID 35901; HTTP ping returned ok=true; UDP discovery verified.
+LAN endpoint: http://192.168.0.107:8080. Launch log: logs/backend-launch-20261019-130014.log.
+
+## Recovery of 23.1.3 loading regression — 2026-10-19
+
+- [x] Confirm rooted ADB device and installed 23.1.3.
+- [x] Identify a launch without .env (Photon endpoint 503) and stopped backend.
+- [x] Reproduce with correct backend environment and capture client/server evidence without resetting player data.
+- [x] Diagnose remaining startup blocker, implement minimal fix and regression checks if needed.
+- [x] Verify loading passes 100% into playable scenes on device; document recovery.
+- [x] Commit only recovery changes; leave unrelated administrator/relogin work untouched.
+
+Confirmed: BestHTTP auth_v2 bypassed redirect and required binary UTF-16 shifted field framing, not JSON. Corrected matching frontend/backend; stock auth now reaches Socket.IO and game scenes. Diagnostic run reached 100% at ~16.9s; diagnostics-off release was relaunched and screenshot confirms active match. No app-data reset. Full/race tests and 322124 fuzz iterations passed. See docs/RECOVERY_23_1_3_2026_10_19.md.
+
+Recovery code/docs commit: 234c857 (existing backend branch 23.3.2 retained). Frontend companion commit: f94d776 on 23.1.3. Existing unrelated dirty changes remain uncommitted.
+
+## Post-match victory screen recovery — 2026-10-19
+
+- [x] Inspect current sources, previous post-match investigations and device state.
+- [/] Validate historical findings with focused results/animation/coroutine diagnostics.
+- [ ] Implement only the confirmed presentation/scheduling or server-contract fix.
+- [ ] Build/test and verify an actual completed match on the rooted device.
+- [ ] Document evidence, commit isolated changes and preserve unrelated work.
+
+Historical documents report removed post-match modules; treat prior causal claims as hypotheses until current runtime verification. Do not restore auto-Continue or fabricate rewards.
+
+Current runtime overturns historical inactive-host diagnosis: results stepped 74 times, host active, OnTablesShow clears flag, then next resume writes state -1 without returning to the hook. Added optional focused trace and scoped IL2CPP managed-stack exception capture; first full match captured, second capture pending. No functional workaround or backend change yet. Frontend docs/POST_MATCH_INVESTIGATION_2026_10_19.md records evidence.
+
+Diagnostic milestone committed in frontend 068192f. Both Gradle profiles and native observer lifecycle/scoped-forwarding tests pass. Device second focused profile e4aac4f installed; continuous logcat PID 56806 writes post-match-live-client.log. Waiting for second completed match to identify managed exception; functional fix and final verification remain pending. Backend left untouched/running.
+
+## Post-match null config — current investigation
+- [x] Third real match: null helper caller 0x4851A5C identifies reward preparation 0x4850494.
+- [x] Root read-only memory: ConfigId 167 wrapper exists but Boosters model is null; GameModes getter returns null. Current event null is valid and not the cause.
+- [/] Repair only Boosters JSON delivery and verify parsed model on device before asking for another match.
+- [ ] Verify complete results/rewards and Continue; document and commit isolated fix.
+
+Backend selective Boosters inline delivery passes full go test and build (correct target cmd/opg3d-backend). Restarted recovery service/app, no data wipe. PID 2188 confirms Boosters model parsed, bs/gm list count=0. New live match running; final UI/Continue proof pending.
+
+## Confirmed post-match repair
+- [x] Fix selective Boosters inline JSON delivery (no frontend gameplay workaround).
+- [x] Validate ConfigId 167 model and non-null GameModes on actual device.
+- [x] Real match results coroutine and reward queues finish normally, no scoped exception.
+- [x] User confirms rewards and player list; ADB screenshot observes returned lobby.
+- [x] Full Go tests/build and API/SIO race tests pass; frontend diagnostic/default profiles already verified.
+- [/] Commit isolated fix/docs, preserving unrelated user changes.
+
+- [x] Isolated commits: backend 63ff5f7, frontend documentation bd576eb. Other user changes left unstaged. Server running; focused passive frontend retained without further restart.
+
+## Follow-up: booster icons and veteran chest
+- [/] Reproduce missing XP booster icons; inspect backend Boosters entries and client texture/asset lookup, without inventing asset paths.
+- [x] Reproduce veteran chest missing texture; identify actual config/item identifier and asset delivery contract. Config 119 was absent; index 1027, tag LootBox_Veteran_Red verified in stock resources and live model. Device now displays the chest.
+- [ ] Trace veteran chest open request/response, stock eligibility and reward flow separately from missing artwork.
+- [ ] Implement only verified backend contract/data fixes; test and verify on device, preserving the post-match repair.
+
+User-reported follow-ups. Root causes and backend-only fixability are not yet verified; current Boosters bs/gm lists are empty and restore results only, not full booster content.
+
+- [x] Economy decision: user selected original 23.1.3. Original Config 167/157 tables remain absent; known stock booster factors are now verified. Do not invent reward weights or lifetimes. Presentation repair alone does not complete chest opening.
+
 ## Original 23.1.3 economy restoration — approved
 - [x] User selected original 23.1.3 values; consult historical 2022–2024 sources, not a custom economy.
 - [x] Verify all four booster icons/factors against stock assets and map their live item indices.
@@ -5321,6 +5449,41 @@ WebSocket endpoints cannot share this backend's required port.
 - [ ] Recover exact target-version lifetimes, mode list, migration data and veteran reward weights; historical sources do not establish these.
 - [/] Map confirmed data to client item IDs and ConfigId 167/157 schemas. Booster indices and currency/selected parts indices verified; full veteran item mapping and eligibility filters remain open.
 - [ ] Implement verified configs and real reward persistence; validate on ADB device and run tests/build before commit.
+
+## Reconstruction without historical server dumps
+- [x] User confirmed no old files/dumps exist; continue client-guided recovery, distinguishing unknown original probabilities.
+- [/] Trace Config 157 showcase, selection groups, filters and the eligible opening flow from the 23.1.3 client.
+- [ ] Restore a documented compatibility provider only after validating its contract; do not label reconstructed probabilities as original.
+- [ ] Verify on ADB, run tests/build and commit only working changes.
+
+## Priority interruption: intermittent progress reset / 21% startup
+- [x] User deferred booster work and chest reward issuance; stop the opening test.
+- [x] Save current and pre-test server profiles privately; compare structure without logging private state.
+- [x] Stop app and restore pre-test counters; do not wipe app data/cache.
+- [/] Trace cold-start/reconnect progress negotiation, stale revisions and blank/default profile application.
+- [ ] Implement minimal confirmed fix and regression tests; preserve unrelated work and working chest presentation.
+- [ ] Test repeated normal/reconnect launches on the attached device before isolated commit.
+
+### Confirmed startup-clock defect resolved in frontend
+
+- [x] Read-only live memory identified stopped Switcher Stopwatch at state23/25%.
+- [x] Narrow frontend factory guard starts only stopped clock, preserving elapsed and stock delay.
+- [x] Six successful device starts total (two production mode), backend restart/reconnect, revision20 raw echo acknowledged.
+- [x] 87 server sections retained; no app data/cache wipe or chest issuance.
+- [ ] Distinct 21% recurrence and gameplay currency reconciliation remain evidence-driven follow-ups if reproducible.
+
+## Current priority: one veteran prize and stock opening roulette
+- [x] Inspect the installed Config119/157 and stock selection/animation contracts; preserve profile and startup fix.
+- [x] Correct the per-opening reward count to the user's requested one prize and select stock roulette presentation.
+- [x] Add regressions, build/restart backend and verify one-prize opening/roulette (user confirmed).
+- [ ] Separate follow-up: complete server-side economy command persistence/reconciliation; not proven by presentation tests.
+- [x] Resume booster restoration only after chest behavior is verified.
+
+## Follow-up: XP booster restoration
+- [x] Veteran chest: shared weighted reward pool; stock Roulette=2; user confirmed one prize and animation.
+- [x] Restore Config167 settings and bundled stock icon paths for booster1–4.
+- [x] Read-only Config167 verification; user confirmed icons and application; no data/cache wipe.
+- [x] Full Go/race tests and build pass; documented 30-minute compatibility default and reconstructed PvP mode list.
 
 ## Admin edits and gameplay reconciliation (current)
 - [x] Trace permanent counter override and targeted online/offline resynchronization.
@@ -5362,7 +5525,44 @@ Scope and honest verification limits: docs/INVENTORY_23_1_3.md.
 - [x] Test search, navigation, dialogs, narrow layout, errors and bulk rollback/isolation.
 - [x] Run Go/vet/race/build, deploy without mass-changing the live player, commit.
 
+## Inventory expansion — pets, gadgets, modules (23.1.3)
+- [x] Inspect exact backend/frontend repository state and inventory/progress contracts; preserve pre-existing changes.
+- [x] Confirm gadget ownership is persisted in slot 16 and Pocket Harpoon has multiple stock IDs; cataloged entries must stay distinct.
+- [x] Confirm pet ownership records in slot 53 (`p`) and equipped reference in slot 9 (`6`) from the 23.1.3 profile shape.
+- [x] Add safe pet grant/revoke/read support with correct default records and equipped-pet protection.
+- [x] Add regression tests for idempotency, unknown/raw snapshot preservation, invalid slot shape, persistence rollback and equipped pet removal.
+- [/] Audit module ownership/config surfaces separately; only implement schemas verified against 23.1.3 evidence. The client analysis shows a local stock Progress transaction, but no verified backend module slot/delta contract is implemented yet; do not guess.
+- [x] Run gofmt, full Go tests, vet, race tests and backend builds; document tested and unverified boundaries.
+- [x] Commit only isolated implementation files; keep pre-existing plan changes and private state untouched.
+
+Outcome: type-80 pet ownership now reads/writes the verified slot 53/p records and protects the equipped pet in slot 9/6. Gadget type 70 already uses the verified slot-16 adapter; both Pocket Harpoon indices 63007 and 76007 now have explicit grant/search regressions. Commit `1c041d5` (`feat(inventory): support pet grants and gadget variants`). Connected ADB device was not modified, and no deployment was made.
+
 Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed. Deployed console/search/read-only preview verified; live player inventory, revision and counters unchanged.
+
+## Pet administration completion (2026-10-21)
+- [x] Diagnose live read-only pet catalog: running binary predates committed type-80 ownership support.
+- [x] Generate UI-only readable pet codenames without changing stock identity or nicknames; distinguish derived labels from stock localization.
+- [x] Extend catalog, API, persistence and dependency-free console regressions for pet grants, retry, revoke and all pet identities.
+- [x] Run full tests, race, vet and builds; reproduce generated catalog.
+- [x] Back up private state/binary, deploy the existing server, verify all 94 editable catalog pets and temporary Fox grant/retry/restart/sync/revoke with read-only Android pet-slot inspection and targeted cleanup.
+- [x] Document actual verification and commit isolated changes; preserve pre-existing plan edits. Commit `8d527ba` (`fix(inventory): complete pet administration and readable labels`).
+
+Live outcome: revision 64 grant and revision 65 revoke acknowledged by stock 23.1.3; runtime pet-list presence/absence verified. Temporary Fox removed; original pet/egg slot, currency/XP and 87 sections retained. The game updated slot 21/GatchaGifts/c during testing; this unrelated live update was preserved, never restored wholesale.
+
+## Inventory expansion follow-up — 2026-10-21
+- [x] Add confirmed bulk grants for wear (types 30/40/50/60), armor (20), gadgets (70) and pets (80); add-missing semantics preserve existing items and progress.
+- [x] Generate readable UI-only labels for all 42 type-1150 modules while preserving stock IDs.
+- [x] Inspect the server's existing profile read-only: `ModulesInfo` slot 37 contains one module level record (level 4), while `ModuleStorage` slot 27 and `Inventory` slot 26/u are empty. The 23.1.3 client declares structured module data and separate storage/info progress sections; no ownership serialization round-trip was verified.
+- [x] Remove the provisional module ownership/level writer; keep modules visible but read-only rather than write guessed data.
+- [x] Console harness, full Go tests, race tests, vet and both backend command builds pass. No deployment or live profile mutation.
+- [ ] Obtain a controlled 23.1.3 module-storage round-trip (or populated sample) and verify grant/revoke/equipped semantics before implementing level 1–10 module writes.
+
+## New-module grant correction — 2026-10-21
+- [x] Recheck branch, worktree and project instructions; preserve existing plan edits and private state.
+- [/] Trace stock type-1150 ownership factory and Inventory/ModuleStorage serialization. Current slot-27 definition records are not proof of ownership; the previous already-owned-module check was invalid.
+- [ ] Replace the unsupported writer with the confirmed ownership schema; regress genuinely unowned grants, levels 1–10, retries, malformed records and preservation/rollback.
+- [ ] Run full tests, race/vet/build and console checks; document exact evidence and limitations; commit isolated files only.
+- [ ] Fresh private snapshot and safe one-new-module verification on main account; do not mutate live profile until the ownership writer is confirmed.
 
 ## Module server repair — current verification
 - [x] Reconstruct actual 23.1.3 module grant/storage/load contract from client code and live read-only evidence; do not trust previous adapter assumptions.
@@ -5370,6 +5570,7 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Full tests, race/vet, console checks and both builds passed.
 - [x] Privately back up state/binary/environment, deploy, verify live grant at level 1 and 7, restart server/client, restore level 1 without clearing data.
 - [x] Document evidence and verification limits; final QA passed and isolated changes prepared for commit (pre-existing plan edits left unstaged).
+
 ## Module cold-start regression correction — 2026-10-21
 - [x] Reproduce the reported `Loading 90%` hang on a clean client launch and capture the repeated inventory `InvalidCastException`.
 - [x] Back up live state and remove only the bad `26.s[326009]` membership; preserve 87 slots, counters, slot-27 storage and slot-37 level. Revision 87 was acknowledged and the user confirmed the lobby loads.
@@ -5377,6 +5578,7 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Update regression tests and documentation so deserialization/login acknowledgement alone can never be claimed as full client compatibility.
 - [x] Run full Go tests, vet, race, console harness and builds; deploy with a fresh private backup and cold-start verification.
 - [x] Commit the isolated correction while preserving unrelated pre-existing plan edits.
+
 ## Complete module materialization — 2026-10-21
 - [x] Reproduce the remaining defect with a genuinely missing module: `308009` reached slot 27 and level 10 but was absent from Craft → Modules.
 - [x] Trace `ModuleData.PointData`, module count getter `0x24B0C38`, and all 42 exact module-to-point pairs (`+42000`, matching `mod_`/`modp_` IDs).
@@ -5407,6 +5609,7 @@ Verification: Go tests/vet/race/build passed; 29 synthetic browser checks passed
 - [x] Add boundary, fallback, loadout, schema, hashing and shared-document isolation regressions.
 - [x] Run full QA, back up and deploy; user confirmed stronger/non-default weapons in a real level-65 bot match.
 - [x] Commit only isolated bot-config work while preserving pre-existing plan edits and private state.
+
 
 ## Level-65 requested bot weapons — 2026-10-21
 - [x] Resolve the exact 23.1.3 inventory/category IDs for Ultimatum, Vertical Grip Device and Big Buddy.
@@ -5498,11 +5701,78 @@ updates, failure rollback, concurrency and restart covered by tests. Full QA,
 both builds and production admin smoke passed. Deployed PID 50464 healthy.
 No frontend edits, no account/pass resets, no invented match statistics.
 
+## Pixel Pass claim disconnect / stale client progress
+- [x] Capture genuine rejected level17/18 packets; verify catalog rewards and server process continuity.
+- [x] Verify paid levels/premium persisted; live client has 120 more crowns than server ledger. Historical source of excess is not yet proven.
+- [x] On a catalog-valid locked claim, schedule a durable authoritative reload without changing pass ownership/crowns/balances or erasing receipts. Never accept unearned claims or ACK a failed grant.
+- [x] Cover exact paid pack/levels, stale claim, full reload, retry/no duplicate debit, persistence failure and malicious rewards.
+- [x] Build/test backend, deploy with backup (PID59859), verify revision109 canonical2320 crowns/premium and level19 reward145 coins persisted with success on the same socket.
+- [x] Commit claim recovery code/tests/docs as022acdf; earlier TASK_PLAN changes remain unstaged.
+- [ ] Historical source of the earlier120-crown local excess remains unproven; no invented compensation or eligibility relaxation.
+
+## Native direct task crown collection — actual cause (2026-10-22)
+- [x] Capture rejected req610/638: 326(e=60) + 152(5_1003/5_1000.r=1), no337/338.
+- [x] Root cause: direct claim not recognized;60 wrongly enters50-crown match validation. Both tasks already complete/open in server ledger.
+- [x] Support direct task claims from catalog and unify semantic receipts with337/338, preserving match limits and exact/new-ID replay safety.
+- [x] Regression tests: real shapes, battles+tasks separately, duplicates/restart/concurrency, invalid/closed/incomplete tasks and forged amounts.
+- [x] Build/deploy; replay only genuine rejected120 crowns, verify unchanged money/premium and matching client/server without rolling client progress back.
+
+Verification: full tests/race/vet/build passed; deployed PID63498 SHA a410021484c27b3afc798d8ab2c041dd880ecf228bde6c82c595d5aad3af6475. Replayed genuine 4c3eae65/70d344d5: 2 persisted commands each; exact retries applied 0. Server2320→2440; live client PID12097 crowns2440. Premium, currencies, revision109 and match-crown budget100 unchanged. No profile reset/resync requested. A new manual task collection remains a user UI follow-up; recovery replay is verified separately.
+
+## Native loader release service
+- [x] Coordinate immutable signed frontend releases and protocol/build metadata with native-only APK loader.
+- [x] Test invalid/tampered releases, immutable downloads, disabled service and matching version gates; full QA/build/deploy. Signedbuild3 active, new binary then cached manifest-only launch observed.
+
+## Native calendar task day mismatch — 2026-10-22
+- [x] Correlate rejected1007/1008 claims with genuine completed151 packets; native0x18F29D4 uses elapsed-days+1.
+- [x] Align TaskOpen without changing catalog indices or receipts; cover day boundaries, real claims, retries and genuinely future tasks.
+- [x] Full tests/race/vet/build and deploy PID74433; restore only log-proven completion and replay original failed claims. Exact retries deduped;2820→2940, other economy/premium/match budget/revision unchanged.
+
+## AWS Sweden official deployment
+- [x] Inspect SSH/OS/AWS existing services and current backend environment.
+- [x] Deploy isolated service, content/current player snapshot, signed frontend, private admin gateway, backups and TCP8080 ingress.
+- [x] Seed official Sweden endpoint in native launcher with localized official badge; Gradle/check/host regression tests passed.
+- [x] External signed artifact verification, encrypted auth/get_progress (2940crowns/premium), public admin404, internal authenticated admin200, exact state SHA after restart and existing services active; document/commit.
+
+## Map popularity contract — 2026-10-22
+- [x] Identify stock 23.1.3 callback: data → mode → tier → map → integer count.
+- [x] Implement bounded requests and the exact stock response contract with explicit zero counts when authoritative statistics are unavailable.
+- [ ] Real live popularity requires a Photon room/presence statistics source; do not infer counts from offline or partial client reports.
+- [x] Regression tests, full tests/race/vet/build; documented limits; local deploy PID90187 healthy with byte-identical persisted state, binary/state rollback backups. Official Sweden unchanged.
+- [ ] Live client UI verification after ADB reconnect (currently disconnected).
+
+## Live map popularity feasibility — 2026-10-22
+- [x] Trace stock presence producer and collector; discover protocol/mmrank/tier_mm, partial reports, composite mode and confirmed offline room report. Group/lifecycle correctness in real online match remains unverified.
+- [ ] Conditional: server-only counts after real-online group/lifecycle validation; not proven sufficient, so no speculative counters shipped.
+- [x] Document normalized frontend full-snapshot/heartbeat/leave contract, verified hook locations, required backend work, trust limits and acceptance matrix. Existing stock paths may still suffice after online verification; not claimed fundamentally impossible.
+- [x] Full go test ./... and binary build passed; documentation-only scope, no runtime deploy, unrelated plan/frontend changes preserved.
+
 ## Two-device live popularity verification — 2026-10-22
 - [x] Identify Nothing/Realme; install existing signed APK on Realme only. Realme VPN LAN bypass fixed by user; level 65 + initial tutorial gates synced, economy/XP preserved.
 - [x] Two distinct accounts in a real Photon room on map 1001; offline=false, stock join/leave, and final encrypted live counts 2→1→0 verified with abrupt socket closures. Both apps relaunched without resets.
 - [x] Conservative backend-only counts for stock group 0 / mmrank 0; exclude ambiguous ranks, offline, stale, banned and duplicates. Owner transport close clears immediately. Document self-report/Photon-only disconnect and cold-catalog limits.
 - [x] Full tests/race/vet/build passed; safe local rollout healthy, state byte-identical across restart; official Sweden unchanged. Isolated source/documentation commit; unrelated plan/frontend changes preserved.
+
+## Custom training rooms — stock 23.1.3, 2026-10-22
+- [x] Trace stock 23.1.3 custom rooms: SQL-lobby / GetRoomList mismatch identified; public and password rooms confirmed working by the user on the test devices.
+- [x] Route only custom browse/create to dedicated Default lobby; preserve properties, normal SQL matchmaking and stock password checks.
+- [x] User confirmed public discovery/join and password/private flow. Agent did not interfere with user tests. Separate wrong-password/leave-rejoin instrumentation and ordinary-match regression remain follow-ups.
+- [x] Host tests/default release passed; startup fix and custom fix committed separately. User authorized EC2 release: tested signed build 20 atomically published; public signature/hash/health verified, service PIDs unchanged, rollback retained, no account data changes.
+
+## Realme startup/runtime crashes — user follow-up
+- [x] Capture and symbolize the Realme crash; compare with Nothing and separate pre-existing errors from custom lobby changes.
+- [x] Implement Unity-thread runtime setup; host tests/sanitizers and release build passed; 3 diagnostic + 5 ordinary release launches, main-menu screenshots and user confirmation. Saved separately from custom rooms.
+
+Realme follow-up: build 19 carries only the startup repair, not the pending custom-room routing. Custom room implementation resumes after user-confirmed crash recovery; ordinary match/end-of-match regression remains pending.
+
+AWS EC2 custom-room publication: build 20, payload 33fd039a895631f92fcc297a9d165d6affa331673a4a2b3758198989dce6a256; no backend restart or configuration/data replacement.
+
+## Escort bots — exact 23.1.3
+- [/] Locate the real Escort controller, ram proximity rules, attack/defence roles, stage lifecycle and bot restrictions; inspect the existing Team Strike bridge before changes.
+- [ ] Enable only genuinely joined online Escort rooms with stock master authority, bounded/staggered filling, real room capacity and human replacement; retain Team Strike and private-room behavior.
+- [ ] Integrate bot objective movement/proximity with stock ram progression, rollback, side swap and result calculation; no fabricated score or winner.
+- [ ] Add host regression/edge-case tests; build and verify on connected devices without resetting accounts; document observed versus unverified behavior.
+- [ ] Commit isolated tested changes; do not publish a new EC2 gameplay release without a verified candidate and current user approval.
 
 ## Client error telemetry and admin diagnostics — 2026-10-23
 - [x] Inspect client logging/resync, authenticated backend and admin conventions.
@@ -5651,6 +5921,7 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - AWS backup: `/var/backups/opg3d/hub-20261024T073631Z-4b612c7`. Local tracked process had already stopped; verified no listener before starting the new build (PID 9384).
 - Read-only release checks passed: local/public health 200, HUB 200, public admin 404; two accounts/profiles, scheduled campaigns, security keys and encrypted stores preserved. Frontend manifest unchanged; gateway/Caddy not restarted; support admin 740333804 retained.
 - Full Go tests, race checks, vet and all eight Node harnesses passed. No adb device attached; native in-game acceptance remains for two real accounts. No synthetic friend/chat data was inserted into production accounts.
+
 
 ## Native friend profile repair and squad invitation delivery — 2026-10-24
 - [x] Recover full-profile envelope/version/avatar and squad invitation contracts from stock client evidence.
