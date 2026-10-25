@@ -674,11 +674,15 @@ const (
 	sioProgressMaintenance = 0
 )
 
-// progressStatusCode maps the operator's maintenance switch onto the code the
-// auth scene reads. It is the socket half of the flag the liveness endpoint
-// already reports over HTTP: one switch, announced on both channels.
-func (s *Server) progressStatusCode() int {
-	if s.settings.snapshot().Maintenance {
+// progressStatusCode maps effective maintenance onto the stock auth wire code.
+// Only the server-resolved socket identity may receive an allowlist exception;
+// anonymous callers retain the global maintenance decision.
+func (s *Server) progressStatusCode(playerIDs ...string) int {
+	id := ""
+	if len(playerIDs) > 0 {
+		id = playerIDs[0]
+	}
+	if s.settings.maintenanceFor(id) {
 		return sioProgressMaintenance
 	}
 	return sioProgressOpen
@@ -702,7 +706,8 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	body["progress"] = map[string]any{}
 
 	profile, ok := s.sessionProfile(session)
-	status := s.progressStatusCode()
+	_, _, maintenancePlayerID := session.identity()
+	status := s.progressStatusCode(maintenancePlayerID)
 	if status == sioProgressOpen && ok {
 		_, device, _ := session.identity()
 		_, operatorRevisionPending := profile.PendingProgressRevision(device)

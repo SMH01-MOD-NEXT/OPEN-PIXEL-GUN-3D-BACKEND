@@ -63,6 +63,12 @@ the server strips it.
 Every unknown path the client requests is logged as `http.unhandled` — that log
 is the to-do list for endpoint coverage.
 
+## Maintenance
+
+The operator console supports a UTC maintenance window, immediate start/stop,
+and per-player login exceptions beside the hub administrator role. See
+[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) for behavior and API details.
+
 ## LAN discovery
 
 The client can offer "search on the local network" instead of typing an address.

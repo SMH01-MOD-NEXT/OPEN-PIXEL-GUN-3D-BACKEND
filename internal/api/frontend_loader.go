@@ -21,10 +21,12 @@ func (s *Server) handleLoaderInfo(w http.ResponseWriter, r *http.Request) {
 	if len(country) != 2 || country[0] < 'A' || country[0] > 'Z' || country[1] < 'A' || country[1] > 'Z' {
 		country = "ZZ"
 	}
+	// The loader has no player identity. Keep native delivery available so the
+	// game can authenticate and apply the per-player TechnicalWorks decision.
 	snap := s.settings.snapshot()
 	_, err := frontendrelease.Read(s.frontendDir())
 	w.Header().Set("Cache-Control", "no-store")
-	s.writeJSON(w, 200, map[string]any{"protocol": 1, "game_version": frontendrelease.GameVersion, "abi": "arm64-v8a", "server_name": s.cfg.ServerName, "country": country, "maintenance": snap.Maintenance, "release_available": err == nil})
+	s.writeJSON(w, 200, map[string]any{"protocol": 1, "game_version": frontendrelease.GameVersion, "abi": "arm64-v8a", "server_name": s.cfg.ServerName, "country": country, "maintenance": false, "game_maintenance": snap.Maintenance, "release_available": err == nil})
 }
 func (s *Server) handleFrontendManifest(w http.ResponseWriter, r *http.Request) {
 	v, err := frontendrelease.Read(s.frontendDir())

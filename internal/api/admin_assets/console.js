@@ -227,9 +227,57 @@
     const form=sn('form'),label=sn('label',t('s_reply')),text=sn('textarea');text.maxLength=6000;text.rows=5;label.append(text);const statusLabel=sn('label',t('s_status')),select=sn('select');for(const v of ['open','needs_info','resolved','closed']){const o=sn('option',t('s_'+v));o.value=v;o.selected=v===ticket.status;select.append(o)}statusLabel.append(select);const submit=sn('button',t('s_update'));submit.type='submit';form.append(label,statusLabel,submit);const operation=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');form.onsubmit=async event=>{event.preventDefault();if(!form.reportValidity()||submit.disabled)return;submit.disabled=true;try{await api('POST','/api/v1/admin/support/'+id,{text:text.value.trim(),status:select.value,revision:ticket.revision,operation});await loadSupportTicket(id)}catch(e){report(e)}finally{submit.disabled=false}};root.append(form);
   }
   el('saveSupportRole').onclick=async()=>{const b=el('saveSupportRole');if(b.disabled||!selected)return;b.disabled=true;try{await api('PUT',base(selected)+'/support-role',{enabled:el('supportAdminFlag').checked});await showPlayer(selected,true)}catch(e){report(e)}finally{b.disabled=false}};
+  let maintenanceView = null;
+  async function loadMaintenance() {
+    const d = await api("GET", "/api/v1/admin/settings");
+    maintenanceView = d;
+    el("maintenanceState").textContent = t(d.maintenance ? "maintenanceActive" : "maintenanceInactive");
+    const plan = d.maintenance_schedule || {};
+    el("maintenanceStart").value = plan.start ? new Date(plan.start).toISOString().slice(0,19) : "";
+    el("maintenanceEnd").value = plan.end ? new Date(plan.end).toISOString().slice(0,19) : "";
+    el("maintenanceWindow").textContent = plan.start ? plan.start + " — " + plan.end : t("maintenanceNoWindow");
+  }
+  async function saveMaintenance(patch) {
+    await api("PATCH", "/api/v1/admin/settings", patch);
+    await loadMaintenance();
+    el("maintenanceResult").textContent = t("maintenanceSaved");
+  }
+  el("maintenanceForm").onsubmit = (e) => {
+    e.preventDefault();
+    if (!el("maintenanceForm").reportValidity()) return;
+    const start = new Date(el("maintenanceStart").value + "Z");
+    const end = new Date(el("maintenanceEnd").value + "Z");
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      el("maintenanceResult").textContent = t("maintenanceInvalid"); return;
+    }
+    mutate(el("maintenanceSave"), "maintenanceResult", () => saveMaintenance({
+      maintenance: false, maintenance_schedule: {start: start.toISOString(), end: end.toISOString()}
+    }));
+  };
+  el("maintenanceNow").onclick = () => {
+    if (!maintenanceView || !confirm(t("maintenanceNowConfirm"))) return;
+    const end = maintenanceView.maintenance_schedule?.end;
+    const patch = end && new Date(end) > new Date()
+      ? {maintenance: false, maintenance_schedule: {start: new Date().toISOString(), end}}
+      : {maintenance: true, maintenance_schedule: {start: "", end: ""}};
+    mutate(el("maintenanceNow"), "maintenanceResult", () => saveMaintenance(patch));
+  };
+  el("maintenanceStop").onclick = () => {
+    if (!confirm(t("maintenanceStopConfirm"))) return;
+    mutate(el("maintenanceStop"), "maintenanceResult", () => saveMaintenance({maintenance: false, maintenance_schedule: {start: "", end: ""}}));
+  };
+  el("saveMaintenanceAccess").onclick = () => {
+    if (!selected) return;
+    const id = selected, enabled = el("maintenanceAllowedFlag").checked;
+    if (!discard()) return;
+    mutate(el("saveMaintenanceAccess"), null, async () => {
+      await api("PUT", base(id) + "/maintenance-access", {enabled});
+      if (selected === id) await showPlayer(id, true);
+    });
+  };
   async function navigate(value) {
     if (!discard()) return;
-    if (!["overview", "players", "catalog", "support", "mailbox", "clientErrors", "logs", "settings"].includes(value))
+    if (!["overview", "players", "catalog", "support", "mailbox", "clientErrors", "logs", "maintenance", "settings"].includes(value))
       value = "overview";
     if (route === "logs" && value !== "logs") stopLogs();
     route = value;
@@ -253,10 +301,12 @@
         clientErrors: "clientErrorsHint",
         mailbox: "mailboxHint",
         settings: "settingsHint",
+        maintenance: "maintenanceHint",
       }[route],
     );
     if (!connected) return;
     if (route === "overview") await loadStats();
+    if (route === "maintenance") await loadMaintenance();
     if (route === "clientErrors") await loadDiagnostics();
     if (route === "mailbox") await loadMailboxNews();
     if (route === "support") await loadSupportTickets();
@@ -528,6 +578,7 @@
     );
     el("metadata").textContent = JSON.stringify(player, null, 2);
     el("supportAdminFlag").checked = !!player.support_admin;
+    el("maintenanceAllowedFlag").checked = !!player.maintenance_allowed;
     renderSupportEvidence(el("playerEvidence"), player.support_evidence || {});
     el("banDetails").textContent = player.banned
       ? t("banDetailsText", {

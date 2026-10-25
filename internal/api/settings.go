@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/config"
 )
@@ -29,11 +30,13 @@ import (
 // sealing key in particular. A leaked admin token must not be able to rewrite
 // the secrets that guard everything else, so this type exposes no way to do it.
 type settings struct {
-	mu           sync.RWMutex
-	maintenance  bool
-	photonRegion string
-	photonAppIDs map[string]string
-	update       config.Update
+	mu                   sync.RWMutex
+	maintenance          bool
+	maintenanceSchedule  maintenanceSchedule
+	maintenanceAllowlist map[string]bool
+	photonRegion         string
+	photonAppIDs         map[string]string
+	update               config.Update
 
 	// path is where changes are persisted. Empty disables persistence, which
 	// keeps the type usable in tests that have no data directory.
@@ -43,20 +46,25 @@ type settings struct {
 // settingsSnapshot is an immutable copy handed to request handlers so they never
 // read the live fields without holding the lock.
 type settingsSnapshot struct {
-	Maintenance  bool              `json:"maintenance"`
-	PhotonRegion string            `json:"photon_region"`
-	PhotonAppIDs map[string]string `json:"photon_app_ids"`
-	Update       config.Update     `json:"update"`
+	Maintenance          bool                `json:"maintenance"`
+	MaintenanceManual    bool                `json:"maintenance_manual"`
+	MaintenanceSchedule  maintenanceSchedule `json:"maintenance_schedule"`
+	MaintenanceAllowlist map[string]bool     `json:"maintenance_allowlist"`
+	PhotonRegion         string              `json:"photon_region"`
+	PhotonAppIDs         map[string]string   `json:"photon_app_ids"`
+	Update               config.Update       `json:"update"`
 }
 
 // settingsPatch is the operator's request. Every field is optional: a nil field
 // means "leave this alone" rather than "clear it", so the console can save one
 // section without having to resend the others.
 type settingsPatch struct {
-	Maintenance  *bool             `json:"maintenance"`
-	PhotonRegion *string           `json:"photon_region"`
-	PhotonAppIDs map[string]string `json:"photon_app_ids"`
-	Update       *config.Update    `json:"update"`
+	Maintenance          *bool                `json:"maintenance"`
+	MaintenanceSchedule  *maintenanceSchedule `json:"maintenance_schedule,omitempty"`
+	MaintenanceAllowlist *map[string]bool     `json:"maintenance_allowlist,omitempty"`
+	PhotonRegion         *string              `json:"photon_region"`
+	PhotonAppIDs         map[string]string    `json:"photon_app_ids"`
+	Update               *config.Update       `json:"update"`
 }
 
 func newSettings(cfg *config.Config) *settings {
@@ -93,6 +101,9 @@ func (s *settings) load() error {
 	if err := json.Unmarshal(raw, &saved); err != nil {
 		return err
 	}
+	if err := saved.validate(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.applyLocked(saved)
@@ -102,6 +113,21 @@ func (s *settings) load() error {
 // validate checks a patch before any of it is applied, so a rejected request
 // cannot leave half of the settings changed.
 func (p settingsPatch) validate() error {
+	if p.MaintenanceSchedule != nil {
+		if err := p.MaintenanceSchedule.validate(); err != nil {
+			return err
+		}
+	}
+	if p.MaintenanceAllowlist != nil {
+		if len(*p.MaintenanceAllowlist) > 10000 {
+			return errors.New("maintenance allowlist is too large")
+		}
+		for id := range *p.MaintenanceAllowlist {
+			if strings.TrimSpace(id) == "" || len(id) > 128 {
+				return errors.New("invalid maintenance player id")
+			}
+		}
+	}
 	if p.PhotonRegion != nil && strings.TrimSpace(*p.PhotonRegion) == "" {
 		return errors.New("the Photon region cannot be empty")
 	}
@@ -126,19 +152,36 @@ func (s *settings) apply(patch settingsPatch) (settingsSnapshot, error) {
 		return settingsSnapshot{}, err
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commitLocked(patch)
+}
+
+// Serialize disk writes with mutations and roll back failed saves. A successful
+// response must mean both runtime and restart state agree.
+func (s *settings) commitLocked(patch settingsPatch) (settingsSnapshot, error) {
+	previous := s.snapshotLocked()
 	s.applyLocked(patch)
 	snap := s.snapshotLocked()
-	s.mu.Unlock()
-
 	if err := s.persist(snap); err != nil {
-		// The change is already live; report the failure so the operator knows
-		// it will not survive a restart rather than silently losing it.
-		return snap, err
+		s.applyLocked(previous.patch())
+		return previous, err
 	}
 	return snap, nil
 }
 
 func (s *settings) applyLocked(patch settingsPatch) {
+	if patch.MaintenanceSchedule != nil {
+		s.maintenanceSchedule = patch.MaintenanceSchedule.utc()
+	}
+	if patch.MaintenanceAllowlist != nil {
+		s.maintenanceAllowlist = make(map[string]bool)
+		for id, allowed := range *patch.MaintenanceAllowlist {
+			if allowed {
+				s.maintenanceAllowlist[id] = true
+			}
+		}
+	}
+
 	if patch.Maintenance != nil {
 		s.maintenance = *patch.Maintenance
 	}
@@ -184,10 +227,13 @@ func (s *settings) snapshotLocked() settingsSnapshot {
 		appIDs[mode] = appID
 	}
 	return settingsSnapshot{
-		Maintenance:  s.maintenance,
-		PhotonRegion: s.photonRegion,
-		PhotonAppIDs: appIDs,
-		Update:       s.update,
+		Maintenance:          s.maintenance || s.maintenanceSchedule.active(time.Now()),
+		MaintenanceManual:    s.maintenance,
+		MaintenanceSchedule:  s.maintenanceSchedule,
+		MaintenanceAllowlist: cloneAllowlist(s.maintenanceAllowlist),
+		PhotonRegion:         s.photonRegion,
+		PhotonAppIDs:         appIDs,
+		Update:               s.update,
 	}
 }
 
@@ -209,12 +255,7 @@ func (s *settings) persist(snap settingsSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(settingsPatch{
-		Maintenance:  &snap.Maintenance,
-		PhotonRegion: &snap.PhotonRegion,
-		PhotonAppIDs: snap.PhotonAppIDs,
-		Update:       &snap.Update,
-	}, "", "  ")
+	raw, err := json.MarshalIndent(snap.patch(), "", "  ")
 	if err != nil {
 		return err
 	}
@@ -248,11 +289,13 @@ func (s *Server) settingsView() map[string]any {
 		appIDs[mode] = masked(appID)
 	}
 	return map[string]any{
-		"maintenance":    snap.Maintenance,
-		"photon_region":  snap.PhotonRegion,
-		"photon_app_ids": appIDs,
-		"update":         snap.Update,
-		"persisted":      s.settings.path != "",
+		"maintenance":          snap.Maintenance,
+		"maintenance_manual":   snap.MaintenanceManual,
+		"maintenance_schedule": snap.MaintenanceSchedule,
+		"photon_region":        snap.PhotonRegion,
+		"photon_app_ids":       appIDs,
+		"update":               snap.Update,
+		"persisted":            s.settings.path != "",
 	}
 }
 
@@ -288,10 +331,12 @@ func (s *Server) handleAdminSaveSettings(w http.ResponseWriter, r *http.Request)
 	}
 	sort.Strings(modes)
 	s.log.Event("settings.updated", map[string]any{
-		"maintenance":    snap.Maintenance,
-		"photon_region":  snap.PhotonRegion,
-		"photon_modes":   modes,
-		"update_version": snap.Update.Version,
+		"maintenance":          snap.Maintenance,
+		"maintenance_manual":   snap.MaintenanceManual,
+		"maintenance_schedule": snap.MaintenanceSchedule,
+		"photon_region":        snap.PhotonRegion,
+		"photon_modes":         modes,
+		"update_version":       snap.Update.Version,
 	})
 	s.writeJSON(w, http.StatusOK, s.settingsView())
 }

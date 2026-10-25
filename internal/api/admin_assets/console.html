@@ -29,6 +29,7 @@
           ><button data-route="mailbox" data-i18n="mailbox"></button
           ><button data-route="clientErrors" data-i18n="clientErrors"></button
           ><button data-route="logs" data-i18n="logs"></button
+          ><button data-route="maintenance" data-i18n="maintenance"></button
           ><button data-route="settings" data-i18n="settings"></button>
         </nav>
         <div class="sidebar-foot">
@@ -163,6 +164,7 @@
                 <span id="playerBan" class="badge"></span>
               </div>
               <details class="panel"><summary data-i18n="s_evidence"></summary><div id="playerEvidence"></div></details>
+              <div class="panel"><label class="check"><input id="maintenanceAllowedFlag" type="checkbox" /><span data-i18n="maintenanceAllowed"></span></label><p class="muted" data-i18n="maintenanceAllowedHint"></p><button id="saveMaintenanceAccess" data-i18n="maintenanceAccessSave"></button></div>
               <div class="panel"><label><input id="supportAdminFlag" type="checkbox" /><span data-i18n="s_role"></span></label><p class="muted" data-i18n="s_roleHint"></p><button id="saveSupportRole" data-i18n="s_roleSave"></button></div>
               <div class="tabs" role="tablist" id="playerTabs">
                 <button
@@ -491,6 +493,24 @@
                 id="doReconcile"
                 data-i18n="reconcile"
               ></button>
+            </div>
+          </section>
+          <section id="page-maintenance" class="page" hidden>
+            <div class="panel compact settings-panel">
+              <h2 data-i18n="maintenance"></h2>
+              <p class="muted" data-i18n="maintenanceDescription"></p>
+              <p id="maintenanceState" role="status"></p>
+              <p id="maintenanceWindow" class="mono"></p>
+              <form id="maintenanceForm">
+                <label><span data-i18n="maintenanceStart"></span><input id="maintenanceStart" type="datetime-local" step="1" required /></label>
+                <label><span data-i18n="maintenanceEnd"></span><input id="maintenanceEnd" type="datetime-local" step="1" required /></label>
+                <button id="maintenanceSave" data-i18n="maintenanceSave"></button>
+              </form>
+              <div class="button-row">
+                <button id="maintenanceNow" class="danger" data-i18n="maintenanceNow"></button>
+                <button id="maintenanceStop" data-i18n="maintenanceStop"></button>
+              </div>
+              <p id="maintenanceResult" class="inline-status" role="status"></p>
             </div>
           </section>
           <section id="page-settings" class="page" hidden>

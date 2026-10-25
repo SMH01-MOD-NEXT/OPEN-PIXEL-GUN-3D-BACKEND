@@ -51,6 +51,7 @@ func (s *Server) registerAdminRoutes() {
 	s.mux.HandleFunc("POST /api/v1/admin/change-id", s.admin(s.handleAdminChangeID))
 	s.mux.HandleFunc("POST /api/v1/admin/transfer", s.admin(s.handleAdminTransfer))
 	s.mux.HandleFunc("POST /api/v1/admin/reconcile", s.admin(s.handleAdminReconcile))
+	s.mux.HandleFunc("PUT /api/v1/admin/players/{id}/maintenance-access", s.admin(s.handleAdminMaintenanceAccess))
 	s.mux.HandleFunc("GET /api/v1/admin/settings", s.admin(s.handleAdminSettings))
 	s.mux.HandleFunc("PATCH /api/v1/admin/settings", s.admin(s.handleAdminSaveSettings))
 	s.mux.HandleFunc("GET /api/v1/admin/logs", s.admin(s.handleAdminLogs))
@@ -64,21 +65,22 @@ func (s *Server) registerAdminRoutes() {
 // are joined here because an operator judging an account needs all three at
 // once, and three round trips per row would make the list useless.
 type adminPlayer struct {
-	SupportAdmin bool           `json:"support_admin"`
-	Evidence     map[string]any `json:"support_evidence,omitempty"`
-	PlayerID     string         `json:"player_id"`
-	DeviceID     string         `json:"device_id"`
-	SocketDevice string         `json:"socket_device,omitempty"`
-	Nick         string         `json:"nick"`
-	CreatedAt    time.Time      `json:"created_at"`
-	LastSeenAt   time.Time      `json:"last_seen_at"`
-	LastIP       string         `json:"last_ip"`
-	Aliases      []string       `json:"aliases"`
-	Profile      *store.Profile `json:"profile,omitempty"`
-	Banned       bool           `json:"banned"`
-	BanKind      string         `json:"ban_kind,omitempty"`
-	BanReason    string         `json:"ban_reason,omitempty"`
-	BanUntil     *time.Time     `json:"ban_until,omitempty"`
+	MaintenanceAllowed bool           `json:"maintenance_allowed"`
+	SupportAdmin       bool           `json:"support_admin"`
+	Evidence           map[string]any `json:"support_evidence,omitempty"`
+	PlayerID           string         `json:"player_id"`
+	DeviceID           string         `json:"device_id"`
+	SocketDevice       string         `json:"socket_device,omitempty"`
+	Nick               string         `json:"nick"`
+	CreatedAt          time.Time      `json:"created_at"`
+	LastSeenAt         time.Time      `json:"last_seen_at"`
+	LastIP             string         `json:"last_ip"`
+	Aliases            []string       `json:"aliases"`
+	Profile            *store.Profile `json:"profile,omitempty"`
+	Banned             bool           `json:"banned"`
+	BanKind            string         `json:"ban_kind,omitempty"`
+	BanReason          string         `json:"ban_reason,omitempty"`
+	BanUntil           *time.Time     `json:"ban_until,omitempty"`
 }
 
 func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
@@ -87,6 +89,7 @@ func (s *Server) buildAdminPlayer(account store.Account) adminPlayer {
 		Nick: account.Nick, CreatedAt: account.CreatedAt, LastSeenAt: account.LastSeenAt,
 		LastIP: account.LastIP, Aliases: s.st.Aliases(account.PlayerID),
 	}
+	row.MaintenanceAllowed = s.settings.maintenanceAllowed(account.PlayerID)
 	row.Evidence = s.buildSupportEvidence(account)
 	if s.support != nil {
 		row.SupportAdmin = s.support.Admin(support.Actor{PlayerID: account.PlayerID, Fingerprint: webIdentity(account).Fingerprint})
@@ -109,7 +112,7 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"client_errors": s.clientErrors.Query(clienterrors.Query{}, time.Now()).Summary,
 		"server":        s.cfg.ServerName,
 		"version":       s.cfg.Update.Version,
-		"maintenance":   s.cfg.Maintenance,
+		"maintenance":   s.settings.snapshot().Maintenance,
 		"sio_reply":     s.cfg.SioReply,
 		"sessions":      s.sio.count(),
 		"logs_dropped":  s.log.Dropped(),

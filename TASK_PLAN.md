@@ -6842,3 +6842,18 @@ Current run50-run58 frontend logs were moved out of the backend repository and
 into `OLD-PIXEL-GUN-3D-ONLINE-PROJECT` as passive trace artefacts. They remain
 uncommitted. The backend worktree is clean, and historical `TASK_PLAN.md`
 remains unchanged.
+
+## 2026-10-25: Scheduled maintenance and per-player bypass
+
+- [x] Inspect backend, console, stock maintenance wire code and frontend loader contract.
+- [x] Implement durable UTC maintenance window, manual controls, per-player allowlist and loader/game separation.
+- [x] Add localized maintenance tab and bypass control beside hub administrator role.
+- [x] Add boundary, persistence, authorization, bypass and console regression tests.
+- [x] Run Go tests/race/vet/build and console checks; test device if connected.
+- [x] Document behavior and commit verified source changes only.
+
+Verification: `go test ./...`, `go test -race ./...`, `go vet ./...`,
+`go build ./...`, all console/hub Node regression scripts, and UTC/Volgograd
+maintenance UI tests passed. ADB reports no connected devices, so no real-device
+login test was possible. Existing backend process and production data were not
+changed; no maintenance window was activated and no release dates were applied.
