@@ -5684,3 +5684,8 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - [x] Clarify RU/EN category labels for avatar_* records; preserve numeric type, technical ID, inventory writes, game frontend and all player data.
 - [x] RU/EN category regression, full Go tests, API/store race tests, vet, backend build and all nine Node harnesses passed. Game frontend and player data untouched; native grant already confirmed by the user.
 - [x] Commit task-owned changes only; preserve pre-existing TASK_PLAN.md edits. Deployment not performed.
+
+## AWS avatar-label deployment — 2026-10-25
+- [x] Build and verify isolated committed source 0594d65; inspect live runtime.
+- [x] Back up stopped EC2 backend; replace binary only, preserving current config, complete data and frontend.
+- [x] Verify private/public health, category labels and state preservation; record receipt and commit deployment notes.
