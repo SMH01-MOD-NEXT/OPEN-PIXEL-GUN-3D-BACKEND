@@ -2,7 +2,11 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,5 +245,141 @@ func TestMaintenanceConsoleMarkup(t *testing.T) {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("missing %s", marker)
 		}
+	}
+}
+
+func TestMaintenanceLegacyHTTPContract(t *testing.T) {
+	s, _ := newTestServer(t)
+	a, _, err := s.st.RegisterOrLogin("maintenance-http-device", "Tester", "192.0.2.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err = s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
+		t.Fatal(err)
+	}
+	request := func(session string) (int, map[string]string) {
+		t.Helper()
+		q := url.Values{"opg3d_player": {a.PlayerID}, "opg3d_session": {session}}
+		raw, err := encodeLegacyAuth(map[string]string{"device_id": a.DeviceID, "hash": "preserve-hash"}, 77)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, httptest.NewRequest("POST", "/auth_v2/?"+q.Encode(), bytes.NewReader(raw)))
+		if rec.Code != 200 {
+			return rec.Code, nil
+		}
+		fields, err := decodeLegacyAuth(rec.Body.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rec.Code, fields
+	}
+	checkDenied := func() {
+		t.Helper()
+		code, fields := request(a.Session)
+		if code != 200 || fields["err_code"] != "3000" || fields["player_id"] != a.PlayerID || fields["hash"] != "preserve-hash" {
+			t.Fatalf("wrong maintenance contract: %d %+v", code, fields)
+		}
+		var notification struct {
+			Critical bool `json:"critical"`
+		}
+		if err := json.Unmarshal([]byte(fields["notification"]), &notification); err != nil || !notification.Critical {
+			t.Fatal("stock critical notification missing", err)
+		}
+		if fields["url"] != "" || fields["token"] != "" {
+			t.Fatal("maintenance granted socket access")
+		}
+	}
+	checkOpen := func() {
+		t.Helper()
+		code, fields := request(a.Session)
+		if code != 200 || fields["err_code"] != "" || fields["token"] != a.Session || fields["url"] == "" {
+			t.Fatal("normal auth did not resume")
+		}
+	}
+	checkDenied()
+	if code, _ := request("wrong-session"); code != 401 {
+		t.Fatal("maintenance bypassed credential validation")
+	}
+	// Supplying a whitelisted ID without its valid session never grants access.
+	if err := s.settings.setMaintenanceAllowed(a.PlayerID, true); err != nil {
+		t.Fatal(err)
+	}
+	checkOpen()
+	if code, _ := request("wrong-session"); code != 401 {
+		t.Fatal("spoofed whitelist")
+	}
+	if err := s.settings.setMaintenanceAllowed(a.PlayerID, false); err != nil {
+		t.Fatal(err)
+	}
+	checkDenied()
+	on = false
+	if _, err := s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
+		t.Fatal(err)
+	}
+	checkOpen()
+	now := time.Now().UTC()
+	plan := maintenanceSchedule{now.Add(-time.Minute).Format(time.RFC3339), now.Add(time.Minute).Format(time.RFC3339)}
+	if _, err := s.settings.apply(settingsPatch{MaintenanceSchedule: &plan}); err != nil {
+		t.Fatal(err)
+	}
+	checkDenied()
+	plan = maintenanceSchedule{now.Add(-2 * time.Minute).Format(time.RFC3339), now.Add(-time.Minute).Format(time.RFC3339)}
+	if _, err := s.settings.apply(settingsPatch{MaintenanceSchedule: &plan}); err != nil {
+		t.Fatal(err)
+	}
+	checkOpen()
+	on = true
+	if _, err := s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.settings.setMaintenanceAllowed(a.PlayerID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.AddBan(store.Ban{Kind: store.BanPlayer, Subject: a.PlayerID}); err != nil {
+		t.Fatal(err)
+	}
+	if code, fields := request(a.Session); code != 200 || fields["err_code"] != "1402" {
+		t.Fatal("maintenance or whitelist overrode ban")
+	}
+}
+
+func TestMaintenanceSocketRaceFailsClosed(t *testing.T) {
+	s, _ := newTestServer(t)
+	a, _, err := s.st.AdoptSocketIdentity("740333804", "maintenance-race-device", "192.0.2.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := s.settings.apply(settingsPatch{Maintenance: &on}); err != nil {
+		t.Fatal(err)
+	}
+	session := &sioSession{sid: "0123456789abcdef01234567"}
+	head := sioHead{"uniq_id": a.PlayerID, "device": a.SocketDevice}
+	body := s.answerAuth(session, head, 7)
+	if body["err_code"] != sioErrTechnicalWorkBlocking || body["error"] != sioErrTechnicalWorkBlocking {
+		t.Fatal(body)
+	}
+	if _, _, player := session.identity(); player != "" {
+		t.Fatal("denied socket remained authorized")
+	}
+	if err := s.settings.setMaintenanceAllowed(a.PlayerID, true); err != nil {
+		t.Fatal(err)
+	}
+	body = s.answerAuth(session, head, 8)
+	if _, denied := body["err_code"]; denied {
+		t.Fatal(body)
+	}
+	if _, _, player := session.identity(); player != a.PlayerID {
+		t.Fatal("allowlisted socket not authorized")
+	}
+	if err := s.settings.setMaintenanceAllowed(a.PlayerID, false); err != nil {
+		t.Fatal(err)
+	}
+	body = s.answerProgressStatus(session, head, 9)
+	if body["err_code"] != sioErrTechnicalWorkBlocking || body[sioProgressEnabledKey] != sioProgressMaintenance {
+		t.Fatal("revoked socket was given normal progress status")
 	}
 }

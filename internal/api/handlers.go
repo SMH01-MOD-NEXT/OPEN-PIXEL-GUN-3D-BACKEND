@@ -303,6 +303,11 @@ func (s *Server) handleLegacyAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if s.settings.maintenanceFor(account.PlayerID) {
+		s.writeLegacyMaintenance(w, legacyFields, account)
+		return
+	}
+
 	if err := s.st.ObserveDevice(account, store.DeviceObservation{IP: ip, UserAgent: r.UserAgent(), Model: firstNonEmpty(legacyFields["device_model"], legacyFields["model"]), OS: firstNonEmpty(legacyFields["os_version"], legacyFields["operating_system"]), Platform: legacyFields["platform"], Version: legacyFields["app_version"], Source: "legacy_game_login"}); err != nil {
 		s.log.Event("support.evidence_write_failed", nil)
 	}

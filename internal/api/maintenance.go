@@ -3,6 +3,7 @@ package api
 
 import (
 	"errors"
+	"github.com/SMH01/open-pixel-gun-3d-backend/internal/store"
 	"net/http"
 	"time"
 )
@@ -93,4 +94,33 @@ func (s *Server) handleAdminMaintenanceAccess(w http.ResponseWriter, r *http.Req
 	}
 	s.log.Event("maintenance.access_changed", map[string]any{"player_id": account.PlayerID, "enabled": *body.Enabled})
 	s.writeJSON(w, 200, map[string]any{"player_id": account.PlayerID, "maintenance_allowed": *body.Enabled})
+}
+
+// Fail closed for a socket racing maintenance activation or whitelist revocation.
+// This is not the stock maintenance presenter; HTTP auth owns that UI.
+func sioMaintenanceReply(reqID int) map[string]any {
+	return map[string]any{sioRequestIDKey: reqID, "result": "technical_work", "error": sioErrTechnicalWorkBlocking, "err_code": sioErrTechnicalWorkBlocking, sioProgressEnabledKey: sioProgressMaintenance}
+}
+
+// 23.1.3 HTTP auth callback 0x3C1483C dispatches err_code=3000 to
+// 0x3C154AC. The maintenance parser 0x33F8914 expects notification to be a
+// JSON string with critical=true; enabled=0 in progress_status is insufficient.
+// HTTP 200 and the legacy encrypted envelope are required, not HTTP 503.
+func (s *Server) writeLegacyMaintenance(w http.ResponseWriter, fields map[string]string, a store.Account) {
+	if fields != nil {
+		raw, err := encodeLegacyAuth(map[string]string{
+			"err_code": "3000", "player_id": a.PlayerID, "hash": fields["hash"],
+			"notification": `{"critical":true}`, "wait": "0",
+		}, 37)
+		if err != nil {
+			s.writeError(w, 500, "legacy_auth_encode_failed", "cannot encode auth response")
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+	} else {
+		s.writeJSON(w, http.StatusOK, map[string]any{"err_code": 3000, "player_id": a.PlayerID, "hash": "", "notification": `{"critical":true}`, "wait": 0})
+	}
+	s.log.Event("maintenance.http_login_denied", map[string]any{"player_id": a.PlayerID, "err_code": 3000})
 }

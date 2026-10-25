@@ -6865,3 +6865,38 @@ changed; no maintenance window was activated and no release dates were applied.
 - [x] Stage artifact, stop only backend, back up full data/config/binary and install atomically.
 - [x] Verify private/public health, maintenance UI/settings, data preservation and unchanged gateways.
 - [x] Record deployment and rollback details; commit documentation only.
+
+## 2026-10-25: Real-device local maintenance diagnosis
+
+AWS backend was explicitly stopped at the user's request and must stay stopped.
+
+- [x] Inspect exact 23.1.3 auth/TechnicalWorks implementation and reproduce on attached A059P.
+- [x] Fix the measured backend/client contract; no new UI strings or frontend changes required.
+- [x] Add regression tests and run tests/race/vet/build.
+- [x] Verify maintenance, allowlist, normal login and scheduled start/end on device against local server only.
+- [x] Leave verified local backend running; document evidence and commit verified source changes.
+
+Measured root cause: progress_status enabled=0 was not a reliable login gate.
+A socket-only error=4 blocked entry but showed the generic network dialog.
+The correct stock 23.1.3 HTTP response is encrypted HTTP 200, err_code=3000,
+notification JSON string {"critical":true}, with player_id/hash preserved and
+no socket URL/token. Bans remain higher priority; whitelist uses canonical ID.
+Socket rejection is a fail-closed race fallback, not the UI presenter.
+
+A059P / org.openpixelgun.opg2313 / unchanged signed native build 49:
+- manual on, no bypass: stock maintenance screen;
+- player 740333804 bypass on: lobby; bypass revoked: maintenance screen;
+- manual off: lobby;
+- real timed schedule: normal HTTP auth before start, maintenance HTTP auth
+  and stock device screen inside window, normal HTTP auth and lobby after end,
+  without restarting the backend.
+
+Verification: go test ./..., go test -race ./..., go vet ./..., go build ./...,
+all tools/*_test.cjs, maintenance UI under UTC and Europe/Volgograd passed.
+Evidence is outside the repo in /tmp/opg3d-maintenance-device-20261025T144138Z
+and /tmp/opg3d-check-*.png. The local service uses an isolated clone of local
+state, not AWS data. Android connects to 127.0.0.1:8080 through adb reverse;
+LAN access failed on this device and was not worked around by disabling security.
+Final local mode: manual maintenance on, no schedule and no player bypass.
+AWS backend stays stopped; no deployment or production data edits were made.
+Unrelated frontend photon_trace_2313.h and analys2332/ changes were preserved.

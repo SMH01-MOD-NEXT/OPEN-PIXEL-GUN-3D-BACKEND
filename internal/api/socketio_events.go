@@ -342,8 +342,9 @@ func sioOK(reqID int) map[string]any {
 // Client-visible socket error codes, from the client's own enum
 // 专丏三一上专世丕七 (TypeDefIndex 9370).
 const (
-	sioErrNone          = 0
-	sioErrNotAuthorized = 2
+	sioErrNone                  = 0
+	sioErrNotAuthorized         = 2
+	sioErrTechnicalWorkBlocking = 4
 )
 
 // answerAuth answers auth_v2 and binds the session to an account.
@@ -440,6 +441,14 @@ func (s *Server) answerAuth(session *sioSession, head sioHead, reqID int) map[st
 	if _, banned := s.accountBan(account, remoteIP); banned {
 		session.setIdentity(uniqID, device, "")
 		return socketBanReply(reqID)
+	}
+	// The stock client does not reliably gate login on progress_status.enabled.
+	// HTTP auth renders the stock screen; this distinct socket error (enum
+	// 9370) only fails closed if a socket races the HTTP maintenance check.
+	if s.settings.maintenanceFor(account.PlayerID) {
+		session.setIdentity(uniqID, device, "")
+		s.log.Event("maintenance.login_denied", map[string]any{"player_id": account.PlayerID, "wire_error": sioErrTechnicalWorkBlocking})
+		return sioMaintenanceReply(reqID)
 	}
 	session.setIdentity(uniqID, device, account.PlayerID)
 	// Recent-IP correlation alone is deliberately NOT a mail credential.
@@ -637,12 +646,11 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 //	statics+0x02 = (value == 2)          strb at 0x17A9BF0
 //	statics+0x04 = Nullable<int>(value)  stur at 0x17A9C3C
 //
-// Run 142 sent zero with the flag traced live on the device. The flag did turn
-// true, and eighty percent into the ladder the scene applied state 15,
-// TechnicalWorks, from 0x3DC49D4, raised the information window and cleared the
-// flag again through the reset writer at 0x17A9934. A true flag is how this
-// build says "technical works", and zero is the code that produces it. Run 141
-// sent one, the flag stayed false, and the ladder ran to its last step.
+// Historical flag traces do not establish a reliable login gate: on the
+// attached 23.1.3 device (2026-10-25), enabled=0 still reached the main menu.
+// The authoritative maintenance screen is driven by HTTP auth err_code=3000
+// with notification={"critical":true}; see writeLegacyMaintenance. Socket
+// error=4 is only a fail-closed fallback and does not render that screen.
 //
 // The third code is not another polarity for that flag. Value two keeps the
 // maintenance Nullable false and sets the distinct byte at statics+0x02. The
@@ -668,7 +676,7 @@ const (
 
 	// All three numbers are client wire codes, not booleans. Maintenance wins
 	// over the profile-derived mode so an account with stored progress still
-	// sees TechnicalWorks while the operator switch is on.
+	// cannot select the normal synchronization response during maintenance.
 	sioProgressOpen        = 1
 	sioProgressSynchronize = 2
 	sioProgressMaintenance = 0
@@ -708,6 +716,9 @@ func (s *Server) answerProgressStatus(session *sioSession, head sioHead, reqID i
 	profile, ok := s.sessionProfile(session)
 	_, _, maintenancePlayerID := session.identity()
 	status := s.progressStatusCode(maintenancePlayerID)
+	if status == sioProgressMaintenance {
+		return sioMaintenanceReply(reqID)
+	}
 	if status == sioProgressOpen && ok {
 		_, device, _ := session.identity()
 		_, operatorRevisionPending := profile.PendingProgressRevision(device)
