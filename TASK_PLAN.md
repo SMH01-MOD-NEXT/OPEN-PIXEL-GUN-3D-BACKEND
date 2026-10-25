@@ -5678,3 +5678,9 @@ Deployment completed: runtime `23.1.3-hub-8bb5520`, AWS and local health/HUB ver
 - Verification: full Go suite, race tests for store/API/clienterrors, go vet and all eight Node harnesses passed. Encrypted regressions cover nickname updates, additive/partial subscriptions, peer limits, online/offline/reconnect/staleness, friend privacy and bans; store tests cover durable/coalesced timestamps and rollback. adb has no connected devices; two-client rendering acceptance remains pending.
 
 - Released code `696249c`, runtime `23.1.3-hub-696249c`, binary SHA-256 `1aac9338d75ea105209d714918446f18f8c338c6d09f9ef8166cd6d99d967083`. Local PID 19768; AWS backup `/var/backups/opg3d/hub-20261024T090958Z-696249c`. Startup state byte-identical locally and on AWS; accounts/profiles, campaigns, support administrator 740333804, security keys and existing encrypted stores preserved. Public ping 200/admin 404; backend/gateway/Caddy active, gateway/Caddy not restarted. Frontend manifest unchanged; existing unrelated frontend work untouched. No live social records manually edited.
+
+## Admin avatar category clarity — 2026-10-25
+- [x] Inspect backend and stock 23.1.3 read-only; user confirmed avatar_mr_streamer (1080/601005) grants correctly. No ownership fix needed.
+- [x] Clarify RU/EN category labels for avatar_* records; preserve numeric type, technical ID, inventory writes, game frontend and all player data.
+- [x] RU/EN category regression, full Go tests, API/store race tests, vet, backend build and all nine Node harnesses passed. Game frontend and player data untouched; native grant already confirmed by the user.
+- [x] Commit task-owned changes only; preserve pre-existing TASK_PLAN.md edits. Deployment not performed.

@@ -548,7 +548,9 @@
         : t("noPlayer");
   }
   const category = (item) =>
-    TEXT.types[item.type] || item.category || TEXT.types["0"];
+    item.type === 1080 && item.id.startsWith("avatar_")
+      ? t("royaleAvatarCategory")
+      : TEXT.types[item.type] || item.category || TEXT.types["0"];
   function drawItems(items, host, owned) {
     const box = el(host);
     if (!items.length) {
