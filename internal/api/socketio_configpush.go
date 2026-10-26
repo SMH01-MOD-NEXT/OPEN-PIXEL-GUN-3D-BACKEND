@@ -51,11 +51,16 @@ const sioConfigPushEvent = "config_info_versions"
 // have the same (id,1,true)
 // JSON configuration attribute and generic text deserializer; raw JSON bytes
 // must not be presented as a binary/MessagePack attachment.
+// ClanCommon (69) and ClanBuildings (84) were checked statically: their
+// loaders (0x36FE4E8 and 0x3709570) call ConfigSystem.GetText 0x24981B0,
+// the same text accessor Boosters was measured through, and then hand the
+// string to Newtonsoft. A binary attachment would leave that text empty.
 // Keep this allow-list deliberately closed: other hosted documents retain the
 // binary attachment contract until their own parser is measured.
 func configPushUsesInlineBody(name string) bool {
 	switch name {
-	case "MainStore", "PixelPassOffers", "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots", "PixelPass", "ExpOpen", "ExpOpenForB":
+	case "MainStore", "PixelPassOffers", "GameModeEvents", "CompetionGameModeEvents", "RotationGameModeEvents", "Boosters", "LootBoxes", "LootBoxesProviderUniversal", "Bots", "MatchmakingBots", "PixelPass", "ExpOpen", "ExpOpenForB",
+		"ClanCommon", "ClanBuildings":
 		return true
 	default:
 		return false

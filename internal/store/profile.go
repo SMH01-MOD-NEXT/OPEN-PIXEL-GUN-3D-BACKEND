@@ -1195,6 +1195,7 @@ func (s *Store) ChangePlayerID(oldID, newID string) (Account, error) {
 		return Account{}, snapshotErr
 	}
 	s.renameSocialLocked(oldID, newID)
+	s.renameClansLocked(oldID, newID)
 	delete(s.state.Accounts, oldID)
 	account.PlayerID = newID
 	s.state.Accounts[newID] = account
@@ -1325,6 +1326,7 @@ func (s *Store) DeleteAccount(playerID string) error {
 	}
 	s.normalizeSocialLocked(time.Now())
 	s.renameSocialLocked(playerID, "")
+	s.renameClansLocked(playerID, "")
 	aliases := make([]string, 0)
 	for alias := range s.state.Aliases {
 		if s.resolvePlayerIDLocked(alias) == playerID {
@@ -1337,6 +1339,7 @@ func (s *Store) DeleteAccount(playerID string) error {
 	delete(s.state.Accounts, playerID)
 	delete(s.state.Profiles, playerID)
 	s.normalizeSocialLocked(time.Now())
+	s.normalizeClansLocked(time.Now().UTC())
 	if err := s.persistLocked(); err != nil {
 		var restored state
 		_ = json.Unmarshal(oldState, &restored)

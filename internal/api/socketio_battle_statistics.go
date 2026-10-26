@@ -101,6 +101,7 @@ func (s *Server) nativePlayerInfo(playerID string) (map[string]any, bool) {
 	if accessories != nil {
 		info["asc"] = accessories
 	}
+	s.clanPlayerInfo(id, p.ClientState, info)
 	return info, true
 }
 func (s *Server) answerNativePlayerInfo(session *sioSession, head sioHead, reqID int) map[string]any {

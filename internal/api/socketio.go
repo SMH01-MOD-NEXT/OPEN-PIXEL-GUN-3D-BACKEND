@@ -155,6 +155,7 @@ type sioSession struct {
 	out     chan sioFrame
 
 	social                   socialSubscriptions
+	clans                    clanSubscriptions
 	sendMu                   sync.Mutex // reserve complete outgoing frame groups
 	eventMu                  sync.Mutex // keep encrypted event attachment groups contiguous
 	mailboxCodec             *sio.Codec
@@ -810,6 +811,7 @@ func (s *Server) socketPingLoop(session *sioSession, conn *wsConn, done <-chan s
 		case <-ticker.C:
 			s.refreshMailbox(session)
 			s.refreshSocial(session)
+			s.refreshClans(session)
 			if session.clientOwnsHeartbeat() {
 				return
 			}
@@ -851,6 +853,7 @@ func (s *Server) handleEnginePacketWS(session *sioSession, conn *wsConn, packet 
 		s.recordSocketGameSeen(session, false)
 		s.refreshMailbox(session)
 		s.refreshSocial(session)
+		s.refreshClans(session)
 		conn.WriteText(string(eioPong) + packet[1:])
 		return
 	case eioPong:
@@ -898,6 +901,7 @@ func (s *Server) handleEnginePacket(session *sioSession, packet, transport strin
 		s.recordSocketGameSeen(session, false)
 		s.refreshMailbox(session)
 		s.refreshSocial(session)
+		s.refreshClans(session)
 		session.send(sioFrame{text: string(eioPong) + body})
 	case eioPong:
 		session.notePong()

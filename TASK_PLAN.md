@@ -6943,3 +6943,32 @@ All other environment lines, executable, native manifest and gateway PIDs were
 preserved. The first verification's outdated empty-whitelist assumption caused
 an environment-only rollback; retry compared current settings to backup and
 succeeded without touching the operator's changes.
+
+## 2026-10-26: Clans restoration (backend)
+
+- [x] Read-only static analysis of the stock 23.1.3 clan contracts (requests,
+  compact sections, subscriptions, progress commands 182/206, config loaders).
+  No frontend, APK or client patch.
+- [x] Server-owned clan state: create, search, info, join rules (public /
+  request-only, minimum rank, member limit, leave/delete cooldown), invites and
+  requests, roles and leadership transfer, kick / leave / delete, clan chat,
+  account rename/delete hooks.
+- [x] Shared fort field, decor, tank, storage, upgrades, buildings and progress
+  commands 182 (crafted/bought clan items) and 206 (building contributions);
+  subscription pushes for every member.
+- [x] Clan store: authored ClanCommon (clan armors, clan skins, Clan Hero
+  Shovel for ClanSilver) and ClanBuildings (Black Market levels), delivered
+  inline like Boosters.
+- [x] Clan wars: explicit empty-season answers; registration, events, progress
+  and reward clears are refused with `clan_war_unavailable`.
+- [x] docs/CLANS_23_1_3.md; gofmt, build, vet, full tests and race tests
+  (store/api/sio) pass.
+- [ ] Device verification: store rendering and purchase, Black Market levels,
+  crafting persistence across members, war UI with the empty season.
+- [ ] Not done: real clan war seasons (no original ClanWarConfig / map / event /
+  reward data); LootBoxesProviderClan, ClanBuffs, ClanTasks, ClanForge and
+  ClanChests configs are not hosted.
+
+Prices, building levels and store rows are authored for this server, not
+recovered originals. Division gating is off because no season assigns
+divisions. Not deployed to AWS; the running service is unchanged.

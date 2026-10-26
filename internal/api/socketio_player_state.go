@@ -176,16 +176,9 @@ func (s *Server) answerCheckBindedID(_ *sioSession, head sioHead, reqID int) map
 	return body
 }
 
-func (s *Server) answerLeaderClan(_ *sioSession, head sioHead, reqID int) map[string]any {
-	body := sioOK(reqID)
-	body["clan_id"] = head.text("clan_id")
-	body["leader_id"] = "0"
-	body["leader"] = map[string]any{}
-	return body
-}
-
 func (s *Server) answerUnsubscribe(session *sioSession, head sioHead, reqID int) map[string]any {
 	s.unsubscribeSocial(session, head)
+	s.unsubscribeClans(session, head)
 	body := sioOK(reqID)
 	if value, ok := head["type"]; ok {
 		body["type"] = value

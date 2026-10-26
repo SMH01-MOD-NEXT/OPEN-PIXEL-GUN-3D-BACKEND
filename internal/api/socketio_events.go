@@ -300,6 +300,9 @@ func sioAnswerFor(event string) sioAnswer {
 	case "unsubscribe":
 		return (*Server).answerUnsubscribe
 	default:
+		if answer := clanAnswerFor(event); answer != nil {
+			return answer
+		}
 		// Anything else gets the minimal acknowledgement rather than silence.
 		//
 		// Every request this client makes carries a req_id and parks a
@@ -615,6 +618,11 @@ func (s *Server) answerSubscribe(session *sioSession, head sioHead, reqID int) m
 	if topic := head.text("type"); topic != "" {
 		if isSocialTopic(topic) {
 			if failed := s.validateSocialSubscription(session, head, reqID); failed != nil {
+				return failed
+			}
+		}
+		if isClanTopic(topic) {
+			if failed := s.validateClanSubscription(session, head, reqID); failed != nil {
 				return failed
 			}
 		}
@@ -1105,6 +1113,9 @@ func (s *Server) replyEncrypted(session *sioSession, namespace, transport string
 	traceBody := s.log.Body(sent)
 	if event == "get_private_message" || event == "send_private_message" {
 		traceBody = "<private chat redacted>"
+	}
+	if event == clanTopicStart || event == "send_clan_message" {
+		traceBody = "<clan chat redacted>"
 	}
 	if event == "mailbox_get_messages" || event == mailboxPersonalUpdated {
 		traceBody = "<personal mailbox body redacted>"

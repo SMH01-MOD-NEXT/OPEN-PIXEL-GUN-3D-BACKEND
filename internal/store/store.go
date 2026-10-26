@@ -90,6 +90,7 @@ type state struct {
 	Aliases     map[string]string         `json:"aliases,omitempty"`
 	Bans        []Ban                     `json:"bans"`
 	MailboxNews []MailboxNews             `json:"mailbox_news,omitempty"`
+	Clans       clanState                 `json:"clans,omitempty"`
 }
 
 // Options tunes how a store behaves.
@@ -113,6 +114,7 @@ type Store struct {
 	opts            Options
 	economyObserver func(EconomyObservation)
 	socialRates     map[string]socialRate
+	clanRates       map[string]clanRate
 }
 
 // Open loads (or creates) the state file in dir with default options.

@@ -260,6 +260,10 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		}
 		s.refreshSocialAll()
 	}
+	if (isClanMutation(event) || event == "update_player") && !banned && body["err_code"] == nil && body["error"] != sioErrNotAuthorized {
+		// Membership, chat and fort changes reach every subscribed member.
+		s.refreshClansAll()
+	}
 	if !replied {
 		return
 	}
@@ -272,6 +276,7 @@ func (s *Server) answerDecodedEvent(session *sioSession, a *sioBinaryAssembly, c
 		s.pushMailboxSubscription(session, a.namespace, a.transport, codec, head)
 		if body["err_code"] == nil {
 			s.pushSocialSubscription(session, a.namespace, a.transport, codec, head)
+			s.pushClanSubscription(session, a.namespace, a.transport, codec, head)
 		}
 	}
 	if event == sioAuthEvent {

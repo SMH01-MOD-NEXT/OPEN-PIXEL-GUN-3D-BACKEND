@@ -108,6 +108,9 @@ func (s *Server) answerUpdateProgress(session *sioSession, head sioHead, reqID i
 			return body
 		}
 	}
+	// Crafted clan items (182) and building contributions (206) are shared
+	// with the clan; this never fails the player's own acknowledgement.
+	s.applyClanProgress(playerID, head)
 	body[sioUpdateProgressErrCodeKey] = sioErrNone
 	s.log.Event("socket.progress_update_acknowledged", map[string]any{
 		"sid":                      session.sid,
