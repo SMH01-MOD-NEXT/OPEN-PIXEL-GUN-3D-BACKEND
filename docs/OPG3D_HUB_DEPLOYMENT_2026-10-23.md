@@ -132,3 +132,29 @@ https://1drv.ms/u/c/648bba575409b1ee/IQBCBch0tW5nSZ1b44Kt4jpiAR3zki31m2AyyAsvw2h
 To change the download later, update only the HTTPS environment setting and
 restart the backend. Rollback restores the previous environment file and
 restarts the same maintenance-capable executable; never restore old player data.
+
+## Android download URL replaced — 2026-10-26
+
+Owner-supplied replacement, used unchanged:
+
+https://1drv.ms/u/c/648bba575409b1ee/IQCj8F4gCBW9Rb1Kxquz7-HUAW29fDditv2J8lcRrG3U0ZU
+
+- Updated only `OPG3D_HUB_DOWNLOAD_URL` in `/etc/opg3d/backend.env`; restarted
+  only backend. No executable or frontend publication. Runtime remains
+  `23.1.3-clans-b2f982d`, final backend PID `33962`.
+- Root-only stopped-service environment/data backup and verification report:
+  `/var/backups/opg3d/hub-download-20261026T113228Z`.
+- All seven data files matched stopped-service hashes, including current
+  operator settings. Other environment lines, owner/mode, executable and native
+  active manifest unchanged. Gateway/Caddy PIDs `21993`/`10286` unchanged.
+- Public HTTPS `/api/v1/hub/stats` returned the exact replacement URL; home,
+  ping and loader-info returned 200; `/admin` remained 404. Existing localized
+  download-button code consumes this setting; no UI/source change needed.
+- `go test ./internal/config ./internal/api` and backend build passed. No APK
+  download, OneDrive login or installation performed.
+- Initial loopback probe omitted the required HTTPS host/proxy headers, received
+  `web_login_unavailable` (403), and triggered environment-only rollback. After
+  verifying the host restriction, retried with correct headers and succeeded;
+  no security settings weakened and no player data restored.
+- Rollback: restore only this backup's environment and restart the same backend;
+  never restore older player data as a URL rollback.

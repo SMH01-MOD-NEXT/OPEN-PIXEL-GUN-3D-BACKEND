@@ -6983,3 +6983,19 @@ divisions. Not deployed to AWS; the running service is unchanged.
 Runtime 23.1.3-clans-b2f982d, PID 32478, NRestarts=0; backup
 /var/backups/opg3d/clans-20261026T091635Z-b2f982d. See
 docs/AWS_CLANS_DEPLOYMENT_2026-10-26.md.
+
+## 2026-10-26: Replace HUB Android download link
+
+- [x] Inspect existing HUB configuration and current AWS/public download URL.
+- [x] Back up AWS configuration/state and replace only OPG3D_HUB_DOWNLOAD_URL; restart backend only.
+- [x] Verify exact public URL, health, configuration and state preservation.
+- [x] Record rollout, run configuration/API checks and build; commit notes.
+
+
+Configuration-only rollout completed; exact user-supplied URL verified over
+public HTTPS. Backup /var/backups/opg3d/hub-download-20261026T113228Z; backend
+PID 33962. All seven state files byte-identical; binary, active native manifest,
+other environment lines/owner/mode and gateway/Caddy PIDs preserved.
+Configuration/API tests and backend build passed. The first attempt safely
+rolled back only the environment because its loopback probe lacked required
+HTTPS host/proxy headers (403); corrected probe passed without security changes.
