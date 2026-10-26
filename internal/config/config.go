@@ -274,6 +274,17 @@ type Config struct {
 	// ladder stopped at 87%, the same signature runs 58 and 78-80 produced.
 	// Answering the upload itself keeps that branch intact.
 	TutorialSectionViaCreateSlots bool
+	// TutorialSectionViaSyncFull merges the same seed into the tutorials
+	// section of the stored slot document that sync_full returns.
+	//
+	// The 2026-10-26 AWS logs measured the case it covers: a new account
+	// stores its create_slots upload with section 56 {"t":[]}, because the
+	// seed only travels on the create_slots acknowledgement. When a failed
+	// update_progress made the client resync, sync_full returned that stale
+	// section, the client replaced its history with it and replayed the
+	// tutorial. The merge only adds the seed ids, only to a section the stored
+	// document already holds, and only in the reply; stored state is untouched.
+	TutorialSectionViaSyncFull bool
 
 	Update Update
 }
@@ -311,6 +322,7 @@ func Load() (*Config, error) {
 		TutorialSectionViaProgressDocument: envBool("OPG3D_TUTORIAL_SECTION_VIA_PROGRESS_DOCUMENT", false),
 		TutorialSectionViaSlots:            envBool("OPG3D_TUTORIAL_SECTION_VIA_SLOTS", false),
 		TutorialSectionViaCreateSlots:      envBool("OPG3D_TUTORIAL_SECTION_VIA_CREATE_SLOTS", true),
+		TutorialSectionViaSyncFull:         envBool("OPG3D_TUTORIAL_SECTION_VIA_SYNC_FULL", true),
 		PhotonAppIDs:                       map[string]string{},
 		PhotonRegion:                       env("OPG3D_PHOTON_REGION", "eu"),
 		Update: Update{

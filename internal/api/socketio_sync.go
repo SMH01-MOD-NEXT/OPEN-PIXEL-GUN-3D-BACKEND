@@ -46,20 +46,36 @@ func (s *Server) answerSyncFull(session *sioSession, head sioHead, reqID int) ma
 		return body
 	}
 
-	body[sioSlotsKey] = profile.ProgressSlots
+	// Store.Profile returns a deep copy, so the tutorial merge below changes only
+	// this reply. The client replaces its local tutorial history with section
+	// 56 as delivered here; a stale stored {"t":[]} (a new account resyncing
+	// after a failed update_progress, measured on AWS 2026-10-26) would retract
+	// the boot-gate ids the create_slots acknowledgement already published and
+	// replay the tutorial. Only seed ids are added, only to a section the
+	// account holds; a missing section is not invented. See
+	// socketio_tutorial_section.go.
+	slots := profile.ProgressSlots
+	tutorialSeeded := false
+	if s.cfg.TutorialSectionViaSyncFull {
+		if _, held := slots[sioTutorialSectionID].(map[string]any); held {
+			tutorialSeeded = s.applyTutorialSection(slots)
+		}
+	}
+	body[sioSlotsKey] = slots
 	pendingRevision, _ := session.pendingProgressState()
 	revisionServed := pendingRevision != 0 && pendingRevision == profile.ProgressRevision &&
 		session.progressWriteContext().Revision == profile.ProgressRevision && session.markProgressSyncServed(pendingRevision)
 	s.log.Event("socket.progress_sync_server_slots", map[string]any{
-		"sid":              session.sid,
-		"player_id":        playerID,
-		"client_digests":   len(clientDigests),
-		"stored_slots":     len(profile.ProgressSlots),
-		"revision":         profile.ProgressRevision,
-		"pending_revision": pendingRevision,
-		"revision_served":  revisionServed,
-		"prop":             head.text("prop"),
-		"note":             "returned authoritative slots through correlated sync_full; Login will durably acknowledge this exact revision",
+		"sid":                     session.sid,
+		"player_id":               playerID,
+		"client_digests":          len(clientDigests),
+		"stored_slots":            len(profile.ProgressSlots),
+		"revision":                profile.ProgressRevision,
+		"pending_revision":        pendingRevision,
+		"revision_served":         revisionServed,
+		"tutorial_section_seeded": tutorialSeeded,
+		"prop":                    head.text("prop"),
+		"note":                    "returned authoritative slots through correlated sync_full; Login will durably acknowledge this exact revision",
 	})
 	return body
 }

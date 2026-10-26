@@ -77,7 +77,11 @@ overlay stuck at 90%. Configuration-shaped `27.modules_v2` records are preserved
 ignored. Repeated grants do not duplicate storage or reset accumulated points. Module
 revocation and bulk grants remain disabled. Unknown raw sections remain preserved.
 
-Measured command reducers: `10,25,33,64,65,66,81,84,85,87,120,132,139,191,197`.
+Measured command reducers: `10,25,33,64,65,66,81,84,85,87,120,132,139,191,197,253`.
+Command 139 stores a player level (0–65, the 23.1.3 cap) per weapon index in slot
+29; the first level-up batch sends 2 for every listed weapon. Command 253 adds one
+completed tutorial id (1–2147483647) to `56.t`; held ids, their order and other
+section members are preserved, and a repeated id is a no-op.
 A measured purchase batch (currency charge + weapon ownership) commits together
 before ACK. Receipts survive restart and prevent retry double-charging. Malformed
 batches and disk errors do not partially apply. Unsupported commands retain the

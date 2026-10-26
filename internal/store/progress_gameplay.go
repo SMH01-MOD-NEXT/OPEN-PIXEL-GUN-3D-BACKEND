@@ -186,7 +186,7 @@ func (s *Store) applyProfileCounterCommandsAt(playerID string, ctx ProgressWrite
 				switch {
 				case id == 10 || id == 66:
 					observation.Currency++
-				case id == 64 || id == 65:
+				case id == 64 || id == 65 || id == 253:
 					observation.Progression++
 				case statsCommand(id):
 					observation.Combat++

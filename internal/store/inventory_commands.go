@@ -9,6 +9,9 @@ import (
 	"github.com/SMH01/open-pixel-gun-3d-backend/internal/catalog"
 )
 
+// maxStockPlayerLevel is the 23.1.3 player level cap.
+const maxStockPlayerLevel = 65
+
 // SupportsProgressCommand is deliberately a measured-contract allowlist. Unknown
 // stock commands remain losslessly stored through full slot snapshots.
 func SupportsProgressCommand(id int64) bool {
@@ -16,7 +19,7 @@ func SupportsProgressCommand(id int64) bool {
 		return true
 	}
 	switch id {
-	case 187, 188, 10, 25, 33, 64, 65, 66, 81, 84, 85, 87, 120, 132, 139, 191, 197:
+	case 187, 188, 10, 25, 33, 64, 65, 66, 81, 84, 85, 87, 120, 132, 139, 191, 197, 253:
 		return true
 	}
 	return false
@@ -125,6 +128,12 @@ func applyInventoryCommand(p *Profile, id int64, d map[string]any) error {
 		// Preserve optional stock weapon record fields instead of flattening them.
 		return put([]string{"28", "0"}, i, u)
 	case 139:
+		// Slot 29 maps a weapon index to a player level recorded by the client,
+		// not to a 0/1 flag. The measured first level-up batch (64 {l:2} ... 139)
+		// sends 2 for every weapon it lists (168 entries); stored and uploaded
+		// values span 1..65. The old "<= 1" guess rejected that batch, so the
+		// level-up and tutorial completion were lost atomically. counterInt64
+		// already refuses negative, fractional and non-numeric values.
 		values, ok := d["d"].(map[string]any)
 		if !ok || len(values) > 10000 {
 			return bad
@@ -136,11 +145,13 @@ func applyInventoryCommand(p *Profile, id int64, d map[string]any) error {
 		for k, v := range values {
 			n, e := strconv.Atoi(k)
 			c, valid := counterInt64(v)
-			if e != nil || n <= 0 || !valid || c > 1 {
+			if e != nil || n <= 0 || !valid || c > maxStockPlayerLevel {
 				return bad
 			}
 			m[k] = cloneAny(v)
 		}
+	case 253:
+		return applyTutorialCompletion(p, d)
 	case 84, 85:
 		i, err := commandIndex(d, "i")
 		if err != nil {
