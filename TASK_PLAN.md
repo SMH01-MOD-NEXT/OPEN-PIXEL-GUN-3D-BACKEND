@@ -6999,3 +6999,88 @@ other environment lines/owner/mode and gateway/Caddy PIDs preserved.
 Configuration/API tests and backend build passed. The first attempt safely
 rolled back only the environment because its loopback probe lacked required
 HTTPS host/proxy headers (403); corrected probe passed without security changes.
+
+## 2026-10-26: Post-first-match tutorial reset (players return to tutorial)
+
+Investigation of AWS logs/state was read-only. Fix committed locally (fadba8d,
+tests 99e59f3) and verified; nothing deployed yet. Frontend (including
+analys2313) is analysis-only and needs no change for this fix; any frontend
+change must be agreed with the user first.
+
+Root cause:
+- After the first (tutorial) battle (mode 110002, map 1035) the client levels
+  1->2 and sends one update_progress batch: cmd 64 {l:2}, 777, 74 and cmd 139
+  {"d":{"<itemId>":<level>,...}} (slot 29, item -> unlock level; stock values
+  1..10 and 65). Case 139 in internal/store/inventory_commands.go rejects any
+  value > 1 (guess from 1400f08), so the whole atomic batch fails with
+  `store: invalid inventory command payload` (155x on 2026-10-26) and the
+  reply is err_code=1 progress_store_failed.
+- The client then resyncs (get_binded_ids -> get_progress_slots -> sync_full).
+  answerSyncFull (internal/api/socketio_sync.go) returns stored ProgressSlots
+  unconditionally. For new accounts that is the stale create_slots snapshot
+  (67 slots, level 1, slot 56 {"t":[]}): tutorial completion cmd 253
+  {"t":<tutorialId>} (slot 56) is not in SupportsProgressCommand and the
+  level-up batch failed. The client applies it: level 1 and an empty tutorial
+  history, so the tutorial starts again.
+- About 50 of 64 new accounts on 2026-10-26 show CREATE_SLOTS -> MATCH(1035)
+  -> SYNC_FULL(67) -> REPLACE(level 1) -> MATCH(1035); many quit afterwards.
+  34 AWS profiles have slot 56 {"t":[]}. Example: player 286904467,
+  12:09:12-12:09:16 UTC (rank 2 -> failed update -> stale sync_full -> rank 1).
+  Accounts that ran replace_progress before the first match were not reset.
+
+Remaining:
+- [x] Root cause from AWS logs and state (read-only).
+- [x] Case 139 (fadba8d): integer levels 0..65 accepted (`maxStockPlayerLevel`,
+  the 23.1.3 cap; 0 stays accepted as before); positive item-id keys and the
+  10000-entry limit kept; > 65, negative, fractional, string and null values
+  still fail the whole batch without partial application.
+- [x] Cmd 253 (fadba8d): allowlisted, reducer in
+  internal/store/progress_tutorial.go. `t` must be an integer 1..2^31-1; the id
+  is only appended to 56.t (held ids keep representation and order, other
+  section members kept, number/string ids deduped, a repeat is a no-op,
+  history bounded to 256 ids). A missing section is created; a foreign shape
+  (non-object 56, non-list t) is refused, never overwritten. Counted as
+  Progression in the economy observation.
+- [x] Defense in depth evaluated:
+  - sync_full (fadba8d): the reply, never the store, unions the configured
+    seed ids (1100, 1500) into section 56 when the stored document holds that
+    section; a missing section is not invented. Switch
+    `OPG3D_TUTORIAL_SECTION_VIA_SYNC_FULL` (default on, no env change needed
+    on AWS); log field `tutorial_section_seeded`. Covers profiles stored with
+    {"t":[]}: a resync no longer retracts the ids create_slots published.
+  - Level: cannot be guarded in sync_full (the request carries only slot
+    digests, no client values); it is protected by accepting the measured
+    batch atomically.
+  - replace_progress unchanged: the client's post-sync snapshot already
+    carries the union; a server-side merge would diverge from the client's
+    slot digests without a measured case.
+- [x] Tests (99e59f3): store - measured first-match batch
+  (64+777+74+74+139+253) applies 3 reducers and persists level 2, 29 = 2 and
+  56.t = [1300] across a restart, retry absorbed by receipts; 139 accepts
+  0..65, rejects 66/-1/1.5/"2"/null and bad indices atomically; 253
+  append/dedupe/restart, malformed payloads, foreign shapes, bound. API -
+  create_slots -> first-match update_progress (err_code 0, i echoed) ->
+  sync_full delivers level 2 and 56.t {1300,1100,1500}, stored copy unchanged;
+  a stale {"t":[]} section gets the seed with other members kept; switch off
+  returns the stored slots. Mutation check: the old 139 check (reproduces
+  `invalid inventory command payload`, err_code 1), 253 not allowlisted and
+  the sync_full union disabled each fail the new tests.
+- [x] gofmt clean; go vet, go test ./..., go test -race ./... green; static
+  linux/amd64 build OK (built outside the repo, not committed).
+- [x] Conventional Commits: fadba8d fix, 99e59f3 test; this record as chore.
+- [ ] Ask the user for approval, then deploy per docs/AWS_SWEDEN.md
+  (stopped-service backup, atomic binary install, restart backend only, verify
+  health and admin isolation, player data preserved).
+- [ ] Device check with a fresh account: play 1 match, restart the game, no
+  tutorial.
+- [ ] Already affected accounts: decide with the user (no automatic data
+  edits); with the fix live they replay the tutorial once and then persist.
+- [ ] Secondary errors, analyze separately: `session must reload the current
+  progress revision` (234 update / 188 replace / 132 state store failures
+  after economy_resync_required revision bumps), `invalid or unavailable Pixel
+  Pass operation` (43), Pixel Pass "requires authoritative reload" (25).
+
+Incident: a mistaken `opg3d-backend --version` run on AWS briefly started a
+second instance; it failed to bind :8080 and exited. Its stray /home/admin/data
+and /home/admin/logs were removed; the production service, data and logs were
+not touched.
