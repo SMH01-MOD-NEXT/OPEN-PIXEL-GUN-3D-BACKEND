@@ -6972,3 +6972,14 @@ succeeded without touching the operator's changes.
 Prices, building levels and store rows are authored for this server, not
 recovered originals. Division gating is off because no season assigns
 divisions. Not deployed to AWS; the running service is unchanged.
+
+## 2026-10-26: User-approved clans AWS deployment
+
+- [x] Isolated build of b2f982d; vet, full tests and full race suite pass.
+- [x] Stopped-service root-only backup; install executable and the two clan configs atomically.
+- [x] Verify private/public health, maintenance window unchanged, admin isolation, data byte-identical.
+- [ ] Device check against AWS after maintenance ends (2026-10-26T12:00:00Z).
+
+Runtime 23.1.3-clans-b2f982d, PID 32478, NRestarts=0; backup
+/var/backups/opg3d/clans-20261026T091635Z-b2f982d. See
+docs/AWS_CLANS_DEPLOYMENT_2026-10-26.md.
