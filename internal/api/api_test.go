@@ -34,6 +34,7 @@ func newTestServer(t *testing.T) (*Server, *config.Config) {
 		TutorialSectionSeed:           true,
 		TutorialSectionIDs:            []int{sioRanchoTutorialID, sioIntroTutorialID},
 		TutorialSectionViaCreateSlots: true,
+		TutorialSectionViaSyncFull:    true,
 		// Mirrors the shipping default so the wire-code tests keep measuring
 		// the escalation the earlier runs settled on.
 		ProgressSynchronizeMode:  true,
